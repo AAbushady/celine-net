@@ -207,6 +207,35 @@ async def yours(services, lane: str) -> list[str]:
     return [r for r in refs if r in approved or not her_models.cloud(s, r)]
 
 
+def _address_in(value) -> str | None:
+    if isinstance(value, dict):
+        for key, inner in value.items():
+            if isinstance(inner, str):
+                if (key == "url" or key.endswith("_url")) and not inner.startswith("data:"):
+                    return inner
+            elif (found := _address_in(inner)) is not None:
+                return found
+    elif isinstance(value, list):
+        for inner in value:
+            if (found := _address_in(inner)) is not None:
+                return found
+    return None
+
+
+def _media_address(body: dict) -> str | None:
+    """The first address in a request's media parts that is not inline data. A model server
+    downloads such an address itself (llama-server does for image_url), which would carry a
+    caller past its firewall onto the model server's network."""
+    messages = body.get("messages")
+    for message in messages if isinstance(messages, list) else ():
+        content = message.get("content") if isinstance(message, dict) else None
+        for part in content if isinstance(content, list) else ():
+            if isinstance(part, dict) and part.get("type") != "text":
+                if (found := _address_in(part)) is not None:
+                    return found
+    return None
+
+
 async def _forward(request: Request, path: str):
     caller, refused = _caller(request)
     if refused is not None:
@@ -226,6 +255,9 @@ async def _forward(request: Request, path: str):
         body = None
     if not isinstance(body, dict):
         return _error(400, "The body is a JSON object.", "invalid_request_error")
+    if _media_address(body) is not None:
+        return _error(400, "Media in a request is sent as a data: URL. A model server is not "
+                           "given an address to fetch.", "invalid_request_error")
     asked = str(body.get("model") or "default")
     refs = await yours(services, caller[0])
     ref = resolve(s, asked, refs)
