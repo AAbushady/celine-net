@@ -167,9 +167,10 @@ DEFAULTS: dict[str, dict[str, Any]] = {
     "leak": {"on": True, "does": "stop"},
     "damage": {"on": True, "does": "stop"},
     # what reaches out of her machines or changes her, until the owner's own list
-    # replaces it: a public share, her persona. What runs on her own box or Mac (the
+    # replaces it: a public share, her persona, a routine's prompt, which runs later with
+    # nobody watching. What runs on her own box or Mac (the
     # coding agent, a CLI sub-agent, a drone) is hers and not on it
-    "confirm": {"on": True, "tools": ["shell__share:public", "me__edit"]},
+    "confirm": {"on": True, "tools": ["shell__share:public", "me__edit", "routines__write"]},
     "sites": {"on": True, "does": "watch"},
     "stops": {"on": True, "does": "freeze", "count": 3},
     # after a stop, the same thing again another way: `first` the first

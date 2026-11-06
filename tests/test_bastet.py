@@ -438,7 +438,8 @@ async def test_a_fresh_install_confirms_the_steps_that_reach_out_or_change_her(s
     owner; a private share, a sub-agent and the coding agent on her own machines do
     not. The owner's own list replaces the seed."""
     cfg = _cfg()
-    assert rules.current(cfg)["confirm"]["tools"] == ["shell__share:public", "me__edit"]
+    assert rules.current(cfg)["confirm"]["tools"] == ["shell__share:public", "me__edit",
+                                                     "routines__write"]
 
     def call(tool, **args):
         return {"id": f"s-{tool}-{sorted(args.items())}", "name": tool,
