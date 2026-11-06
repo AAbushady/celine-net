@@ -150,7 +150,8 @@ def run_box() -> None:
     """The box as compose runs it, with a new default hostname every time."""
     docker("run", "-d", "--name", BOX, "--init", "--memory", "3g", "--memory-swap", "3g",
            "--cpus", "2", "--pids-limit", "1024", "--tmpfs", "/tmp:size=1g,mode=1777",
-           "--security-opt", "seccomp=unconfined", "-v", f"{HOME}:/home/celine",
+           "--cap-drop", "ALL", "--security-opt", f"seccomp={ROOT / 'browser' / 'seccomp.json'}",
+           "--security-opt", "no-new-privileges:true", "-v", f"{HOME}:/home/celine",
            "-e", "TZ=Europe/Berlin", "-p", "127.0.0.1::8771", "-p", "127.0.0.1::5900",
            "-v", f"{hash_file()}:/etc/browser/key.hash:ro", IMAGE)
     serve()
