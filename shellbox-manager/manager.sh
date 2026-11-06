@@ -49,7 +49,7 @@ snapshot() {
     keep=${SHELLBOX_SNAPSHOT_KEEP_DAYS:-7} oldest=
     [ "$keep" -eq 0 ] || oldest=$(date -d "@$(($(date +%s) - keep * 86400))" +%F)
     # the shellbox image has rsync
-    docker run --rm --network none "$@" --entrypoint sh "$image" -c '
+    docker run --rm --pull never --network none "$@" --entrypoint sh "$image" -c '
         set -eu
         day=$1 s=/data/shellbox-snapshots
         mkdir -p "$s"
