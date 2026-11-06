@@ -75,8 +75,9 @@ docker compose up -d
 docker compose exec -u celine celine cat /data/app/setup-code.txt
 ```
 
-`.env` starts her Linux box, her browser, web search and the Discord and WhatsApp
-connectors along with the app. Remove the services you don't want from `COMPOSE_PROFILES`.
+`.env` starts her Linux box, her browser and web search along with the app. Remove the
+services you don't want from `COMPOSE_PROFILES`. This fork's differences from upstream, and
+what to do on a first run, are in [HARDENING.md](HARDENING.md).
 
 Open http://localhost:8766, enter the setup code (the last command above prints it) and
 pick a way to log in: a passkey, a password or a PIN. After that the setup walks you through naming her, telling her about you, connecting

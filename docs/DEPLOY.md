@@ -86,13 +86,6 @@ features on. Everything can be changed later in Settings:
 When a connector loses its internet access, its page in Settings says so. Once it is
 back, press Sync now to catch up.
 
-### Images from a registry
-
-To pull prebuilt images instead of building: set `CELINE_IMAGES` (for example
-`registry.example.net/you/celine-net`) and `CELINE_TAG` in `.env`, `docker login`, then
-`docker compose pull && docker compose up -d --no-build`. The machine then needs only
-`docker-compose.yml`, `.env` and `config/searxng/settings.yml`.
-
 ## Where the data lives
 
 Everything is on one Docker volume, `data` (named `<project>_data` by Docker, for
@@ -156,8 +149,7 @@ Back up first: a new version may migrate the databases, and an older version ref
 a database a newer one has migrated.
 
 ```sh
-git pull && docker compose up -d --build          # built here
-docker compose pull && docker compose up -d       # from the registry
+git pull && docker compose up -d --build
 ```
 
 The volume is kept. Migrations run at startup. The connectors keep their logins.
@@ -186,7 +178,6 @@ turn that starts before then sees it.
 | `CELINE_TRUSTED_PROXIES` | The reverse proxy's addresses or networks, comma separated. Only these may forward the client's address. Default: none. |
 | `CELINE_LOGIN=on`, `CELINE_HEALTH_PORT=8765` (in the image) | The login is always on in the container. The health check asks port 8765 on the container's loopback, which nothing outside can reach. |
 | `CELINE_METRICS_PORT=8772` (in the image) | Prometheus numbers at `GET /metrics` on their own port, loopback only. See Monitoring. |
-| `CELINE_IMAGES`, `CELINE_TAG` | Where the images come from and which tag. Default: built here as `celine/celine-*:latest`. |
 | `TZ` | The containers' time zone, default UTC: log lines, the Discord connector's dates and the app's day and hour counts. Set it to the zone chosen in Settings, General. |
 | `CELINE_SHELL_URL`, `CELINE_BROWSER_URL`, `CELINE_SEARXNG_URL` | Where the app reaches the shellbox, the browser and SearXNG, the first time: they seed Settings, Features (`var/settings/services.toml`), which wins once saved. It calls the boxes with `keys/shell.key` and `keys/browser.key`. |
 | `/etc/shellbox/llm.key` (the shellbox, from `app/keys/shellbox-llm.key`) | The model proxy's key, the app's and the shellbox's (with `SHELLBOX_LLM_URL`, `http://celine:8766/llm`): its agent CLIs call its models with it. Not a provider key. |
@@ -234,14 +225,15 @@ with a prompt that says so.
 - Only its home, `/home/celine` on the volume's `shellbox/` folder, is kept. pip and
   npm install into `~/.local` there. Everything else is the image.
 - None of the app's data is in there: no archive, no notebook, no keys, no login.
-- It keeps Docker's default capabilities and allows setuid, because sudo needs both.
-  `mem_limit`, `pids_limit` and `cpus` keep it from taking the machine down; `/tmp` is
-  a 2 GB tmpfs that counts against its memory.
-- Its own network: the app reaches it; the connectors and the search engine do not. The internet and your LAN are open to it.
-  If it can do without them, `internal: true` is the recommended setting: uncomment it under `networks: shellbox` (and
-  `browser`) in the compose file: the box then reaches only the app, so a web page or message
-  that tricked her into running a command cannot reach your LAN or the internet from there. It can no
-  longer install packages or fetch pages from the box then.
+- It keeps Docker's default capabilities but `NET_RAW` and `MKNOD`, and allows setuid,
+  because sudo needs them. `mem_limit`, `pids_limit` and `cpus` keep it from taking the
+  machine down; `/tmp` is a 2 GB tmpfs that counts against its memory.
+- It sits behind `shellbox-net` (`egress/firewall.sh`): the app reaches it; the connectors
+  and the search engine do not. It reaches the public internet. Your LAN and the Docker
+  host are dropped, and root in the box cannot change that.
+  If it can do without the internet too, uncomment `internal: true` under `networks: shellbox` (and
+  `browser`) in the compose file: the box then reaches only the app. It can no longer
+  install packages or fetch pages from the box then.
 
 Every morning the shellbox goes back to a fresh image: recreating the container throws
 away everything outside its home. The `shellbox-manager` service does it, inside the
@@ -309,8 +301,8 @@ Calls: `POST /do` (one action in a named tab, or a restart), `POST /control` (Ta
 - The agent's extensions: every folder in `~/.browser-extensions` with a `manifest.json`; each
   start loads them. A broken one hangs Brave's start, so the second launch goes without
   them, and its next result says so.
-- `seccomp:unconfined`, because Brave's own sandbox needs user namespaces, which
-  Docker's seccomp profile blocks; nobody has a shell in this box. Never
+- `browser/seccomp.json`, Docker's default profile plus `clone`, `unshare`, `setns` and
+  `chroot`, because Brave's own sandbox needs user namespaces, which the default blocks. Never
   `apparmor:unconfined`: where unprivileged user namespaces are restricted (Ubuntu
   24.04), Docker's default AppArmor profile is what lets Brave make them.
 - 3 GB, 2 CPUs, 1024 processes; `/tmp` is a 1 GB tmpfs inside that.
@@ -318,8 +310,9 @@ Calls: `POST /do` (one action in a named tab, or a restart), `POST /control` (Ta
   a second later, and kills a browserd whose `/health` stays silent for 10 s. Every start
   reopens its tabs at their last addresses (`~/.browser/celine-tabs.json`; not its
   throwaway tabs); its next result says so.
-- Its own network: only the app reaches it, no port is published. The internet and the
-  LAN are open to it. The shellbox's morning reset leaves it running.
+- It sits behind `browser-net`, the same firewall as the shellbox's: only the app reaches
+  it, no port is published. It reaches the public internet. Your LAN and the Docker host
+  are dropped. The shellbox's morning reset leaves it running.
 - The browser page's live view: the app relays Xvnc (port 5900 on that network, no
   password, since only the app is on it) to noVNC in the page. Xvnc takes keys, mouse
   and pasted text only while you have taken the browser.
@@ -494,16 +487,10 @@ other branches build nothing. A push runs only the jobs whose files changed.
   master.
 
 GitHub Actions: `.github/workflows/test.yml` runs the gates on every push and pull
-request; `images.yml` builds the six images on master and on a `v*` tag and pushes them
-to `ghcr.io/<owner>/celine-net/celine-*`, tagged `latest` (master), the tag as pushed
-(`v1.2`) and the commit. `CELINE_TAG=v1.2` keeps a machine on a release; `CHANGELOG.md`
-says what each one changed.
+request.
 
-To pull them, set `CELINE_IMAGES=<registry>` in `.env` (the project's
-`$CI_REGISTRY_IMAGE`, for example `registry.example.net/you/celine-net`) and
-`CELINE_TAG` when not `latest`, then `docker login <registry>`. To build one yourself
-from the repository root: `docker build -f wa-link/Dockerfile .`. After changing the
-dependencies of discord-link, run `uv lock` in `connectors/discord`.
+To build one image yourself from the repository root: `docker build -f wa-link/Dockerfile .`.
+After changing the dependencies of discord-link, run `uv lock` in `connectors/discord`.
 
 ## Monitoring
 
