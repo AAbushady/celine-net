@@ -48,9 +48,33 @@ docker compose exec -u celine celine cat /data/app/setup-code.txt
 Open http://localhost:8766 and follow the setup, then:
 
 1. Connect a local model, so chats and notes stay on this machine.
-2. Pick a decision model in the Guard step. Until one is picked, risky actions wait.
+2. Check the decision model in the Guard step. With one model the setup picks it, and each
+   risky step then costs a call on that model. Until one is picked, risky actions wait.
 3. Give it accounts made for it, never your own email or vault.
 4. Leave `CELINE_PUBLISH` unset, which keeps the app on loopback.
+
+## From your phone
+
+The app installs to a phone's home screen and sends push notifications, and it needs an
+https address for both. Tailscale gives it one that only your tailnet can reach, and the
+app stays on loopback:
+
+```sh
+tailscale serve --bg --https=443 http://127.0.0.1:8766
+```
+
+Then, in this order:
+
+1. Settings, Security: add a password or a PIN. A passkey belongs to the app's address, so
+   one made on localhost stops working when the address changes.
+2. Settings, General, Network: set the address to `https://<machine>.<tailnet>.ts.net`.
+3. On the phone, with Tailscale connected, open that address and log in with the password
+   or the PIN. Add it to the home screen before turning on notifications.
+
+This machine has to be on and running Docker. The firewalls drop tailnet addresses, so the
+shellbox and the browser cannot use this path. The app logs one warning about
+`x-forwarded-for`, and every device on this path counts as one client for the login limit.
+`tailscale serve --https=443 off` takes the address down.
 
 ## If a box has no network
 
