@@ -16,14 +16,50 @@
 # to the host folder when it is one (DEPLOY.md "Shellbox", the home disk, so the
 # snapshots are not on it). SHELLBOX_SNAPSHOTS, a host folder, puts them there instead.
 set -eu
-if [ "${1:-}" != reset ]; then
+if [ "${1:-}" != reset ] && [ "${1:-}" != repair ]; then
     at=${SHELLBOX_RESET_AT:?docker-compose.yml sets it}
-    echo "$((10#${at#*:})) $((10#${at%:*})) * * * shellbox-manager reset > /proc/1/fd/1 2>&1" > /etc/crontabs/root
+    {
+        echo "$((10#${at#*:})) $((10#${at%:*})) * * * shellbox-manager reset > /proc/1/fd/1 2>&1"
+        echo "* * * * * shellbox-manager repair > /proc/1/fd/1 2>&1"
+    } > /etc/crontabs/root
     echo "shellbox-manager: the shellbox resets at $at ($(date +%Z))"
     exec crond -f -d 8
 fi
 project=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$(hostname)")
 compose() { docker compose -p "$project" --project-directory /stack "$@"; }
+container_of() {
+    docker ps -aq --filter "label=com.docker.compose.project=$project" \
+        --filter "label=com.docker.compose.service=$1"
+}
+
+# A box joins its firewall's network namespace. If the firewall was not up when the box
+# started, Docker does not retry the box. If the firewall restarted, the box keeps running
+# with no network and its health check stays green. Either way the box is recreated once
+# its firewall is healthy. This reads only what Docker reports, nothing from inside the
+# box. A box stopped on purpose has no start error and stays stopped.
+repair() {
+    for service in shellbox browser; do
+        box=$(container_of "$service")
+        net=$(container_of "$service-net")
+        if [ -z "$box" ] || [ -z "$net" ]; then continue; fi
+        health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$net")
+        if [ "$health" != healthy ]; then continue; fi
+        running=$(docker inspect -f '{{.State.Running}}' "$box")
+        failed=$(docker inspect -f '{{.State.Error}}' "$box")
+        box_at=$(docker inspect -f '{{.State.StartedAt}}' "$box")
+        net_at=$(docker inspect -f '{{.State.StartedAt}}' "$net")
+        first=$(printf '%s\n%s\n' "$box_at" "$net_at" | sort | head -n 1)
+        if { [ "$running" != true ] && [ -n "$failed" ]; } ||
+           { [ "$running" = true ] && [ "$first" = "$box_at" ] && [ "$box_at" != "$net_at" ]; }; then
+            echo "$(date '+%F %R') $service lost its firewall's network, recreating it"
+            compose up -d --force-recreate --no-deps "$service"
+        fi
+    done
+}
+if [ "${1:-}" = repair ]; then
+    repair
+    exit 0
+fi
 
 snapshot() {
     box=$(compose ps -q shellbox)

@@ -33,6 +33,36 @@
 # named here once. Both boxes are built with it, the app gives its home to it.
 x-her-uid: &her-uid "1000"
 
+# The egress firewall (egress/firewall.sh), one per box. It owns the network namespace and
+# the box joins it (network_mode) without NET_ADMIN, so root in the box cannot change the
+# rules. The box reaches the app and the public internet, never the LAN or the Docker
+# host. If the firewall stops, the box has no network until it is recreated.
+x-egress: &egress
+  build:
+    context: .
+    dockerfile: egress/Dockerfile
+  image: localhost/celine/celine-egress:latest
+  pull_policy: never
+  restart: unless-stopped
+  init: true
+  environment:
+    EGRESS_ALLOW: ${EGRESS_ALLOW:-}
+  cap_drop: [ALL]
+  cap_add: [NET_ADMIN]
+  security_opt: ["no-new-privileges:true"]
+  read_only: true
+  tmpfs:
+    - /run
+  healthcheck:
+    test: ["CMD", "test", "-e", "/run/firewall-up"]
+    interval: 30s
+    timeout: 5s
+    start_period: 15s
+    start_interval: 1s
+    retries: 3
+  mem_limit: 64m
+  pids_limit: 32
+
 services:
   celine:
     build:
@@ -72,8 +102,16 @@ services:
   # is `celine` with sudo, so it can install anything. Only its home is kept; the rest
   # resets whenever the container is recreated (every morning, DEPLOY.md "Shellbox").
   # Nothing of the app's data is in here, and nothing in here can stop the app. It sits
-  # on its own network: the app reaches it, the connectors and the search engine are
-  # out of its reach; the internet and the LAN stay open to it.
+  # behind shellbox-net: the app reaches it, the connectors and the search engine are out
+  # of its reach; it reaches the public internet, and the LAN and the host are dropped.
+  shellbox-net:
+    <<: *egress
+    profiles: [shellbox]
+    hostname: shellbox
+    networks:
+      shellbox:
+        aliases: [shellbox]
+
   shellbox:
     profiles: [shellbox]
     build:
@@ -87,10 +125,12 @@ services:
     depends_on:
       celine:
         condition: service_healthy
+      shellbox-net:
+        condition: service_healthy
+        restart: true
     # a tiny init as PID 1 reaps the orphans of its background programs
     init: true
-    hostname: shellbox
-    networks: [shellbox]
+    network_mode: "service:shellbox-net"
     environment:
       # its models through the app (OPENAI_BASE_URL and OPENAI_API_KEY in its terminals):
       # the proxy's own key (mounted below), never a provider's
@@ -130,11 +170,13 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 3
-    # sudo needs setuid, so no cap_drop and no no-new-privileges here: Docker's default
-    # container isolation, plus limits so it can't take the machine down with it.
+    # sudo needs setuid, so no no-new-privileges here and most of Docker's default
+    # capabilities stay, plus limits so it can't take the machine down with it.
+    # NET_RAW goes because a packet socket skips the firewall; MKNOD has no use here.
     # SYS_PTRACE: shellboxd reads what a quiet program is blocked in (waiting for input,
     # or sleeping and downloading), from /proc/<pid>/syscall
     cap_add: [SYS_PTRACE]
+    cap_drop: [NET_RAW, MKNOD]
     mem_limit: 4g
     pids_limit: 1024
     cpus: 2
@@ -142,8 +184,15 @@ services:
   # Celine's browser: one Brave on a screen of its own (Xvnc), driven by
   # browser/browserd.py. Everything in it runs as celine with its home mounted, so its
   # profile (~/.browser) and downloads (~/Downloads) are its own, and the morning reset of
-  # its shellbox leaves it running. Its own network: the app reaches it, nothing else
-  # does; the internet and the LAN stay open to it.
+  # its shellbox leaves it running. It sits behind browser-net: the app reaches it, nothing
+  # else does; it reaches the public internet, and the LAN and the host are dropped.
+  browser-net:
+    <<: *egress
+    profiles: [browser]
+    networks:
+      browser:
+        aliases: [browser]
+
   browser:
     profiles: [browser]
     build:
@@ -157,9 +206,12 @@ services:
     depends_on:
       celine:
         condition: service_healthy
+      browser-net:
+        condition: service_healthy
+        restart: true
     # reaps what Brave and a killed browserd leave behind
     init: true
-    networks: [browser]
+    network_mode: "service:browser-net"
     environment:
       TZ: ${TZ:-UTC}
     volumes:
@@ -351,10 +403,10 @@ volumes:
   data:
 
 networks:
-  # only the app and the shellbox. Both networks reach the internet and your LAN, so
-  # whatever runs in the box or the browser can too. For a stricter setup, uncomment
-  # `internal: true` on either: it then reaches only the app (no internet, no LAN, no
-  # package installs or web pages from that container).
+  # only the app and the shellbox. The firewalls keep the box and the browser off the LAN
+  # and the host; the public internet stays open to them. For a stricter setup, uncomment
+  # `internal: true` on either: it then reaches only the app (no internet, no package
+  # installs or web pages from that container).
   shellbox:
     # internal: true
   # only the app and the browser

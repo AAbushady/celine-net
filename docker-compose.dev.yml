@@ -12,9 +12,14 @@
 # DEFAULTS) and Setup offers them. The shellbox calls the app's model proxy on the port
 # the app runs on: export CELINE_PORT (default 8766, what ./start.sh --port means) in the
 # shell that runs this compose too. docs/dev.md "Boxes".
+#
+# The boxes run without their firewalls here: the shellbox has to reach the app on the
+# host, and the ports are published from the boxes themselves.
 services:
   shellbox:
     depends_on: !reset {}
+    network_mode: !reset null
+    networks: [shellbox]
     ports:
       - "127.0.0.1:8770:8770"
     environment:
@@ -28,6 +33,8 @@ services:
 
   browser:
     depends_on: !reset {}
+    network_mode: !reset null
+    networks: [browser]
     ports:
       - "127.0.0.1:8771:8771"
       - "127.0.0.1:5900:5900"
