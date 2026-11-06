@@ -115,7 +115,8 @@ BASE: tuple[Feature, ...] = (
             warn="The link of a share is its key. A page opens only for you while you are "
                  "logged in, but anyone who gets a link can reach what it shares with a "
                  "script until it ends (24 hours, or what you set) or you stop it. A public "
-                 "share opens for anyone."),
+                 "share opens for anyone. A shared page runs in your browser, so it can send "
+                 "requests to your own network."),
     Feature("browser", "Browser", "Turns on once the browser answers.",
             "An isolated Brave browser with ad blocking: pages, logins and forms, with a history you can review and a live view you can watch.",
             "Turn it off if you don't run the browser container.",
