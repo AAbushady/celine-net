@@ -47,7 +47,7 @@ FIELDS: list[dict[str, Any]] = [
      "choices": [["watch", "Watch"], ["on", "On"]],
      "help": "Watch: every step runs at once, and Bastet writes down in Events what she "
              "would have done. On: Bastet checks a risky step before it runs.",
-     "default": "watch"},
+     "default": "on"},
     # Advanced: whole numbers, read where they are used (turns, jobs, uploads, backups)
     *({"key": k, "label": label, "type": "number", "unit": unit, "min": lo, "max": hi,
        "default": d, "advanced": True, **({"help": tip} if tip else {})}

@@ -98,8 +98,8 @@ in `docker-compose.yml` under the `celine` service's `volumes`:
 ## Features
 
 Settings, Features (or `var/settings/features.toml`, `shellbox = false`). A feature that is
-not listed there is on, except Shares, Guard, Dictation and Read aloud, which stay off until
-you turn them on (`shares = true`, `guard = true`, `speech_input = true`,
+not listed there is on, except Shares, Dictation and Read aloud, which stay off until
+you turn them on (`shares = true`, `speech_input = true`,
 `speech_output = true`); switching Shares on asks first, with what a share's link gives whoever holds it. The onboarding's Features
 step lists every feature by tier (Core, on with no switch; Base modules, what ships in the repo;
 User modules, a plugin of `<data>/plugins` with no place of its own) and then gives a setup step

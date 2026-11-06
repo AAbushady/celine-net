@@ -327,7 +327,8 @@ async def probe(cfg, services) -> dict[str, str]:
     s = getattr(cfg, "settings", None)
     chain = [r for r in s.chain("small") if s.model(r) is not None] if s is not None else []
     if not chain:
-        return {"state": "unset", "detail": "Pick a decision model below."}
+        # never blocks its switch: the onboarding would save the guard off, not ask for a model
+        return {"state": "unset", "detail": "Pick a decision model below.", "blocks": False}
     second = current(cfg)["chain"]
     detail = f"Decision model: {_name(s, chain[0])}."
     if not (second.get("provider") and second.get("model")):

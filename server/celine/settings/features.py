@@ -2,7 +2,7 @@
 Features). While no file is saved, what needs a service (`needs_service`: the boxes,
 ComfyUI, SearXNG, the connectors, email, the vault) is off and the rest on (`seed`);
 once saved, every feature is on until the file says otherwise, but one with `start_on`
-False (shares, guard), which is on only once the file says so. `done` is False until a
+False (shares), which is on only once the file says so. `done` is False until a
 PUT says the onboarding finished (config status `setup`).
 
 Three tiers (TIERS): core, what she is made of, with no switch (CORE: the chat and each
@@ -162,11 +162,11 @@ BASE: tuple[Feature, ...] = (
             "Logins from your Vaultwarden, which {{she}} types into websites in the browser for you.",
             "Turn it off if you have no Vaultwarden, or no password should be stored.",
             skills=("vault",), pages=("vault",), probe="celine.vault:probe", setup="vault"),
-    Feature("guard", "Guard", "Turns on once a decision model is picked.",
+    Feature("guard", "Guard", "Risky actions wait until a decision model is picked.",
             "Bastet, a second model that checks risky actions before they run and asks you "
             "when unsure.",
             "Turn it off if you want no second check before risky actions.",
-            probe="celine.guard.rules:probe", setup="guard", start_on=False),
+            probe="celine.guard.rules:probe", setup="guard"),
     Feature("documents", "Documents", "",
             "A folder of your documents, searched, read and cited.",
             "Turn it off if you have no documents to share.",
