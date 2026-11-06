@@ -1,0 +1,2 @@
+# Containers run these files, so line endings stay LF on every checkout, Windows too.
+* text=auto eol=lf
