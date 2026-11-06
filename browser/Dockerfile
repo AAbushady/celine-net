@@ -4,7 +4,7 @@
 # Everything runs as celine (HER_UID, as in its shellbox), with its home mounted, so its
 # profile (~/.browser) and downloads (~/Downloads) are its own. run.sh keeps browserd.py
 # running; browserd runs Xvnc (the screen) and Brave (CDP on 127.0.0.1 only) and gives
-# the app a small API. Its sandbox needs seccomp:unconfined (compose). Brave, not Chromium:
+# the app a small API. Its sandbox needs browser/seccomp.json (compose). Brave, not Chromium:
 # Chromium no longer runs Manifest V2 extensions, and the full uBlock Origin is one.
 
 FROM debian:trixie

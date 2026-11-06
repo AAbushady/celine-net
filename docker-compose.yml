@@ -239,7 +239,11 @@ services:
     # Brave's own sandbox needs user namespaces, which Docker's seccomp profile
     # blocks. Never apparmor:unconfined: where unprivileged user namespaces are
     # restricted (Ubuntu 24.04), Docker's default AppArmor profile is what allows them.
-    security_opt: ["seccomp:unconfined"]
+    # It runs as celine and needs no capability; its sandbox holds without them, so a
+    # setuid binary in the image gives nothing back. browser/seccomp.json is Docker's default
+    # profile plus clone, unshare, setns and chroot, which that sandbox needs.
+    cap_drop: [ALL]
+    security_opt: ["seccomp=./browser/seccomp.json", "no-new-privileges:true"]
     mem_limit: 3g
     pids_limit: 1024
     cpus: 2
