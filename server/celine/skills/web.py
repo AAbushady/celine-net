@@ -35,6 +35,7 @@ from typing import Annotated, Any, Literal
 from urllib.parse import unquote, urljoin, urlsplit, urlunsplit
 
 import anyio
+import httpcore
 import httpx
 
 from ..turns.compact import one_line
@@ -265,7 +266,7 @@ def _check_url(url: str) -> tuple[str, str, int]:
     return p.scheme, host, port or (443 if p.scheme == "https" else 80)
 
 
-async def _resolve_public(host: str, port: int) -> None:
+async def _resolve_public(host: str, port: int) -> list[str]:
     try:
         ipaddress.ip_address(host)
         addrs = [host]
@@ -283,6 +284,40 @@ async def _resolve_public(host: str, port: int) -> None:
     if bad or not addrs:
         raise ToolRefused(f"{host} points to a private or local address ({bad[0] if bad else '?'}); "
                       f"only public web pages can be read")
+    return [str(a) for a in addrs]
+
+
+class _PublicOnly(httpcore.AsyncNetworkBackend):
+    """Connects only to an address it has just checked. httpx would resolve the name again
+    for itself, so a name answering with a public address for the check and a LAN address for
+    the connection (DNS rebinding) would land its GET before _peer_ok could see it."""
+
+    def __init__(self) -> None:
+        self.inner = httpcore.AnyIOBackend()
+
+    async def connect_tcp(self, host, port, timeout=None, local_address=None,
+                          socket_options=None):
+        # IPv4 first: many containers have no route for IPv6
+        addrs = sorted(await _resolve_public(host, port), key=lambda a: ":" in a)
+        for addr in addrs[:-1]:
+            try:
+                return await self.inner.connect_tcp(addr, port, timeout=timeout,
+                                                    local_address=local_address,
+                                                    socket_options=socket_options)
+            except (httpcore.ConnectError, httpcore.ConnectTimeout):
+                continue
+        return await self.inner.connect_tcp(addrs[-1], port, timeout=timeout,
+                                            local_address=local_address,
+                                            socket_options=socket_options)
+
+    async def sleep(self, seconds: float) -> None:
+        await self.inner.sleep(seconds)
+
+
+def _public_transport() -> httpx.AsyncHTTPTransport:
+    t = httpx.AsyncHTTPTransport(trust_env=False)
+    t._pool._network_backend = _PublicOnly()    # httpx has no argument for it
+    return t
 
 
 def _peer_ok(resp: httpx.Response) -> None:
@@ -311,6 +346,8 @@ async def fetch(url: str, *, ua: str, timeout: float, max_bytes: int,
                          "*/*;q=0.5",
                "Accept-Language": "en,de;q=0.8,*;q=0.5"}
     deadline = time.monotonic() + timeout
+    if transport is None and check_addresses:
+        transport = _public_transport()
     async with httpx.AsyncClient(transport=transport, trust_env=False, headers=headers,
                                  timeout=httpx.Timeout(timeout, connect=min(10.0, timeout)),
                                  follow_redirects=False) as client:
