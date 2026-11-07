@@ -18,7 +18,8 @@ first that does not, in words:
 2. the model of its role can answer now, the Router says ("Waiting for <model>"); it
    starts by itself when the model comes back, the same night or days later;
 3. no turn a person waits on is live: a chat (not a trigger's), a turn the user
-   started in a mission ("Waiting until your chat is done"); a mission's
+   started in a mission ("Waiting until your chat is done"), unless it holds on the
+   user's answer to an approval; a mission's
    turns that go on by themselves hold no run unless Routines wait for missions is on
    (Settings, Advanced);
 4. no other run is running ("While Self-review runs"): one at a time, one model server.
@@ -230,14 +231,19 @@ def results(c: sqlite3.Connection, night: str) -> dict[str, str]:
     return out
 
 
-def waited_on(c: sqlite3.Connection, missions: bool = False) -> bool:
+def waited_on(c: sqlite3.Connection, missions: bool = False,
+              parked: frozenset[str] = frozenset()) -> bool:
     """A turn a person waits on is live (WAITED_ON): in a mission the turns the user
-    started, every one of its turns with `missions` (Routines wait for missions)."""
+    started, every one of its turns with `missions` (Routines wait for missions). `parked`:
+    conversations whose turn holds on the user's answer to an approval, which can take all
+    night and asks the model nothing until then; a run may go on meanwhile, behind that
+    turn's next request."""
     mission = "1" if missions else "t.origin = 'user'"
+    skip = f" AND t.conversation_id NOT IN ({','.join('?' * len(parked))})" if parked else ""
     return c.execute(
         f"SELECT 1 FROM turns t JOIN conversations c ON c.id = t.conversation_id "
-        f"WHERE {WAITED_ON.format(mission=mission)} AND t.state IN {LIVE_SQL} LIMIT 1"
-    ).fetchone() is not None
+        f"WHERE {WAITED_ON.format(mission=mission)} AND t.state IN {LIVE_SQL}{skip} LIMIT 1",
+        tuple(parked)).fetchone() is not None
 
 
 def idle(c: sqlite3.Connection, at: datetime, missions: bool = False) -> bool:
@@ -499,7 +505,9 @@ class Scheduler:
             return
         waiting.sort(key=lambda r: (r["night"], depth(schedules, r["schedule"]), r["slot"]))
         missions = bool(self.app.cfg.r("routines_wait_for_missions"))
-        busy = await store.read(lambda c: waited_on(c, missions))
+        asks = getattr(getattr(self.app, "approvals", None), "waiting", None) or {}
+        parked = frozenset(a.conversation for a in asks.values())
+        busy = await store.read(lambda c: waited_on(c, missions, parked))
         from ..guard.freeze import frozen
         cold = await frozen(store) is not None
         unused = await store.read(lambda c: idle(c, self.now(), missions))
