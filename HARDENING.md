@@ -19,6 +19,7 @@ branched from upstream commit `69928d0`.
 | A routine prompt the agent writes waits for your approval | It runs later with nobody watching, so it is how a hostile page would make itself permanent | `confirm` in `guard/rules.py` |
 | The Discord and WhatsApp connectors do not start | Each logs in as your own account through an unofficial client, which can cost you the account. Logging out of Discord here leaves its token valid until you change your password | `.env.example` |
 | The SearXNG image and the Docker CLI image are pinned by digest | SearXNG is the one service pulled instead of built by default, and the CLI image holds the Docker socket | `docker-compose.yml`, `shellbox-manager/Dockerfile` |
+| Settings, Source code links to this repo | The AGPL's offer of the code names whoever runs the modified version, and a fork names its own | `REPOSITORY` in `server/celine/config.py` |
 | Line endings are LF everywhere | The containers run these files, and Git for Windows would otherwise check them out with CRLF | `.gitattributes` |
 
 ## What this gives up
@@ -117,7 +118,7 @@ docker compose up -d --force-recreate --no-deps shellbox browser
 Nothing here updates itself. Read the changes before merging them:
 
 ```sh
-git remote add upstream https://github.com/LumiWasTaken/celine-net.git
+git remote add upstream <its address>   # once per clone
 git fetch upstream
 git diff 69928d0 upstream/master
 ```
