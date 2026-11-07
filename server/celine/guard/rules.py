@@ -210,9 +210,19 @@ def escalates(rule: str, fired: set[str]) -> bool:
     return rule == "hijack" and bool(fired & {"leak", "damage"})
 
 
+def only_switches_off(name: str, args: dict) -> bool:
+    """routines__write with nothing but its name and on=false: it makes nothing run later
+    (the owner is told, schedules/skill.py)."""
+    given = {k for k, v in (args or {}).items() if v is not None}
+    return name == "routines__write" and given == {"name", "on"} and args["on"] is False
+
+
 def listed(tools: list[str], name: str, args: dict) -> bool:
     """Is the call on the confirm list: its tool, its skill, or "tool:arg" with that
-    argument set (shell__share:public, sub_agents__start:cli)?"""
+    argument set (shell__share:public, sub_agents__start:cli)? A routine only switched
+    off is not."""
+    if only_switches_off(name, args):
+        return False
     for entry in tools:
         what, _, arg = entry.partition(":")
         if what in (name, name.split("__")[0]) and (not arg or (args or {}).get(arg)):

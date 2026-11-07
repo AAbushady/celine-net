@@ -116,6 +116,35 @@ async def test_a_mission_that_goes_on_by_itself_holds_no_routine_unless_asked(st
         "Waiting until your chat is done", "Advanced: routines wait for missions"
 
 
+async def test_a_routine_she_switches_off_is_told_to_the_user_and_daytime_can_be_set(
+        store, cfg, monkeypatch):
+    from celine.schedules.skill import Routines
+    from celine.skills import ToolContext
+    cfg.schedules = {"world": Schedule("world", "World", "0 2 * * *", "p")}
+    skill = Routines(cfg)
+    skill.app = _app(store, cfg)
+
+    async def save(app, name, body, by):
+        s = Schedule(name, body["label"], body["cron"], body["prompt"], on=body["on"],
+                     daytime=body["daytime"])
+        cfg.schedules[name] = s
+        return s, True
+    monkeypatch.setattr("celine.schedules.edit.save", save)
+    ctx = ToolContext(conversation_id="c", turn_id="t", tool_call_id="x", store=store,
+                      config=cfg, emit=None)  # type: ignore[arg-type]
+
+    async def told():
+        return await store.read(lambda c: [tuple(r) for r in c.execute(
+            "SELECT from_addr, kind, text FROM intercom WHERE to_addr='user'")])
+    out = await skill.write(ctx, name="world", daytime=True)
+    assert not out.is_error and cfg.schedules["world"].daytime, out.content
+    assert await told() == [], "a change that leaves it on says nothing"
+    out = await skill.write(ctx, name="world", on=False)
+    assert not out.is_error and out.content.endswith(", off."), out.content
+    assert await told() == [("system:app", "notice",
+                             f"Routine World was switched off by {cfg.substitute('{{name}}')}.")]
+
+
 async def test_a_chat_held_on_an_approval_holds_no_routine(store, cfg):
     """One unanswered approval held a night's routines until morning. Its turn asks the
     model nothing until the answer, and a chat that is working still holds them."""

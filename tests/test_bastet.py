@@ -440,6 +440,12 @@ async def test_a_fresh_install_confirms_the_steps_that_reach_out_or_change_her(s
     cfg = _cfg()
     assert rules.current(cfg)["confirm"]["tools"] == ["shell__share:public", "me__edit",
                                                      "routines__write"]
+    seed = rules.current(cfg)["confirm"]["tools"]
+    assert not rules.listed(seed, "routines__write", {"name": "mail", "on": False,
+                                                      "label": None})
+    for changed in ({"name": "mail", "on": True}, {"name": "mail", "on": False, "prompt": "p"},
+                    {"name": "mail", "cron": "0 3 * * *"}):
+        assert rules.listed(seed, "routines__write", changed), changed
 
     def call(tool, **args):
         return {"id": f"s-{tool}-{sorted(args.items())}", "name": tool,
