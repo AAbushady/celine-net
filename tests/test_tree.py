@@ -232,7 +232,7 @@ class _Notes:
     name = "notes"
     description = "Notes."
 
-    @tool(read_only=False, needs_answer=True)
+    @tool(read_only=False)
     async def write(self, ctx, path: str) -> ToolResult:
         """Write a note."""
         return ToolResult(f"wrote {path}")

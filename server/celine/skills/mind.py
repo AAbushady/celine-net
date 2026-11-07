@@ -374,7 +374,7 @@ class Mind:
                 out.append(self.cfg.substitute(label))
         return out
 
-    @tool(read_only=False, destructive=False, needs_answer=False)
+    @tool(read_only=False, destructive=False)
     async def think(self, ctx: ToolContext,
                     text: Annotated[str, "The thought, in your own words."]) -> ToolResult:
         """Write a thought of yours down: it goes into thoughts/<today>.md in your
@@ -408,7 +408,7 @@ class Mind:
         mood = await store_mood(ctx.store, text, ctx.conversation_id)
         return ToolResult(content=f"Shown: {mood['text']}", display={"text": mood["text"]})
 
-    @tool(read_only=False, destructive=False, needs_answer=False)
+    @tool(read_only=False, destructive=False)
     async def feel(self, ctx: ToolContext,
                    emotion: Annotated[Emotion, "How you feel."],
                    strength: Annotated[float, "How strongly, from 0 to 1."],

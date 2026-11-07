@@ -1069,9 +1069,9 @@ whole, `step(n, state)` moves one. Every change appends `plan.state` {plan} to t
 conversation and, for a mission, `mission.state`. A step with a model switches the
 conversation to it when it becomes doing (`flow.follow_model`). The user speaking there
 clears `waiting` (`answered_sync`). The agent's request carries the plan in its tail every turn
-(`flow.block`). The runner's continue rule (`turns/runner.py`): a step whose calls are all
-`needs_answer=False` (notebook and mind writes, `skills.ToolSpec`) with answer text ends the turn only when no step is open or
-it waits; a `plan__step` that reached an ask checkpoint ends the turn at once.
+(`flow.block`). The runner's continue rule (`turns/runner.py`): a step with calls goes on to the
+next step, and its words beside them are no end of the turn; a `plan__step` that reached an ask
+checkpoint and a mission's wait end the turn at once.
 
 `routines` (`schedules/skill.py`): `list`, `read(name)`, `write(name, label, prompt,
 time|cron, on, note, after, wall_minutes)` and `run(name)`. A write goes through

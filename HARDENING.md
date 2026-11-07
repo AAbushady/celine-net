@@ -23,6 +23,9 @@ branched from upstream commit `69928d0`.
 | A profile `embedder` runs Topic search's model on this machine's CPU, with CPU and memory limits on it and the reranker | Upstream has no embedding service, so Topic search needed another server. A long input can take many GB, and the limit keeps that in its container | `docker-compose.yml` |
 | An embedding input the server refuses as too long is cut until it fits | Upstream's build fails on that batch on every run, so one long message leaves everything older out of the index | `server/celine/kb/embed.py` |
 | The Intercom has an Archive: a thread leaves the lists until something newer lands in it, and Archive read takes everything done | Upstream's All list keeps every thread for good, read or not, so what needs you gets lost. Her own `intercom__read` still lists every thread | `server/celine/intercom/`, `web/src/views/Intercom.tsx` |
+| An image a tool returns reaches the model at its next step | Upstream sends it only when a later turn rebuilds the request, so the model is told an image is there and sees none | `with_images` in `server/celine/turns/context.py` |
+| A chat waiting on an approval does not hold the routines | One unanswered approval held a whole night's routines until morning | `waited_on` in `server/celine/schedules/runs.py` |
+| Writing a note does not end the turn | Upstream ends a turn when a reply holds text and only a note write. A model that narrates before it acts was cut off mid-task and lost routine notes | `server/celine/turns/runner.py` |
 | Line endings are LF everywhere | The containers run these files, and Git for Windows would otherwise check them out with CRLF | `.gitattributes` |
 
 ## What this gives up

@@ -643,7 +643,7 @@ async def test_the_api_ships_four_schedules_and_edits_previews_runs_and_deletes(
 
 class Writer(FakeBackend):
     """A real run: a lead-in line beside the notebook__write of
-    the whole note, which ends its turn (the runner's quiet end). `script` maps words of
+    the whole note, then its last reply. `script` maps words of
     the newest message to its step, a list of events or a callable that makes it."""
 
     def __init__(self, script: dict):
@@ -687,20 +687,33 @@ async def _one_run(store, cfg, backend, clock=None) -> dict:
 async def test_a_note_she_wrote_is_the_result_not_the_line_beside_the_write(store, cfg):
     review = "# Self-review\n\nWent well: the search.\nDid not: the mail."
     backend = Writer({"Review the night": [TextDelta("Writing the review now."),
-                                           *_write(NOTE, review)]})
+                                           *_write(NOTE, review)],
+                      "Saved": [TextDelta("It is written."), Done(reason="stop")]})
     row = await _one_run(store, cfg, backend)
     note = (cfg.her.notebook / NOTE).read_text()
     assert note.endswith(review), "nothing is written over the note it wrote"
     assert "Writing the review now" not in note
     assert row["result"] == review, "the note is the result the next run reads"
-    assert len(backend.calls) == 1, "its turn ended with the write, no step more"
+    assert "It is written" not in note, "her last reply adds nothing to it"
+    assert len(backend.calls) == 2, "the write did not end its turn"
 
 
-async def test_a_turn_that_ends_with_another_write_leaves_the_note_unwritten(store, cfg):
-    """Her lead-in beside a write of another note is no answer: the note is not written,
-    the run says so, the lead-in stays its result as it came."""
+async def test_a_lead_in_beside_another_write_goes_on_to_the_answer(store, cfg):
+    """A write of another note does not end the run's turn: its answer is the note."""
+    backend = Writer({"Review the night": [TextDelta("Merged the notes, now the review."),
+                                           *_write("thoughts/x.md", "The merge.")],
+                      "Saved": [TextDelta("The review."), Done(reason="stop")]})
+    row = await _one_run(store, cfg, backend)
+    assert (cfg.her.notebook / NOTE).read_text().endswith("The review.")
+    assert row["state"] == "done" and row["result"] == "The review." and not row["error"]
+
+
+async def test_nothing_said_after_another_write_leaves_the_note_unwritten(store, cfg):
+    """Her lead-in beside a write of another note is no answer: with nothing after it the
+    note is not written, the run says so, the lead-in stays its result as it came."""
     backend = Writer({"Review the night": [TextDelta("Merged the notes:"),
-                                           *_write("thoughts/x.md", "The merge.")]})
+                                           *_write("thoughts/x.md", "The merge.")],
+                      "Saved": [Done(reason="stop")]})
     row = await _one_run(store, cfg, backend)
     assert not (cfg.her.notebook / NOTE).exists()
     assert row["state"] == "done" and row["result"] == "Merged the notes:"
@@ -752,7 +765,8 @@ async def test_a_note_she_wrote_again_keeps_its_text_not_the_closing_line(store,
     note.parent.mkdir(parents=True, exist_ok=True)
     note.write_text(review)
     backend = Writer({"Review the night": [TextDelta("Got the whole picture now."),
-                                           *_write(NOTE, review)]})
+                                           *_write(NOTE, review)],
+                      "Saved": [TextDelta("It is written."), Done(reason="stop")]})
     row = await _one_run(store, cfg, backend)
     from celine.skills.notebook import unstamped
     assert unstamped(note.read_text()) == review, "the note she wrote stays as she wrote it"
@@ -778,7 +792,8 @@ async def test_a_log_note_she_adds_to_gives_only_what_she_added(store, cfg):
     backend = Writer({"Review the night": [TextDelta("Adding tonight."), *[
         ToolCallDelta(index=0, id="w", name="notebook__write", arguments=json.dumps(
             {"path": NOTE, "content": added, "mode": "append",
-             "summary": "Reviews."})), Done(reason="tool_calls")]]})
+             "summary": "Reviews."})), Done(reason="tool_calls")]],
+        "Saved": [TextDelta("Added."), Done(reason="stop")]})
     row = await _one_run(store, cfg, backend)
     assert note.read_text().endswith("The night before.\n" + added), "nothing more appended"
     assert row["result"] == added.strip(), "the result is tonight's part"

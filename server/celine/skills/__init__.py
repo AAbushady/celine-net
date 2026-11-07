@@ -115,9 +115,6 @@ class ToolSpec:
     # with `detached_display` on its row
     detached: str | None = None
     detached_display: dict[str, Any] | None = None
-    # False: ran ok beside an answer, it needs none of its own (the turn ends with its
-    # step, turns/runner.py)
-    needs_answer: bool = True
 
     @property
     def runs(self) -> str:
@@ -168,8 +165,7 @@ Mode = Literal["blocking", "detach"]
 def tool(*, mode: "Mode" = "blocking", read_only: bool = True,
          destructive: bool | None = None, open_world: bool = False, background: str | None = None,
          timeout: float | None = None,
-         detached: str | None = None, detached_display: dict[str, Any] | None = None,
-         needs_answer: bool = True):
+         detached: str | None = None, detached_display: dict[str, Any] | None = None):
     """Marks a coroutine as a tool. The docstring is the model-facing description:
     what it does, when to use it and when not, an example call, what comes back.
     A tool that changes anything says `read_only=False`. `background` names a bool
@@ -180,7 +176,6 @@ def tool(*, mode: "Mode" = "blocking", read_only: bool = True,
         fn.__celine_tool__ = {"mode": mode, "background": background, "timeout": timeout,
                               "detached": detached,
                               "detached_display": detached_display,
-                              "needs_answer": needs_answer,
                               "annotations": Annotations.of(
             read_only=read_only, destructive=destructive, open_world=open_world)}
         return fn

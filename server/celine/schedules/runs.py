@@ -46,8 +46,8 @@ that is there already gets it appended under "## <date> <label>" (run_date). A n
 wrote itself (a notebook__write or notebook__edit of that path that ended ok in the run)
 is the result instead, and the app writes nothing over it (only what it
 added, when it added to its end). The agent's words beside the write are a lead-in, not the
-result (a turn ends with that step, skills.ToolSpec needs_answer). A turn that ends with
-a tool call that is not the note's write has no answer: the run is done with the lead-in
+result. A turn that ends with no answer after its last tool call (an empty last reply, the
+step limit) and without the note's write: the run is done with the lead-in
 as its result, the note is not written, and the run's `error` says so. A note it wrote
 and then went on past (ok tool calls after its last write of it, the note older than the
 last of them) is the result still, and the run's `error` says how many calls came after

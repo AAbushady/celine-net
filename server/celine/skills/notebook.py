@@ -234,7 +234,7 @@ class Notebook:
         p = self._resolve(path, folder)
         return p, p.relative_to(self.root.resolve()).as_posix()
 
-    @tool(read_only=False, destructive=True, needs_answer=False)
+    @tool(read_only=False, destructive=True)
     async def write(
         self,
         ctx: ToolContext,
@@ -323,7 +323,7 @@ class Notebook:
                                                     "owner": self.owner(path),
                                                     "class": class_line(text)})
 
-    @tool(read_only=False, destructive=True, needs_answer=False)
+    @tool(read_only=False, destructive=True)
     async def edit(
         self,
         ctx: ToolContext,

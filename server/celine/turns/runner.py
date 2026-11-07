@@ -184,6 +184,7 @@ async def _run_turn(turn: dict, store: Store, cfg, backend, bus,
     quiet = bool(turn.get("quiet"))
     grown = False                  # tool results appended since the last build
     emergency = False              # one emergency pass per run
+    said = False                   # a step of this turn had words
     base = int(turn.get("cap_base") or 0)    # a Continue on a capped turn starts here
     while True:
         if cap and iteration - base >= cap:       # 0: only the wall clock
@@ -229,7 +230,7 @@ async def _run_turn(turn: dict, store: Store, cfg, backend, bus,
         estimate = counter.request(step, step_tools)
         await prompt.keep_request(cfg, cid, pieces, step, step_tools)
         out = await _stream_one(store, cid, tid, parent, backend, step, step_tools,
-                                token, iteration, reopen=reopen, quiet=quiet)
+                                token, iteration, reopen=reopen, quiet=quiet, said=said)
         reopen, reopen_tail = None, []
         if isinstance(out, _Overflow) and emergency:
             # still too long after the emergency pass: nothing is left to shorten
@@ -266,6 +267,7 @@ async def _run_turn(turn: dict, store: Store, cfg, backend, bus,
         if mid is None:                      # stopped before a word: nothing is kept
             await _stopped(store, tid, cid, token)
             return
+        was_said, said = said, said or bool(text.strip())
         # a known secret in its arguments (a key, a vault password) is masked before the
         # call is stored or read (errors.mask)
         calls = [{**c, "arguments": mask(c["arguments"])} for c in calls]
@@ -281,6 +283,8 @@ async def _run_turn(turn: dict, store: Store, cfg, backend, bus,
             iteration += 1                  # the next step's take lands the message
             continue
         if not calls:
+            if was_said and not text.strip():    # its words came with its last calls
+                await tree.drop_empty(store, cid, mid)
             cut = "length" if done is not None and done.reason == "length" else None
             await _verify_citations(store, cfg, cid, mid, text, thinking, messages, kbs,
                                     hidden)
@@ -313,14 +317,10 @@ async def _run_turn(turn: dict, store: Store, cfg, backend, bus,
 
         # where its plan stops it: a step marked ask was done (its text is the
         # question, the user's answer starts the next turn); a mission's wait (the wake
-        # it booked starts the next one); its answer with only a note beside it while no
-        # step is open
+        # it booked starts the next one)
         plan = await plan_flow.current(store, cid)
         waits = [c["id"] for c in calls if c["name"] == WAIT]
-        if plan_flow.stops(plan, calls) or (waits and await _all_ok(store, waits)) or (
-                text.strip() and all(_aside(registry, c["name"]) for c in calls) and
-                not plan_flow.keeps_going(plan) and
-                await _all_ok(store, [c["id"] for c in calls])):
+        if plan_flow.stops(plan, calls) or (waits and await _all_ok(store, waits)):
             await turns.transition(store, tid, cid, "done")
             return
         # as the context builder sends a stored reply: as stored, with its signed
@@ -342,15 +342,6 @@ async def _run_turn(turn: dict, store: Store, cfg, backend, bus,
         parent = await turns.step_tail(store, mid)
         iteration += 1
         grown = True
-
-
-def _aside(registry, name: str) -> bool:
-    """A call that needs no answer (skills.ToolSpec needs_answer False): a step with
-    answer text whose calls are all such, and all ran ok, ends the turn with its step
-    (the answer is not written a second time), unless a step of its plan is open
-    (plans/flow.keeps_going): then it keeps going."""
-    spec = registry.get(name) if registry is not None else None
-    return spec is not None and not spec.needs_answer
 
 
 async def _all_ok(store, ids: list[str]) -> bool:
@@ -532,12 +523,14 @@ class _Overflow:
 
 
 async def _stream_one(store, cid, tid, parent, backend, messages, tools, token,
-                      iteration=0, reopen: dict | None = None, quiet: bool = False):
+                      iteration=0, reopen: dict | None = None, quiet: bool = False,
+                      said: bool = False):
     """-> (message id, text, thinking, calls, Done or None), or None when the backend
     failed (recorded), or _Overflow when the request did not fit (the caller compacts
     and tries again, or gives up). `reopen` continues an existing reply in place: its
     text is the prefix, new deltas append to the same message id. A `quiet` turn's
-    text goes onto the row only, never out as message.delta."""
+    text goes onto the row only, never out as message.delta. `said`: an earlier step of
+    this turn had words, so an empty reply here is the end of the turn, not a failure."""
     prefix = ""
     if reopen:
         mid = reopen["message_id"]
@@ -674,7 +667,7 @@ async def _stream_one(store, cid, tid, parent, backend, messages, tools, token,
                                         thinking=done.thinking if done else None)
     if token.cancelled and not any(s["name"] for s in acc.values()):
         mid = await _left(store, cid, mid, parts, thinking)
-    if done and not token.cancelled and not quiet and not "".join(parts) and \
+    if done and not token.cancelled and not quiet and not said and not "".join(parts) and \
             not thinking and not any(s["name"] for s in acc.values()):
         # (a quiet turn that ends saying nothing has simply done its calls)
         msg = "The model sent an empty reply."

@@ -67,7 +67,7 @@ class Notebook:
     name = "notebook"
     description = "Her notes."
 
-    @tool(read_only=False, needs_answer=False)
+    @tool(read_only=False)
     async def write(self, ctx, path: str, text: str) -> ToolResult:
         """Write a note."""
         return ToolResult(f"wrote {path}")

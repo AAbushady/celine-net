@@ -1,4 +1,4 @@
-"""The turn loop's ends: a step with an answer and a note ends the turn, a tool that fails
+"""The turn loop's ends: a step with words and a note goes on, a tool that fails
 twice the same way is out, a step runs at most 12 calls, no tool goes out as an empty
 stub, and Continue on a capped turn gets a fresh budget."""
 from __future__ import annotations
@@ -12,7 +12,7 @@ from chat_fixtures import until, user_says
 from celine.backends.base import Done, TextDelta, ToolCallDelta
 from fake_backend import FakeBackend
 from celine.boot import load
-from celine.conversations import store as conversations
+from celine.conversations import store as conversations, tree
 from celine.core.bus import EventBus
 from celine.skills import Registry, ToolResult, tool
 from celine.skills.meta import Skills
@@ -54,7 +54,7 @@ class Notebook:
     name = "notebook"
     description = "Her notes."
 
-    @tool(read_only=False, needs_answer=False)
+    @tool(read_only=False)
     async def write(self, ctx, path: str, text: str) -> ToolResult:
         """Write a note."""
         return ToolResult(f"wrote {path}")
@@ -103,18 +103,50 @@ async def _results(store) -> list[tuple[str, str, str]]:
         "m.id = tc.result_message_id ORDER BY tc.rowid")])
 
 
-async def test_an_answer_with_a_note_written_ends_the_turn_in_one_step(store, cfg):
+async def test_words_beside_a_note_do_not_end_the_turn(store, cfg):
+    """A model that narrates writes a lead-in beside the write: what it was about to do
+    still runs."""
     reg = _registry(cfg, Notebook())
     cid = await conversations.create(store)
-    b = Replies([[TextDelta("Sure, noted."), *_calls(
-        ("notebook__write", {"path": "a.md", "text": "x"}))]])
+    b = Replies([[TextDelta("Writing the note, then telling Joe."), *_calls(
+        ("notebook__write", {"path": "a.md", "text": "x"}))],
+        [TextDelta("Told him."), Done(reason="stop")]])
     turn = await _run(store, cfg, reg, cid, b)
-    assert len(b.calls) == 1
+    assert len(b.calls) == 2
     state, texts = await store.read(lambda c: (
         c.execute("SELECT state FROM turns WHERE id=?", (turn["id"],)).fetchone()[0],
         [r[0] for r in c.execute("SELECT content FROM messages WHERE role='assistant' AND "
-                                 "conversation_id=?", (cid,))]))
-    assert state == "done" and texts == ["Sure, noted."]
+                                 "conversation_id=? ORDER BY created_at, rowid", (cid,))]))
+    assert state == "done" and texts == ["Writing the note, then telling Joe.", "Told him."]
+
+
+async def test_nothing_more_to_say_after_a_note_leaves_the_answer_standing(store, cfg):
+    """An answer, a note beside it, then an empty reply: the turn is done and the message
+    counts as answered."""
+    reg = _registry(cfg, Notebook())
+    cid = await conversations.create(store)
+    b = Replies([[TextDelta("Sure, noted."), *_calls(
+        ("notebook__write", {"path": "a.md", "text": "x"}))],
+        [Done(reason="stop")]])
+    turn = await _run(store, cfg, reg, cid, b)
+    assert len(b.calls) == 2
+    state, texts = await store.read(lambda c: (
+        c.execute("SELECT state FROM turns WHERE id=?", (turn["id"],)).fetchone()[0],
+        [r[0] for r in c.execute("SELECT content FROM messages WHERE role='assistant' AND "
+                                 "conversation_id=? ORDER BY created_at, rowid", (cid,))]))
+    assert state == "done" and texts == ["Sure, noted."], "the empty reply leaves no row"
+    assert await store.read(lambda c: tree.unanswered(c, cid)) is None
+
+
+async def test_an_empty_reply_with_nothing_said_before_it_still_fails(store, cfg):
+    reg = _registry(cfg, Notebook())
+    cid = await conversations.create(store)
+    b = Replies([_calls(("notebook__write", {"path": "a.md", "text": "x"})),
+                 [Done(reason="stop")]])
+    turn = await _run(store, cfg, reg, cid, b)
+    assert await store.read(lambda c: tuple(c.execute(
+        "SELECT state, reason_code FROM turns WHERE id=?", (turn["id"],)).fetchone())) == \
+        ("failed", "empty_reply")
 
 
 async def test_a_tool_that_fails_the_same_way_stays_usable(store, cfg):
