@@ -15,8 +15,8 @@ Its turns run at agent priority on their own dispatcher worker. It gets its pers
 not the parent conversation. When it is done, its report comes back as an intercom
 `report` (report.py). `start` returns at once; `read` looks at one, and waits for it
 when asked. `model` picks its model among its own (settings/her_models.py), kept as its
-conversation's model; a cloud model (her_models.cloud) waits for the user's approval at
-every start. `cli` hands its briefs to an agent CLI in its shellbox instead (`agent_cli`,
+conversation's model; a cloud model (her_models.cloud) other than the one the starting
+turn runs on waits for the user's approval at every start. `cli` hands its briefs to an agent CLI in its shellbox instead (`agent_cli`,
 cli.py); `device` to opencode on one of its devices, a drone (`agent_device`,
 drone.py).
 
@@ -253,9 +253,14 @@ class SubAgents:
     async def _cloud_approval(self, ctx: ToolContext, brief: str, name: str,
                               model: str | None) -> str | None:
         """The user's approval when the sub-agent runs on a cloud model (`model`, from
-        _model). None when it may start, else the sentence for its result."""
+        _model) other than the one this turn runs on, which has everything this brief
+        holds already. None when it may start, else the sentence for its result."""
         s = self.cfg.settings
         if not model or not her_models.cloud(s, model):
+            return None
+        row = await ctx.store.read(lambda c: c.execute(
+            "SELECT backend_id FROM turns WHERE id=?", (ctx.turn_id,)).fetchone())
+        if row and row["backend_id"] == model:
             return None
         llm = getattr(self.app, "llm", None)
         if llm is not None:             # known down: nothing to ask the owner about
