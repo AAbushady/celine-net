@@ -37,21 +37,46 @@ class SemanticError(Exception):
     pass
 
 
+class TooLong(SemanticError):
+    """The server refused an input as over its context."""
+
+
 # what servers say when an input is over their context (llama.cpp, OpenAI, vLLM, TEI)
 _TOO_LONG = ("exceed", "too large", "too long", "context length", "context size", "truncat")
+_SHORTEST = 64      # an input this short that is still refused is not about its length
 
 
 # ---- one endpoint ----------------------------------------------------------------------
 
 def embed_sync(s: dict[str, Any], texts: list[str]) -> list[list[float]]:
-    """Embed a batch, inputs cut at `max_input_chars`. An input the server refuses as too
-    long fails with the server's reason."""
+    """Embed a batch, inputs cut at `max_input_chars`. A batch the server refuses as too
+    long goes one input at a time, each cut until it fits: the server counts tokens, some
+    text has far more of them per character, and one long message must not stop a whole
+    index build at the same place on every run."""
     limit = int(s.get("max_input_chars", 3000))
-    vecs = _embed_once(s, [t[:limit] for t in texts])
+    cut = [t[:limit] for t in texts]
+    try:
+        vecs = _embed_once(s, cut)
+    except TooLong:
+        vecs = [_fit(s, t) for t in cut]
     if len(vecs) != len(texts):
         raise SemanticError(f"the embedding server returned {len(vecs)} vectors for "
                             f"{len(texts)} inputs")
     return vecs
+
+
+def _fit(s: dict[str, Any], text: str) -> list[float]:
+    """One input alone, halved until the server takes it. Still refused at _SHORTEST: the
+    server's reason."""
+    while True:
+        try:
+            return _embed_once(s, [text])[0]
+        except TooLong:
+            if len(text) <= _SHORTEST:
+                raise
+            text = text[:len(text) // 2]
+            log.warning("embedding input cut to fit", extra={"event": "kb.embed.cut",
+                                                             "chars": len(text)})
 
 
 def _embed_once(s: dict[str, Any], texts: list[str]) -> list[list[float]]:
@@ -72,7 +97,7 @@ def _embed_once(s: dict[str, Any], texts: list[str]) -> list[list[float]]:
     if r.status_code >= 400:
         msg = f"the embedding server at {_host(s)} answered {r.status_code}"
         if r.status_code in (400, 413, 422) and any(w in r.text.lower() for w in _TOO_LONG):
-            raise SemanticError(f"{msg}: {r.text}")
+            raise TooLong(f"{msg}: {r.text}")
         raise SemanticError(msg)
     try:
         data = sorted(r.json()["data"], key=lambda d: d["index"])

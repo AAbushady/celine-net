@@ -20,6 +20,8 @@ branched from upstream commit `69928d0`.
 | The Discord and WhatsApp connectors do not start | Each logs in as your own account through an unofficial client, which can cost you the account. Logging out of Discord here leaves its token valid until you change your password | `.env.example` |
 | The SearXNG image and the Docker CLI image are pinned by digest | SearXNG is the one service pulled instead of built by default, and the CLI image holds the Docker socket | `docker-compose.yml`, `shellbox-manager/Dockerfile` |
 | Settings, Source code links to this repo | The AGPL's offer of the code names whoever runs the modified version, and a fork names its own | `REPOSITORY` in `server/celine/config.py` |
+| A profile `embedder` runs Topic search's model on this machine's CPU, with CPU and memory limits on it and the reranker | Upstream has no embedding service, so Topic search needed another server. A long input can take many GB, and the limit keeps that in its container | `docker-compose.yml` |
+| An embedding input the server refuses as too long is cut until it fits | Upstream's build fails on that batch on every run, so one long message leaves everything older out of the index | `server/celine/kb/embed.py` |
 | Line endings are LF everywhere | The containers run these files, and Git for Windows would otherwise check them out with CRLF | `.gitattributes` |
 
 ## What this gives up

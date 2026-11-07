@@ -133,7 +133,7 @@ in `.env`.
 | `sub_agents` | Sub-agents | It hands parts of a big job to helpers and collects their results. | nothing | |
 
 `COMPOSE_PROFILES=shellbox,browser,discord,whatsapp,web` starts every optional service these features need; add
-`reranker` for the reranker.
+`embedder` and `reranker` to run those two models here.
 
 ## Skills and MCP
 

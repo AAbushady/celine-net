@@ -2,19 +2,21 @@
 
 The stack is one compose project, meant for a service VM or any machine with Docker.
 It needs no GPU: the models run on other machines and you add them in the app. The
-reranker is optional in the stack (profile `reranker`, on the CPU or on this machine's
-GPU). Every other service except `celine` is optional too: see Profiles.
+embedder and the reranker can run in the stack instead (profiles `embedder`, on the CPU, and
+`reranker`, on the CPU or on this machine's GPU). Every other service except `celine` is
+optional too: see Profiles.
 
 ```
  browser ──► [reverse proxy, https] ──► celine :8766 (the only published port)
                                           ├─► discord-link :8768   the Discord account
                                           ├─► wa-link      :8767   the WhatsApp linked device
                                           ├─► searxng      :8080   web search
+                                          ├─► embedder     :8080   makes Topic search's vectors
                                           ├─► reranker     :8080   orders archive search results
                                           ├─► shellbox     :8770   Celine's own Linux computer
                                           ├─► browser      :8771   Celine's own Brave
                                           └─► model servers        added in Settings, Models
- volume "data":  app/   discord-link/   wa-link/   reranker/   shellbox/
+ volume "data":  app/   discord-link/   wa-link/   embedder/   reranker/   shellbox/
 ```
 
 | Service | Image | What it does |
@@ -23,6 +25,7 @@ GPU). Every other service except `celine` is optional too: see Profiles.
 | `discord-link` | `celine-discord-link` | Owns the Discord login, keeps a journal, serves Celine's Discord read tools. |
 | `wa-link` | `celine-wa-link` | Owns the WhatsApp linked device, keeps a journal, serves Celine's WhatsApp read tools. |
 | `searxng` | `searxng/searxng` | A private metasearch engine for Celine's web skill. |
+| `embedder` | `ggml-org/llama.cpp:server` | Qwen3-Embedding-0.6B on llama-server, for the Topic search task. Only with the profile `embedder`. |
 | `reranker` | `ggml-org/llama.cpp:server` | bge-reranker-v2-m3 on llama-server, for the Reranking task. Only with the profile `reranker`. |
 | `shellbox` | `celine-shellbox` | Celine's own Debian computer, where her terminals run. |
 | `browser` | `celine-browser` | Celine's own Brave on a screen of its own, with her home. |
@@ -30,8 +33,8 @@ GPU). Every other service except `celine` is optional too: see Profiles.
 ## Profiles
 
 `COMPOSE_PROFILES` in `.env` picks the optional services: `shellbox` (its computer and its
-morning reset), `browser`, `discord`, `whatsapp`, `web` (SearXNG) and `reranker`.
-`.env.example` lists the first five. The app starts with none of them; a service you do
+morning reset), `browser`, `discord`, `whatsapp`, `web` (SearXNG), `embedder` and
+`reranker`. `.env.example` lists the first five. The app starts with none of them; a service you do
 not start needs none of its keys, and its feature can be switched off in Settings,
 Features (docs/customize.md). `SHELLBOX_RESET_AT` (HH:MM in `TZ`, default `04:00`) is
 the hour of the shellbox's daily reset, run by the `shellbox-manager` service of the
@@ -99,6 +102,7 @@ folder.
 | `discord-link/` | `discord-link` at `/data` | `token` (the Discord login, mode 600), `state.db` (the journal, the chosen DMs and servers), `media/`, `lock` |
 | `wa-link/` | `wa-link` at `/data` | `store.db` (the linked device), `state/` (the journal, media, lock) |
 | `shellbox/` | `shellbox` at `/home/celine` | Celine's home in its shellbox: its notes, scripts, what it installed. A backup can leave it out. |
+| `embedder/` | `embedder` at `/models` | Only with the profile `embedder`: the model, downloaded on first start (about 0.64 GB). Nothing private; a backup can leave it out. |
 | `reranker/` | `reranker` at `/models` | Only with the profile `reranker`: the model, downloaded on first start (about 0.6 GB). Nothing private; a backup can leave it out. |
 
 Nothing secret is in an image or in the compose file. The keys in `.env` reach the
@@ -352,6 +356,32 @@ anything but public http(s): `file://`, loopback, private LAN ranges, link-local
 and `.local`-style names are refused, redirects are checked hop by hop, and the address
 actually connected to is checked again (DNS rebinding). Limits: 20 s per fetch, 5 MB of
 HTML, 25 MB of PDF, 5 redirects.
+
+## Embedder
+
+Topic search finds messages by meaning, and needs an embedding model. The stack can run one
+itself: Qwen3-Embedding-0.6B on llama.cpp's `llama-server`, service `embedder`, with the
+profile `embedder` (`COMPOSE_PROFILES=embedder` in `.env`).
+
+- **First start.** The container downloads `Qwen/Qwen3-Embedding-0.6B-GGUF` (Q8_0, about
+  0.64 GB) from Hugging Face into the volume's `embedder/` folder, then serves it.
+  `llama-server`'s downloader can be slow (about 1 MB/s here, while plain `curl` from the
+  same container did 28 MB/s), so give it time; `docker compose ps` shows "starting"
+  meanwhile.
+- **In the app.** Settings, Models: add a provider of type llama-server at
+  `http://embedder:8080`. An empty Topic search role fills itself from it. A service you add
+  after the app is up starts with `docker compose up -d --no-deps embedder`, which leaves the
+  app running, so its vault stays unlocked.
+- **CPU and memory.** It takes `EMBEDDER_CPUS` cores (default 4) and at most
+  `EMBEDDER_MEM_LIMIT` (default 6g). On 4 cores of a desktop CPU it did about 450
+  tokens a second, and a search takes about 0.1 s. Memory grows with the square of an input's
+  tokens: 4000 tokens took about 5 GB, and 8900 filled a 12 GB limit. So it has one slot of
+  4096 tokens, and the app cuts an input the server refuses as too long until it fits. A CPU
+  does one input at a time anyway, so more slots buy nothing.
+- **Another model.** Set `EMBEDDER_MODEL` in `.env` and check `query_prefix` in
+  `config/kb.toml`, which fits Qwen3-Embedding. The larger 4B took 148 s for one batch of 128
+  passages on 4 cores, and four at once ran past the app's 300 s limit. A larger model needs
+  more cores or a GPU. A model with other vectors rebuilds the index.
 
 ## Reranker
 

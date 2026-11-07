@@ -15,15 +15,16 @@
 # by service name on this project's network.
 #
 # Optional services are compose profiles: shellbox (its computer and its morning reset),
-# browser, discord, whatsapp, web (search), reranker. COMPOSE_PROFILES in .env picks
-# them; the app starts without any. Model servers are added in the app (Settings,
-# Models), never here.
+# browser, discord, whatsapp, web (search), embedder, reranker. COMPOSE_PROFILES in .env
+# picks them; the app starts without any. Other model servers are added in the app
+# (Settings, Models), never here.
 #
 # All state is on one volume, `data`, one folder per service:
 #   app/            the app: archive, settings, keys typed into Settings, characters,
 #                   and keys/ (the stack's own keys)
 #   discord-link/   the Discord login, its journal
 #   wa-link/        the WhatsApp linked device and its journal
+#   embedder/       the embedder's model (only with the profile "embedder")
 #   reranker/       the reranker's model (only with the profile "reranker")
 #   shellbox/       Celine's home, in its shellbox and its browser
 # The app makes the folders and sees the whole volume; every other service sees only its
@@ -338,6 +339,45 @@ services:
     # a large history sync or attachment can't take the machine down with it
     mem_limit: ${WA_LINK_MEM_LIMIT:-2g}
 
+  # Topic search's model: Qwen3-Embedding-0.6B on llama.cpp's llama-server (POST
+  # /v1/embeddings), on the CPU. Optional: it starts only with the profile "embedder"
+  # (COMPOSE_PROFILES=embedder in .env). The first start downloads the model (about 0.64 GB)
+  # into the volume's embedder/ folder. In the app: Settings, Models, a llama-server
+  # provider at http://embedder:8080. One slot of 4096 tokens: memory grows with the square
+  # of an input's tokens (DEPLOY.md, "Embedder"), and the app cuts what the server refuses.
+  embedder:
+    image: ghcr.io/ggml-org/llama.cpp:server-b11151
+    profiles: [embedder]
+    restart: unless-stopped
+    user: "1000:1000"
+    depends_on:
+      celine:
+        condition: service_healthy
+    command: ["-hf", "${EMBEDDER_MODEL:-Qwen/Qwen3-Embedding-0.6B-GGUF:Q8_0}",
+              "--alias", "qwen3-embedding", "--embedding", "--pooling", "last",
+              "-t", "${EMBEDDER_CPUS:-4}", "-np", "1", "--cache-ram", "0", "--no-cache-prompt",
+              "-c", "4096", "-b", "4096", "-ub", "4096"]
+    environment:
+      LLAMA_CACHE: /models
+      HF_HOME: /models
+    volumes:
+      - type: volume
+        source: data
+        target: /models
+        volume:
+          subpath: embedder
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30m          # the first start downloads the model
+      retries: 3
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    cpus: ${EMBEDDER_CPUS:-4}
+    mem_limit: ${EMBEDDER_MEM_LIMIT:-6g}
+    pids_limit: 256
+
   # The reranker for archive search: bge-reranker-v2-m3 on llama.cpp's llama-server
   # (POST /v1/rerank). Optional: it starts only with the profile "reranker"
   # (COMPOSE_PROFILES=reranker in .env). Leave it out when the reranker runs on a GPU
@@ -354,7 +394,7 @@ services:
       celine:
         condition: service_healthy
     command: ["-hf", "${RERANKER_MODEL:-gpustack/bge-reranker-v2-m3-GGUF:Q8_0}",
-              "--alias", "bge-reranker-v2-m3", "--reranking",
+              "--alias", "bge-reranker-v2-m3", "--reranking", "-t", "4",
               "-c", "8192", "-b", "2048", "-ub", "2048"]
     environment:
       LLAMA_CACHE: /models
@@ -373,6 +413,9 @@ services:
       retries: 3
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
+    cpus: 4
+    mem_limit: ${RERANKER_MEM_LIMIT:-4g}
+    pids_limit: 256
 
   # Web search for Celine's web skill: a private SearXNG (no API keys, no tracking).
   # json output on, limiter off (one client); settings in config/searxng/, served from the

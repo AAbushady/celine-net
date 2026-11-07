@@ -1,4 +1,5 @@
-"""The embedding client: one try, and the server's reason when it fails."""
+"""The embedding client: one try, and the server's reason when it fails. An input over the
+server's context is the exception: it is cut until it fits."""
 from __future__ import annotations
 
 import httpx
@@ -6,7 +7,24 @@ import httpx
 from celine.kb import embed
 
 
-def test_a_too_long_input_fails_with_the_servers_reason(monkeypatch):
+def test_a_too_long_input_is_cut_until_it_fits_and_its_batch_still_embeds(monkeypatch):
+    seen = []
+
+    def post(url, json, **kw):
+        seen.append([len(t) for t in json["input"]])
+        if any(len(t) > 1000 for t in json["input"]):
+            return httpx.Response(400, json={"error": {
+                "message": "request (3000 tokens) exceeds the available context size"}})
+        return httpx.Response(200, json={"data": [
+            {"index": i, "embedding": [float(len(t))]} for i, t in enumerate(json["input"])]})
+
+    monkeypatch.setattr(httpx, "post", post)
+    vecs = embed.embed_sync({"url": "http://x/embeddings", "model": "m"}, ["a" * 5000, "short"])
+    assert vecs == [[750.0], [5.0]], "one vector per input, in order"
+    assert seen == [[3000, 5], [3000], [1500], [750], [5]]
+
+
+def test_an_input_that_never_fits_fails_with_the_servers_reason(monkeypatch):
     import pytest
     sizes = []
 
@@ -18,7 +36,8 @@ def test_a_too_long_input_fails_with_the_servers_reason(monkeypatch):
     monkeypatch.setattr(httpx, "post", post)
     with pytest.raises(embed.SemanticError, match="exceeds the available context size"):
         embed.embed_sync({"url": "http://x/embeddings", "model": "m"}, ["a" * 5000])
-    assert sizes == [3000], "sent once, cut at max_input_chars"
+    assert sizes[:3] == [3000, 3000, 1500], "the batch, then alone and halved"
+    assert sizes[-1] < embed._SHORTEST and len(sizes) < 10, "it gives up"
 
 
 def test_a_failed_embedding_is_tried_once_and_says_why(monkeypatch):

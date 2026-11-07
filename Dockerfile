@@ -60,7 +60,7 @@ COPY --link --chmod=755 <<'SH' /usr/local/bin/docker-entrypoint
 #!/bin/sh
 set -eu
 as_celine="setpriv --reuid=celine --regid=celine --init-groups env HOME=/home/celine"
-$as_celine mkdir -p /data/app /data/shellbox /data/discord-link /data/wa-link /data/reranker
+$as_celine mkdir -p /data/app /data/shellbox /data/discord-link /data/wa-link /data/embedder /data/reranker
 uid=${HER_UID:-1000}   # docker-compose.yml names it (x-her-uid)
 chown "$uid:$uid" /data/shellbox
 exec $as_celine "$@"
