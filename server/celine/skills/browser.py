@@ -605,7 +605,8 @@ class Browser:
         question: Annotated[str, "screen: a question about it, for a model that sees it, "
                                  "like \"What is the score?\". When your own model sees "
                                  "images you get the screen itself and need none. locate: "
-                                 "what to find, like \"the Play button\"."] = "",
+                                 "what to find, like \"the Play button\"; the result is "
+                                 "where it is, not an answer."] = "",
         answer_as: Annotated[Literal["text", "id"],
                              "screen, with a question: text, a few sentences; id, the id "
                              "of the element asked about."] = "text",
@@ -773,6 +774,9 @@ class Browser:
                      " (the pink numbers are the ids below)." if kind == "marks" else
                      f": a click on a point of it is the target x,y in px, like "
                      f"{VIEW[0] // 2},{VIEW[1] // 2}.")]
+            if question:
+                lines.append("Your question went to no other model: your own model reads "
+                             "the image.")
             if kind == "marks":
                 lines += res.get("lines") or []
             return ToolResult(content="\n".join(lines + self._notes(res)),

@@ -217,6 +217,35 @@ async def test_a_blind_model_hears_it_at_once_and_a_down_screen_server_does_not_
         await vision.ask(None, b"png", "q", "text", conversation_id="", turn_id="")
 
 
+async def test_a_screen_with_a_question_says_no_other_model_was_asked(monkeypatch):
+    """Its own model sees images: the image is the answer, and the result says so."""
+    import base64
+
+    from celine import attachments
+
+    async def sees(cfg, ctx):
+        return True
+
+    async def do(cfg, name, verb, **kw):
+        return {"tab": name, "url": "https://example.test/", "title": "t",
+                "shot": base64.b64encode(b"png").decode(),
+                "view": {"y": 0, "h": 900, "page": 900}}
+
+    async def keep(self, ctx, image, filename, media_type):
+        return {"id": "a1", "sha256": "s", "filename": filename, "media_type": media_type,
+                "bytes": len(image), "width": 1440, "height": 900}
+
+    monkeypatch.setattr(attachments, "turn_sees_images", sees)
+    monkeypatch.setattr(sync, "do", do)
+    monkeypatch.setattr(Browser, "_keep", keep)
+    ctx = SimpleNamespace(max_output_tokens=None, conversation_id="", turn_id="")
+    b = Browser(SimpleNamespace(user="Joe", settings=None))
+    out = await b.look(ctx, what="screen", tab="g", question="What is the score?")
+    assert out.display["see"] and "Your question went to no other model" in out.content
+    out = await b.look(ctx, what="screen", tab="g")
+    assert out.display["see"] and "Your question" not in out.content
+
+
 def test_a_step_line_stays_one_line_and_does_not_repeat_the_address():
     """A newline it typed reads \\n; a step that went to the page on the head line
     says so (a Google address runs to a thousand characters, twice before)."""

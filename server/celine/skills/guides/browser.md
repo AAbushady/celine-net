@@ -154,6 +154,11 @@ An id from the outline is the surest target. locate is for what has no id or no
 outline: a canvas or a game, a picture, a map, a page whose outline is empty or does
 not name the thing, a button drawn inside an image.
 
+An empty outline or empty page text means the look found nothing, and a page can hide its
+content from both: look at the screen, or locate what you expect, before you say a page
+is empty. A secret the app knows reads **** whatever its length, so that length says
+nothing about the value.
+
 A refused step says which step, and the steps before it were done. Before a click,
 a hover or typing into a field, the browser checks it as a hand would: a target that
 is disabled, still moving, or under something else (a cookie wall, a dialog) is not
