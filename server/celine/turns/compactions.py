@@ -26,6 +26,25 @@ def as_view(r: dict) -> dict:
             "focus": r["focus"], "created_at": r["created_at"]}
 
 
+def _stored_call(c: sqlite3.Connection, r: sqlite3.Row) -> dict:
+    """A call as the context builder reads it, with the files its result holds (skills
+    ToolResult.images)."""
+    call = dict(r)
+    call["display"] = json.loads(r["display"]) if r["display"] else None
+    call["attachments"] = files.of_message(c, r["result_message_id"]) \
+        if r["result_message_id"] else []
+    return call
+
+
+async def calls_of(store, message_id: str) -> dict[str, dict]:
+    """The calls of one reply as the context builder reads them, by id."""
+    def fn(c: sqlite3.Connection) -> dict[str, dict]:
+        return {r["id"]: _stored_call(c, r) for r in c.execute(
+            "SELECT tc.id, tc.name, tc.display, tc.result_message_id FROM tool_calls tc "
+            "WHERE tc.message_id=? ORDER BY tc.rowid", (message_id,))}
+    return await store.read(fn)
+
+
 async def context_view(store, cid: str, path: list[dict] | None = None) -> dict:
     """What the context builder needs, in one read: the active path (root first; `path`
     when the turn read it already) with every reply's calls and their stored results,
@@ -43,12 +62,7 @@ async def context_view(store, cid: str, path: list[dict] | None = None) -> dict:
                     f"FROM tool_calls tc LEFT JOIN messages r "
                     f"ON r.id = tc.result_message_id "
                     f"WHERE tc.message_id IN ({marks}) ORDER BY tc.rowid", ids):
-                call = dict(r)
-                call["display"] = json.loads(r["display"]) if r["display"] else None
-                # images the result holds (skills ToolResult.images)
-                call["attachments"] = files.of_message(c, r["result_message_id"]) \
-                    if r["result_message_id"] else []
-                calls.setdefault(r["message_id"], []).append(call)
+                calls.setdefault(r["message_id"], []).append(_stored_call(c, r))
         st = c.execute("SELECT aged_through FROM context_state WHERE conversation_id=?",
                        (cid,)).fetchone()
         aged = st[0] if st else None

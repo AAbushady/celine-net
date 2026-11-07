@@ -16,7 +16,7 @@ from ..skills import words
 from ..skills.gating import overrides_for
 from ..intercom import deliver
 from ..plans import flow as plan_flow
-from . import context, loads, message_context, prompt, reply, tokens, waiting
+from . import compactions, context, loads, message_context, prompt, reply, tokens, waiting
 from . import store as turns
 from .compact import SummaryFailed, closing, stoppable
 from .tools import run_tool_calls
@@ -329,10 +329,16 @@ async def _run_turn(turn: dict, store: Store, cfg, backend, bus,
                          **({"thinking": done.thinking} if done and done.thinking else {}),
                          "tool_calls": [_wire_call(c) for c in calls],
                          ORIGIN: context.origin(cid, turn=tid, message=mid)})
+        stored = await compactions.calls_of(store, mid)
+        screens = []
         for call in calls:
-            messages.append({"role": "tool", "tool_call_id": call["id"],
-                             "content": texts.get(call["id"], "result unavailable"),
+            res, images = context.with_images(cfg, stored.get(call["id"]) or {},
+                                              texts.get(call["id"], "result unavailable"))
+            messages.append({"role": "tool", "tool_call_id": call["id"], "content": res,
                              ORIGIN: context.origin(cid, turn=tid, call=call["id"])})
+            if images:
+                screens.append(context.screen_message(cid, tid, call, images))
+        messages += screens
         parent = await turns.step_tail(store, mid)
         iteration += 1
         grown = True

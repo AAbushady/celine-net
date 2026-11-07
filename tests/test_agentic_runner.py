@@ -2,13 +2,14 @@
 citation check. Fake backend, tiny synthetic archive."""
 from __future__ import annotations
 
-from chat_fixtures import Script, user_says
+from chat_fixtures import PNG, Script, user_says
 
 import json
 
 import anyio
 import pytest
 
+from celine import attachments
 from celine.conversations import store as conversations, view
 from celine.backends.base import Done, TextDelta, ToolCallDelta
 from celine.boot import load
@@ -110,11 +111,30 @@ class T:
         return ToolResult(content="nothing found")
 
     @tool()
+    async def see(self, ctx) -> ToolResult:
+        """see"""
+        row = await attachments.save_generated(cfg_of(ctx), ctx.store, PNG, "s.png", "image/png",
+                                               ctx.tool_call_id, in_message=False)
+        shot = {k: row[k] for k in ("id", "sha256", "filename", "media_type", "bytes")}
+        return ToolResult(content="the screen", display={"see": True, "shot": shot})
+
+    @tool()
+    async def files(self, ctx) -> ToolResult:
+        """files"""
+        row = await attachments.save_generated(cfg_of(ctx), ctx.store, PNG, "f.png", "image/png",
+                                               ctx.tool_call_id, in_message=False)
+        return ToolResult(content="f.png:", images=[row["id"]])
+
+    @tool()
     async def hang(self, ctx) -> ToolResult:
         """hang"""
         await anyio.sleep_forever()          # until its turn's wall clock cuts it
         self.runs += 1
         return ToolResult(content="waited")
+
+
+def cfg_of(ctx):
+    return ctx.config
 
 
 def _reg(skill) -> Registry:
@@ -175,6 +195,31 @@ async def test_only_non_mutating_calls_of_one_reply_run_concurrently(store, cfg)
         mine, b = (await _tool_results(store))[-2:]
         assert b == "b done"
         assert mine == "a done" if first == "a" else "w done" not in mine, "one after another"
+
+
+@pytest.mark.parametrize("name, text", [("see", "the screen"), ("files", "f.png:")])
+async def test_a_result_with_an_image_shows_it_at_the_next_step_of_the_same_turn(
+        store, cfg, name, text):
+    """The next request of the turn holds the image, after the results of the reply and
+    the way a later build sends it, and so does every step after it."""
+    calls = [ToolCallDelta(index=0, id="v0", name=f"t__{name}", arguments="{}"),
+             ToolCallDelta(index=1, id="v1", name="t__same", arguments='{"q": "x"}'),
+             Done(reason="tool_calls")]
+    backend = Script([calls, _call(2, "t__same", {"q": "y"}),
+                      [TextDelta("k"), Done(reason="stop")]])
+    await _turn(store, cfg, _reg(T()), backend)
+
+    def parts(messages):
+        return [p for m in messages if isinstance(m["content"], list) for p in m["content"]]
+    assert not [p for p in parts(backend.calls[0]) if p["type"] != "text"]
+    for request in backend.calls[1:]:
+        roles = [m["role"] for m in request]
+        at = roles.index("tool")
+        assert roles[at:at + 3] == ["tool", "tool", "user"], roles
+        assert request[at]["content"] == f"{text}\n[the image follows]"
+        assert request[at + 2]["content"][0]["text"] == f"[the screen from t__{name}]"
+        assert [p["type"] for p in request[at + 2]["content"]] == ["text", attachments.IMAGE]
+    assert len(parts(backend.calls[2])) == 2, "one image, once"
 
 
 async def test_the_same_call_with_the_same_result_runs_every_time(store, cfg):
