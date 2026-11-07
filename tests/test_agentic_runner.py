@@ -253,17 +253,22 @@ async def test_identical_calls_of_one_step_each_run(store, cfg):
     assert (await _tool_results(store))[-2:] == ["nothing found", "nothing found"]
 
 
-async def test_when_her_time_is_up_the_turn_ends_capped(store, cfg):
-    """A turn that hits the wall clock mid-search ends with its reason: no hidden note,
-    no extra step."""
+async def test_when_her_time_is_up_her_last_step_says_where_the_work_stands(store, cfg):
+    """A turn that hits the wall clock mid-search stops the search, and one more step,
+    the app's line last in its request, gets her words on where the work stands: the
+    turn ends done with the limit as its reason_code."""
     cfg.settings.general.update({"turn_wall_clock_seconds": 0.4, "last_step_seconds": 5})
     t = T()
-    b = Script([_call(0, "t__hang", {}), [TextDelta("never asked"), Done(reason="stop")]])
+    b = Script([_call(0, "t__hang", {}),
+                [TextDelta("The search hung; the dates are left."), Done(reason="stop")]])
     t0 = anyio.current_time()
-    snap, _, _ = await _turn(store, cfg, _reg(t), b)
+    snap, _, final = await _turn(store, cfg, _reg(t), b)
     assert anyio.current_time() - t0 < 2 and t.runs == 0
-    assert len(b.calls) == 1, "no step after the time is up"
-    assert (snap["turn"]["state"], snap["turn"]["reason_code"]) == ("capped", "wall_clock")
+    line = b.calls[-1][-1]
+    assert len(b.calls) == 2 and line["role"] == "user" and \
+        "reached its limit of 1 minute of work" in line["content"]
+    assert (snap["turn"]["state"], snap["turn"]["reason_code"]) == ("done", "wall_clock")
+    assert final["content"] == "The search hung; the dates are left."
 
 
 class U:

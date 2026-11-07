@@ -103,10 +103,10 @@ applies at once:
 | Key | Default | Meaning |
 |---|---|---|
 | `max_concurrent_turns` | 6 | conversations generating at once (the dispatcher's workers follow it) |
-| `max_tool_iterations` | 0 | model/tool round trips per turn; 0 means no cap, the wall clock is the limit |
+| `max_tool_iterations` | 100 | model/tool round trips per turn; 0 means no cap, the wall clock is the limit |
 | `tool_timeout_seconds` | 180 | a blocking tool past this is cancelled |
 | `job_timeout_seconds` | 3600 | must exceed `tool_timeout_seconds` |
-| `turn_wall_clock_seconds` | 1800 | its work time in one turn, tools included |
+| `turn_wall_clock_seconds` | 14400 | its work time in one turn, tools and the model's writing included |
 | `last_step_seconds` | 180 | after the work time: the step under way may still finish |
 | `events_keep` | 500 | log entries kept per conversation once it is idle |
 | `history_messages` | 200 | transcript sent to the model; 0 means no cap |
@@ -313,7 +313,7 @@ queued turn whose conversation has nothing in `preparing`, `streaming` or `tools
 user's turns (`origin='user'`) first, then the oldest. A worker sleeps until `notify()`,
 which every write that queues a turn calls (no poll). When `turn_wall_clock_seconds` of
 work are over, no new tool call starts and a running one is stopped; no new step starts,
-and the turn ends `capped` with `reason_code` `wall_clock` (a Stop ends it `aborted`). Time spent waiting for a model does not count. Past the work time plus
+and the turn takes its last step (below; a Stop ends it `aborted`). Time spent waiting for a model in the queue does not count. Past the work time plus
 `last_step_seconds` the turn is `failed` with the reason and the conversation is free.
 
 States: `queued`, `preparing`, `streaming`, `tools`, then `done`, `aborted`, `failed`,
@@ -352,8 +352,15 @@ event. Calls record what the tool was (`tool_calls.mutating`, `mode`).
 4. If the model called tools: record them, run them through `tools._resolve`, append
    the results to the wire history, loop. Before every model request the runner takes
    what the intercom has due for the conversation (`intercom/deliver.take`), so a message
-   sent while it works reaches it at its next step. Stop at `max_tool_iterations` when
-   it is set, or the wall clock (`capped`). Several tool calls in one reply run in order.
+   sent while it works reaches it at its next step. Several tool calls in one reply run
+   in order.
+5. At `max_tool_iterations` steps (when set) or the wall clock: one more step, with the
+   app's line (`turns/limit.md`) last in its request, that one request only. No call
+   made in it runs. Its words end the turn `done`, with `reason` "reached its limit of
+   ..." and the limit as `reason_code`, so a routine has its answer and the user reads
+   where the work stands. A reply without words ends it `capped`, its calls kept and
+   `interrupted` (Continue runs a read-only one). The wall clock gives that step the
+   room of `last_step_seconds` from when it starts.
 
 Tool call ids are `turn:iteration:index`. A step reached again after a crash finds its
 own result in the journal and is replayed; it never runs twice.

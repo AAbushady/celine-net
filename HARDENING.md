@@ -25,6 +25,7 @@ branched from upstream commit `69928d0`.
 | The Intercom has an Archive: a thread leaves the lists until something newer lands in it, and Archive read takes everything done | Upstream's All list keeps every thread for good, read or not, so what needs you gets lost. Her own `intercom__read` still lists every thread | `server/celine/intercom/`, `web/src/views/Intercom.tsx` |
 | An image a tool returns reaches the model at its next step | Upstream sends it only when a later turn rebuilds the request, so the model is told an image is there and sees none | `with_images` in `server/celine/turns/context.py` |
 | A chat waiting on an approval does not hold the routines | One unanswered approval held a whole night's routines until morning | `waited_on` in `server/celine/schedules/runs.py` |
+| A turn's limit is 100 steps, with 4 hours of work as the backstop, and at either limit the agent gets one last step to say where the work stands | Upstream stops a turn after 30 minutes with no words. On a slow model that is a few steps, and a routine stopped that way loses its note | `server/celine/turns/runner.py`, `server/celine/settings/general.py` |
 | Writing a note does not end the turn | Upstream ends a turn when a reply holds text and only a note write. A model that narrates before it acts was cut off mid-task and lost routine notes | `server/celine/turns/runner.py` |
 | Line endings are LF everywhere | The containers run these files, and Git for Windows would otherwise check them out with CRLF | `.gitattributes` |
 
