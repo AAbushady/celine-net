@@ -21,18 +21,20 @@ def insert(c: sqlite3.Connection, from_addr: str, to: str, kind: str, text: str,
            store=None, turn: str | None = None) -> int:
     """One message and a pending delivery per recipient, inside a write. A reply joins
     the thread of the message it answers and keeps its subject; without `to` it goes to
-    the sender of that message. `turn`: the sender's turn; without reply_to the message
-    answers in a thread anyway (follows).
+    the sender of that message, and a reply to the sender's own message goes where that
+    one went. `turn`: the sender's turn; without reply_to the message answers in a
+    thread anyway (follows).
     -> its id."""
     thread = None
     if reply_to is not None:
-        r = c.execute("SELECT thread, subject, from_addr FROM intercom WHERE id=?",
+        r = c.execute("SELECT thread, subject, from_addr, to_addr FROM intercom WHERE id=?",
                       (reply_to,)).fetchone()
         if r is None:
             raise KeyError(reply_to)
         thread, subject = r["thread"], subject or r["subject"]
         if not to.strip():
-            to = r["from_addr"]       # a host script's: resolve makes it the user
+            # a host script's sender: resolve makes it the user
+            to = r["to_addr"] if r["from_addr"] == from_addr else r["from_addr"]
     stored, targets = resolve(c, to, from_addr, store)
     if reply_to is None and turn is not None:
         reply_to = follows(c, from_addr, stored, turn)

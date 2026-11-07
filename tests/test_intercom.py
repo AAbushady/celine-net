@@ -145,6 +145,24 @@ async def test_a_sub_agent_asks_its_parent_and_the_answer_wakes_it_in_the_thread
     assert tuple(row) == (f"agent:{sub}", asked["intercom_id"], "folder")
 
 
+async def test_a_reply_to_her_own_message_goes_where_that_one_went(store):
+    """Her own thread to the user, answered with reply_to and no to: it reaches the user
+    in that thread, never her own conversation."""
+    from celine.intercom import Intercom
+    ic = Intercom(store)
+    parent, _ = await _family(store)
+    filed = await ic.send(f"agent:{parent}", "user", "Bug #13", subject="Bug #13")
+    more = await ic.send(f"agent:{parent}", "", "a scope correction",
+                         reply_to=filed["intercom_id"])
+    row, mine = await store.read(lambda c: (
+        tuple(c.execute("SELECT to_addr, thread FROM intercom WHERE id=?",
+                        (more["intercom_id"],)).fetchone()),
+        c.execute("SELECT count(*) FROM intercom_deliveries WHERE intercom_id=? AND "
+                  "conversation_id=?", (more["intercom_id"], parent)).fetchone()[0]))
+    assert row == ("user", filed["intercom_id"]) and mine == 0
+    assert await _queued(store, parent) == 0, "nothing wakes her"
+
+
 async def test_the_users_reply_marks_the_thread_read(store):
     """A message waits for the user until they reply (or dismiss it), not until they
     open the thread."""

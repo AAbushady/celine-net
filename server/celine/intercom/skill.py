@@ -121,7 +121,8 @@ class IntercomSkill:
                            'or routine:<name> for its newest run. Several, comma '
                            'separated. '
                            'With reply_to and no to, it goes to the one who wrote that '
-                           'message.'] = "",
+                           'message; a reply to your own message goes where that one '
+                           'went.'] = "",
         *,
         subject: Annotated[str | None, "A subject, like in mail."] = None,
         reply_to: Annotated[int | None, "The number of the message this answers."] = None,
