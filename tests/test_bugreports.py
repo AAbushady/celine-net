@@ -81,8 +81,11 @@ async def test_a_report_is_a_thread_he_closes_and_events_lists_it_once(store, cf
         assert await of(99) == [], "a thread that is no report"
         closed = (await h.post("/api/bugreports/1/close")).json()
         assert closed["state"] == "closed" and closed["closed_at"]
-        assert (await h.get("/api/intercom", params={"thread": 1})).json()[
-            "messages"][0]["unread"] is False, "closing reads its thread"
+        got = (await h.get("/api/intercom", params={"thread": 1})).json()
+        assert got["messages"][0]["unread"] is False, "closing reads its thread"
+        assert got["archived"], "a closed report is done: its thread goes to the Archive"
+        listed = (await h.get("/api/intercom/threads", params={"with": "all"})).json()
+        assert [t["thread"] for g in listed["groups"] for t in g["items"]] == [2]
         assert (await h.post("/api/bugreports/9/close")).status_code == 404
         assert (await h.get("/api/bugreports", params={"state": "x"})).status_code == 400
         ev = (await h.get("/api/events", params={"kind": "bugreport"})).json()
@@ -91,6 +94,9 @@ async def test_a_report_is_a_thread_he_closes_and_events_lists_it_once(store, cf
         assert {"id": "bugreport", "label": "Bugs"} in ev["kinds"]
         msgs = (await h.get("/api/events", params={"kind": "message"})).json()["events"]
         assert msgs == [], "a report is under Bugs, not again under Messages"
+        await Intercom(store).send(f"agent:{cid}", "user", "one more thing", reply_to=1)
+        assert not (await h.get("/api/intercom", params={"thread": 1})).json()["archived"], \
+            "something newer brings it back"
 
 
 async def test_continue_in_a_chat_carries_the_thread_into_a_new_chat_with_her(

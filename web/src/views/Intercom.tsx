@@ -212,6 +212,20 @@ function List({ active, onNew }: { active: boolean; onNew: () => void }) {
     return { done: done.map(String), skipped: keys.filter(k => !done.includes(Number(k))).map(id => ({ id, reason: why })) }
   }
   const archiveMany = async (keys: string[]) => moved(keys, await intercomApi.archive(keys.map(Number)), 'It is gone.')
+  // Close: the bug reports among them; a closed one goes to the Archive (bugreports/api.py)
+  const closeMany = async (keys: string[]): Promise<BulkResult> => {
+    const out: BulkResult = { done: [], skipped: [] }
+    for (const k of keys) {
+      try {
+        const bug = await intercomApi.bugOf(Number(k))
+        if (bug?.state !== 'open') { out.skipped.push({ id: k, reason: 'It is not an open bug report.' }); continue }
+        await intercomApi.closeBug(bug.id)
+        out.done.push(k)
+      } catch (e) { out.skipped.push({ id: k, reason: e instanceof Error ? e.message : String(e) }) }
+    }
+    changed()
+    return out
+  }
   const restoreMany = async (keys: string[]) => moved(keys, await intercomApi.restore(keys.map(Number)), 'It is back already.')
   const open = (t: Thread) => nav.go({ section: 'intercom', thread: t.thread })
   const menu = (t: Thread, isWaiting: boolean): MenuItem[] => [
@@ -250,7 +264,8 @@ function List({ active, onNew }: { active: boolean; onNew: () => void }) {
           ? <SelectBar picker={picker} noun={n => count(n, 'thread')}
                        actions={onShelf ? [{ label: 'Restore', icon: ArchiveRestore, done: 'restored', run: restoreMany }]
                          : [{ label: 'Dismiss', icon: CheckCheck, done: 'dismissed', run: dismissMany },
-                            { label: 'Archive', icon: Archive, done: 'archived', run: archiveMany }]} />
+                            { label: 'Archive', icon: Archive, done: 'archived', run: archiveMany },
+                            { label: 'Close', icon: CircleCheck, done: 'closed', run: closeMany }]} />
           : <Toolbar state={onShelf ? undefined : { label: 'Show', value: show, onChange: v => { setShow(v as Show); if (v === 'waiting') setWho0(null) },
                               options: [{ value: 'waiting', label: 'Waiting for you', count: waitN ?? undefined },
                                         { value: 'all', label: 'All', count: allN },

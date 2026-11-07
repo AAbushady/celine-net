@@ -293,7 +293,7 @@ The words of the Events place (`server/celine/events.py` gives them).
 | First look, Second look, Yes, No | one decision's chain: the small model's verdict and why, then the big model's second look (guard/chain.py) | a second opinion, as people say it |
 | Question, Score, Model, Time, Source, Quote, Piece, Arguments | one decision's facts: what its small model was asked, the score it gave, which model, how long, where the text came from, what it quoted, the private piece, the call's arguments | OpenAI evals "score"; Chrome DevTools "Time" |
 | Allow once, Pass | answer a decision from its row as her banner does: the same call runs once; a pass on its rule in that chat | Chrome site permissions "Allow this time"; Pass as Bastet says it |
-| Open, Closed, Close, High, Medium, Low | a bug it filed: open until you close it (Close on its Intercom thread); its severity, beside Open in its row ("Open, high") | GitHub Issues "Open", "Closed", "Close issue"; Jira priority "High", "Medium", "Low" |
+| Open, Closed, Close, High, Medium, Low | a bug it filed: open until you close it (Close on its Intercom thread, or Close in Select), then its thread goes to the Archive; its severity, beside Open in its row ("Open, high") | GitHub Issues "Open", "Closed", "Close issue"; Jira priority "High", "Medium", "Low" |
 | No events yet, No events match | the empty list, and a list the filters empty | plain |
 
 ### Actions

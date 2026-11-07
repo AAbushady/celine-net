@@ -33,7 +33,8 @@ async def close(request: Request, rid: int) -> dict:
     """`{why?}`. Closes an open report and reads what waits in its thread; a closed one
     stays as it is. `why` goes into the thread as the app's line ("Report #3 closed:
     ..."), delivered to the conversation that filed it, so the agent reads why and does
-    not file it again."""
+    not file it again. Then its thread is archived: it is done, and anything newer that
+    lands in it brings it back."""
     services = request.app.state.services
     body = await request.json() if await request.body() else {}
     why = " ".join(str((body or {}).get("why") or "").split())
@@ -44,4 +45,6 @@ async def close(request: Request, rid: int) -> dict:
     if why and was and was["state"] == "open" and row["conversation_id"]:
         await services.intercom.send("system:app", f"agent:{row['conversation_id']}",
                                      closed_line(rid, why), reply_to=row["thread"])
+    if was and was["state"] == "open":
+        await services.store.write(lambda c: reports.shelve(c, services.store, row))
     return row
