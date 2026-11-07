@@ -119,9 +119,9 @@ RULE = ("This runs in the background: {{username}} is not here and reads nothing
         "live. {final} If something needs {{username}} to act or to know, start a chat "
         "for them with intercom__start_chat: a title and what they read first, short and "
         "complete.")
-PARTNER_LINE = ("In this run you talk with {who} first. Their lines come to you in this "
-                "conversation: answer here, in your own words. intercom__send reaches "
-                "{{username}}, not {who}.")
+PARTNER_LINE = ("In this run you talk with {who} first. {who} answers after your reply "
+                "ends, as a new message in this conversation: write your line as your "
+                "answer and end the reply. intercom__send reaches {{username}}, not {who}.")
 FINAL = "The talk with {who} is over. Now give your final answer to what this run asks of you. {final}"
 ASKED = "What {{name}} was asked for this run:"
 LAST = "This is your last line: give your closing line now."
