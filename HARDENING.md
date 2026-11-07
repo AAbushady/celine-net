@@ -22,6 +22,7 @@ branched from upstream commit `69928d0`.
 | Settings, Source code links to this repo | The AGPL's offer of the code names whoever runs the modified version, and a fork names its own | `REPOSITORY` in `server/celine/config.py` |
 | A profile `embedder` runs Topic search's model on this machine's CPU, with CPU and memory limits on it and the reranker | Upstream has no embedding service, so Topic search needed another server. A long input can take many GB, and the limit keeps that in its container | `docker-compose.yml` |
 | An embedding input the server refuses as too long is cut until it fits | Upstream's build fails on that batch on every run, so one long message leaves everything older out of the index | `server/celine/kb/embed.py` |
+| The Intercom has an Archive: a thread leaves the lists until something newer lands in it, and Archive read takes everything done | Upstream's All list keeps every thread for good, read or not, so what needs you gets lost. Her own `intercom__read` still lists every thread | `server/celine/intercom/`, `web/src/views/Intercom.tsx` |
 | Line endings are LF everywhere | The containers run these files, and Git for Windows would otherwise check them out with CRLF | `.gitattributes` |
 
 ## What this gives up

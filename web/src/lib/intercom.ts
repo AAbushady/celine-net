@@ -95,11 +95,11 @@ export const KINDS = ['message', 'brief', 'report', 'job', 'notice', 'trigger'] 
 export type Kind = typeof KINDS[number]
 
 export const intercomApi = {
-  threads: (q: { with: ThreadsWith; kind: Kind | null; unread?: boolean; cursor?: string | null }, signal?: AbortSignal) =>
+  threads: (q: { with: ThreadsWith; kind: Kind | null; unread?: boolean; archived?: boolean; limit?: number; cursor?: string | null }, signal?: AbortSignal) =>
     request<ThreadsPage>(`/intercom/threads${query(q)}`, { signal }),
-  /** a thread's messages, oldest first, and where it comes from */
+  /** a thread's messages, oldest first, where it comes from and whether it is archived */
   thread: (id: number, signal?: AbortSignal) =>
-    request<{ messages: IntercomMessage[]; source: Source | null }>(`/intercom?thread=${id}`, { signal }),
+    request<{ messages: IntercomMessage[]; source: Source | null; archived: boolean }>(`/intercom?thread=${id}`, { signal }),
   /** the bug report a thread is, or null */
   bugOf: (thread: number, signal?: AbortSignal) =>
     request<{ reports: BugReport[] }>(`/bugreports?thread=${thread}`, { signal }).then(r => r.reports[0] ?? null),
@@ -125,6 +125,13 @@ export const intercomApi = {
     const ids = (await intercomApi.thread(thread)).messages.filter(m => m.unread).map(m => m.id)
     if (ids.length) await intercomApi.read(ids)
   },
+  /** out of the lists until something newer lands in them; what waits in them is read */
+  archive: (threads: number[]) =>
+    request<{ archived: number[] }>('/intercom/threads/archive', json('POST', { threads })).then(r => r.archived),
+  /** Archive read: what the server finds done */
+  archiveRead: () => post<{ archived: number[] }>('/intercom/threads/archive?read=1').then(r => r.archived),
+  restore: (threads: number[]) =>
+    request<{ restored: number[] }>('/intercom/threads/restore', json('POST', { threads })).then(r => r.restored),
 }
 
 /** a kind as one word, and as the name of its filter */

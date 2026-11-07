@@ -49,7 +49,7 @@ block at the end of this file lists the words no UI string uses.
 | Date: Today, This week, This month, This year | the date filter of Search, in the Toolbar | Gmail, Google Drive "Modified" |
 | All messages | every source's chats in one list, in Messages | Gmail "All Mail" for the same job |
 | Select, Select all, Done | selecting many | Apple Photos, Mail |
-| Archive, Archive older than | move out of the list, kept | ChatGPT "Archive", Gmail |
+| Archive, Archive older than, Archive read, Archived | move out of the list, kept; Archive read takes what is done on the Intercom | ChatGPT "Archive", Gmail |
 | Restore | back from the Archive or the Trash | Google Drive, Windows |
 | Trash, Move to Trash, You can restore it from the Trash. | the bin and moving there; the body of every Move to Trash? confirm | macOS, Gmail, Google Drive |
 | Delete permanently | only inside the Trash | Google Drive "Delete forever", Outlook "Permanently delete" |

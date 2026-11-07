@@ -1451,8 +1451,10 @@ never deleted.
 Tables: `intercom` (one row per message: `from_addr`, `to_addr`, `kind`, `subject`, `text`,
 `data` JSON for code, `wake`, `due_at`, `until_at`, `reply_to`, `thread`, `cancelled_at`),
 `intercom_deliveries` (one row per recipient: `to_addr`, `conversation_id`, `state` pending,
-delivered, read or cancelled, the `message_id` and `turn_id` it landed as) and
-`intercom_tokens`. Kinds: `message`, `brief`, `job`, `report`, `trigger`, `notice`.
+delivered, read or cancelled, the `message_id` and `turn_id` it landed as),
+`intercom_archive` (the threads you moved out of the lists: `thread`, `through` the newest id
+then; it holds while nothing newer landed and nothing in it waits for you, and only your
+lists read it, never its own `intercom__read`) and `intercom_tokens`. Kinds: `message`, `brief`, `job`, `report`, `trigger`, `notice`.
 
 **Addresses** (`addresses.py`): stored `user`, `agent:<conversation id>`, `team:<conversation
 id>` (that conversation and its sub-agents; the word `team` is the sender's own), `all` (every conversation with a live turn or
@@ -1654,7 +1656,9 @@ is in docs/DEPLOY.md.
 | `PATCH /missions/{cid}` | `{name?, brief?, report_to?, time_limit?, check_in?, steps?}`, the given fields only (any other key is a 400); the time limit's notice cancelled and scheduled again or removed |
 | `POST /intercom` | `{to, text, subject?, reply_to?, in?, at?, until?}` (`intercom/api.py`): from `user` with the app session, from `system:<name>` with a named token |
 | `GET /intercom?to=&from=&thread=&scheduled=&after=&limit=` | messages to and from stored addresses, in a thread, above id `after`, oldest first, each with its `state` (pending, sent, cancelled) and `unread`; `scheduled=true` |
-| `GET /intercom/threads?with=&kind=&unread=&limit=&cursor=` | threads grouped by who they are with, by name (all her chats are one group), the newest activity first (`ThreadsPage`): `{groups: [{name, addresses, threads, waiting, items, more}], jobs: {count, newest}, next}` |
+| `POST /intercom/threads/archive` | `{threads}`: out of the lists until something newer lands in them, what waits in them read; `?read=1`: every thread All lists where nothing waits and no bug report stands open, and the job results (Archive read); `{archived}` |
+| `POST /intercom/threads/restore` | `{threads}`: back in the lists; `{restored}` |
+| `GET /intercom/threads?with=&kind=&unread=&archived=&limit=&cursor=` | threads grouped by who they are with, by name (all her chats are one group), the newest activity first (`ThreadsPage`): `{groups: [{name, addresses, threads, waiting, items, more}], jobs: {count, newest}, next}` |
 | `POST /intercom/read` | `{ids}`: the user's deliveries of these become `read`; `?all=1`: everything that waits for the user (Dismiss all); `{read}` |
 | `POST /intercom/threads/{id}/conversations` | Continue in a chat: a new chat with it (titled by the thread's subject) that carries the thread, its messages landed as one `notice` from `system:app` without waking it |
 | `GET /intercom/stream?to=&after=` | server-sent events, `id:` the message id: every message above `after` (or `Last-Event-ID`), then each new one as it is sent (woken by the send, not by the bus); a comment line every 15 s |
