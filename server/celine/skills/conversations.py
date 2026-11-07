@@ -16,6 +16,26 @@ from ..conversations.store import locked_sql
 from ..turns.compact import one_line
 from . import ToolContext, ToolResult, guide, knob, tool, described
 from ..clock import zone
+from .. import attachments as files
+
+
+def _pictures(c: sqlite3.Connection, display: str | None, result_id: str | None) -> int:
+    """How many images a stored result took to the model with it (turns/context.py
+    with_images): its image files and a screen meant to be seen. The stored text holds
+    none of them."""
+    shown = json.loads(display) if display else {}
+    n = int(bool(shown.get("see") and shown.get("shot")))
+    if result_id:
+        n += sum(1 for f in files.of_message(c, result_id)
+                 if str(f.get("media_type") or "").startswith("image/"))
+    return n
+
+
+def _picture_line(n: int) -> str:
+    """The line a read-back puts where a result's images were."""
+    return (f"[{'an image' if n == 1 else f'{n} images'} came with this result to the "
+            f"model; a read-back holds its text only]")
+
 
 # Settings, Advanced, read at use (cfg.r)
 KNOBS = (
@@ -36,10 +56,12 @@ def _items(c: sqlite3.Connection, cid: str) -> list[dict]:
         marks = ",".join("?" * len(ids))
         for r in c.execute(
                 f"SELECT tc.id, tc.message_id, tc.name, tc.state, tc.arguments, "
+                f"tc.display, tc.result_message_id, "
                 f"m.content AS result FROM tool_calls tc LEFT JOIN messages m ON "
                 f"m.id = tc.result_message_id WHERE tc.message_id IN ({marks}) "
                 f"ORDER BY tc.rowid", ids):
-            calls.setdefault(r["message_id"], []).append(dict(r))
+            calls.setdefault(r["message_id"], []).append(
+                {**dict(r), "pictures": _pictures(c, r["display"], r["result_message_id"])})
     out: list[dict] = []
     for m in chain:
         mine = calls.get(m["id"], []) if m["role"] == "assistant" else []
@@ -281,11 +303,16 @@ class PastConversations:
                 f"{self._who(m['role'], m['author'])}")
         out = [f"{head}: {text}" if text else head]
         for k in i["calls"]:
-            out.append(f"    call {k['id']} {k['name']} {k['state']}")
+            n = k["pictures"]
+            out.append(f"    call {k['id']} {k['name']} {k['state']}"
+                       + (f", {'an image' if n == 1 else f'{n} images'} with its result"
+                          if n else ""))
             if tools == "full":
                 out.append(f"      arguments: {k['arguments']}")
                 out.append("      result: " + (k["result"] or "(none)").replace(
                     "\n", "\n      "))
+                if n:
+                    out.append("      " + _picture_line(n))
         return "\n".join(out)
 
     @tool()
@@ -298,12 +325,16 @@ class PastConversations:
         """One tool call of an earlier conversation, raw: its tool, how it ended, its
         arguments and its whole result."""
         from ..turns import tokens
-        r = await ctx.store.read(lambda c: c.execute(
-            "SELECT tc.id, tc.name, tc.state, tc.arguments, tc.started_at, tc.display, "
-            "m.content AS result, a.conversation_id FROM tool_calls tc JOIN messages a ON "
-            "a.id = tc.message_id JOIN conversations cv ON cv.id = a.conversation_id "
-            "LEFT JOIN messages m ON m.id = tc.result_message_id "
-            "WHERE tc.id = ? AND cv.trashed_at IS NULL", (str(id).strip(),)).fetchone())
+        def fn(c: sqlite3.Connection):
+            r = c.execute(
+                "SELECT tc.id, tc.name, tc.state, tc.arguments, tc.started_at, tc.display, "
+                "tc.result_message_id, m.content AS result, a.conversation_id "
+                "FROM tool_calls tc JOIN messages a ON "
+                "a.id = tc.message_id JOIN conversations cv ON cv.id = a.conversation_id "
+                "LEFT JOIN messages m ON m.id = tc.result_message_id "
+                "WHERE tc.id = ? AND cv.trashed_at IS NULL", (str(id).strip(),)).fetchone()
+            return r, (_pictures(c, r["display"], r["result_message_id"]) if r else 0)
+        r, pictures = await ctx.store.read(fn)
         if r is None:
             return ToolResult(content=f"There is no tool call {id!r}. The `call <id>` lines "
                                       f"of past_conversations__read give the ids.",
@@ -320,6 +351,8 @@ class PastConversations:
         cut, shown, total = tokens.cut_to(text, budget, "tool")
         if shown < total:
             cut += f"\n[the result goes on: {total - shown} more tokens did not fit]"
+        if pictures:
+            cut += "\n" + _picture_line(pictures)
         # an outside call read again is outside text again, with its label (guard/)
         label = json.loads(r["display"] or "{}").get("outside")
         return ToolResult(content=cut, display={"tool_call": r["id"], "name": r["name"],
