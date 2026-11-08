@@ -70,10 +70,12 @@ function pickFiles(onFiles: (files: File[]) => void) {
 
 /** "New messages" on the box's top edge: back to the bottom with a glide; it rises in and
     drops out */
-export function NewMessages({ onClick }: { onClick: () => void }) {
+/** the jump to the bottom while you read above it: its words once a new message came */
+export function NewMessages({ unseen, onClick }: { unseen: boolean; onClick: () => void }) {
   const ref = useRef<HTMLButtonElement>(null)
   useLeave(ref, g => leave(g, OUT.drop))
-  return <Button ref={ref} size="sm" icon={ArrowDown} onClick={onClick}>New messages</Button>
+  return unseen ? <Button ref={ref} size="sm" icon={ArrowDown} onClick={onClick}>New messages</Button>
+    : <IconButton ref={ref} size="sm" variant="secondary" icon={ArrowDown} label="Latest" onClick={onClick} />
 }
 
 export function Composer({

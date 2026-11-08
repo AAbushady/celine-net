@@ -364,7 +364,7 @@ export function Celine({ active, status, sidebarOpen, onSidebar, onWork }: {
   const drawn = !!(current || shownPending || (selected && convo.conversation))
   // the snapshot is not in yet: the transcript's shape stands in (TranscriptLoading)
   const snapshotDue = !!selected && !convo.conversation && !shownPending
-  const { onScroll: onTranscriptScroll, unseen, jump: jumpToLatest, keep } = useStickToBottom(
+  const { onScroll: onTranscriptScroll, below, unseen, jump: jumpToLatest, keep } = useStickToBottom(
     transcript, [convo.messages.length, convo.live?.message_id, pendingReminders.length],
     [selected], [selected, convo.messages.length > 0, drawn, snapshotDue])
   jumpRef.current = jumpToLatest
@@ -518,7 +518,7 @@ export function Celine({ active, status, sidebarOpen, onSidebar, onWork }: {
                     toNew={toNew} attempt={attempt} onReminders={current ? () => setRemindersOpen(true) : undefined}
                     notices={noteLine}
                     setup={current && <FirstRun />}
-                    jump={unseen && <NewMessages onClick={jumpToLatest} />} />
+                    jump={below && <NewMessages unseen={unseen} onClick={jumpToLatest} />} />
         </main>
 
         <div ref={setSide} className="chat-side" />

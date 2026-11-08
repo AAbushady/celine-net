@@ -99,6 +99,7 @@ block at the end of this file lists the words no UI string uses.
 | Impersonate | it writes your next message as a draft | plain |
 | Copy, Edit, Delete | on a message | everyone |
 | New messages | the jump to the newest messages | Slack, Discord |
+| Latest | the same jump while nothing new came, an arrow with this tooltip | ChatGPT (an arrow down) |
 | Activity | the tool calls of one reply, from its "..." | ChatGPT (agent and deep research "Activity") |
 | Ran 8 commands in terminal main, 2 failed, Back | a run of three or more calls alike in a row, one row whose Sheet lists its rows (the words, the run and the failed count from the server, skills/words.py `runs`; a non-zero exit counts as failed); a row there opens its call in the same Sheet, Back returns to the run | GitHub Actions "3 failed" |
 | What (its name) saw | what one reply saw (its requests) | |

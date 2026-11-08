@@ -1,9 +1,10 @@
 // node --experimental-strip-types src/lib/useStickToBottom.check.mjs (runs before every build)
 import assert from 'node:assert/strict'
-import { FAR, REPIN, gapOf, glide, scrolledUp } from './useStickToBottom.ts'
+import { REPIN, gapOf, glide, scrolledUp } from './useStickToBottom.ts'
 
-// the two thresholds: pin again close to the bottom, "New messages" only far above it
-assert.ok(REPIN <= 32 && FAR >= 200 && FAR > REPIN)
+// pin again within a few lines of the bottom (a phone's line is near 30 px), and no further
+// than a short screen's third
+assert.ok(REPIN >= 60 && REPIN <= 120)
 assert.equal(gapOf({ scrollHeight: 1000, clientHeight: 400, scrollTop: 600 }), 0)
 assert.equal(gapOf({ scrollHeight: 1000, clientHeight: 400, scrollTop: 590 }), 10)
 

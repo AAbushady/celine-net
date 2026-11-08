@@ -1,9 +1,9 @@
 import { createContext, useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 
-/** within this many px of the bottom a scroll down pins again */
-export const REPIN = 24
-/** "New messages" shows only this far from the bottom */
-export const FAR = 300
+/** within this many px of the bottom a scroll down pins again, and further up the jump to
+    the bottom shows: a few lines, since a finger stops near a bottom that moves while text
+    comes, and a phone's line is near 30 px */
+export const REPIN = 96
 
 /** the distance from the bottom: 0 at the bottom */
 export const gapOf = (el: { scrollHeight: number; clientHeight: number; scrollTop: number }) =>
@@ -26,30 +26,37 @@ export const KeepPlace = createContext<(id: string) => void>(() => {})
     (the composer, a keyboard), is followed at once, so the motion is the text's own. Only you
     unpin it: a scroll up with the wheel, a finger, the keys or the scrollbar, selecting
     text; a click that opens a fold pauses following until your next scroll. A scroll down
-    to within REPIN px pins it again. Unpinned, `unseen` says a new message came and the view
-    is more than FAR px above it. `fresh`: what makes a message new (their count, the live
-    one). `reset`: another conversation, pinned at once. `observe`: when the scroller or its content
-    element may have changed. `jump()` glides to the bottom (your jump); `jump({ smooth: false })`
-    goes at once. `keep(id)` holds the message with data-id `id` where it is on screen. The
-    scroller says `data-unpinned` while it is not pinned (native anchoring keeps your
-    reading place then). */
+    to within REPIN px pins it again. Not following and more than REPIN px above the bottom,
+    `below` holds (the jump shows), and `unseen` says a new message came meanwhile. `fresh`:
+    what makes a message new (their count, the live one). `reset`: another conversation,
+    pinned at once. `observe`: when the scroller or its content element may have changed.
+    `jump()` glides to the bottom (your jump); `jump({ smooth: false })` goes at once; either
+    first stops a flick still coasting. `keep(id)` holds the message with data-id `id` where
+    it is on screen. The scroller says `data-unpinned` while it is not pinned (native
+    anchoring keeps your reading place then). */
 export function useStickToBottom(ref: RefObject<HTMLElement | null>, fresh: unknown[],
                                  reset: unknown[], observe: unknown[]) {
   const pinned = useRef(true)
   const paused = useRef(false)
   const [unseen, setUnseen] = useState(false)
-  const [far, setFar] = useState(false)
+  const [below, setBelow] = useState(false)
   const programmatic = useRef(false)
   const lastTop = useRef(0)
   const raf = useRef<number | null>(null)
   // the element above the kept message and its offset in the scroller
   const anchor = useRef<{ id: string; top: number } | null>(null)
 
-  const stop = () => { if (raf.current != null) { cancelAnimationFrame(raf.current); raf.current = null } }
+  // a jump cancelled before its first frame leaves no overflow held (jump)
+  const stop = useCallback(() => {
+    if (raf.current != null) { cancelAnimationFrame(raf.current); raf.current = null }
+    ref.current?.style.removeProperty('overflow-y')
+  }, [ref])
 
   const set = (el: HTMLElement, top: number) => {
-    programmatic.current = true
+    const was = el.scrollTop
     el.scrollTop = top
+    // a top that did not move sends no scroll event, which would then swallow your next one
+    if (el.scrollTop !== was) programmatic.current = true
     lastTop.current = el.scrollTop
   }
 
@@ -57,7 +64,7 @@ export function useStickToBottom(ref: RefObject<HTMLElement | null>, fresh: unkn
     pinned.current = on
     const el = ref.current
     if (el) el.toggleAttribute('data-unpinned', !on)
-    if (on) { paused.current = false; anchor.current = null; setUnseen(false); setFar(false) }
+    if (on) { paused.current = false; anchor.current = null; setUnseen(false); setBelow(false) }
   }, [ref])
 
   const offsetOf = (el: HTMLElement, id: string) => {
@@ -76,13 +83,13 @@ export function useStickToBottom(ref: RefObject<HTMLElement | null>, fresh: unkn
     const a = anchor.current
     const now = a && offsetOf(el, a.id)
     if (a && now != null && Math.abs(now - a.top) >= 1) set(el, el.scrollTop + now - a.top)
-    setFar(gapOf(el) > FAR)
+    setBelow(gapOf(el) > REPIN)
   }, [ref])
 
   const release = useCallback(() => {
     stop()
     pin(false)
-  }, [pin])
+  }, [pin, stop])
 
   const onScroll = useCallback(() => {
     const el = ref.current
@@ -92,9 +99,15 @@ export function useStickToBottom(ref: RefObject<HTMLElement | null>, fresh: unkn
     lastTop.current = top
     if (programmatic.current) { programmatic.current = false; return }
     const gap = gapOf(el)
-    if (scrolledUp(before, top, gap)) { if (pinned.current) release(); setFar(gap > FAR); return }
+    // while your jump glides only a gesture lets go (the touch, wheel and key handlers): a
+    // scroll up then is a flick from before it, still coasting
+    if (scrolledUp(before, top, gap) && raf.current == null) {
+      if (pinned.current) release()
+      setBelow(gap > REPIN)
+      return
+    }
     if (gap <= REPIN) { if (!pinned.current || paused.current) pin(true) }
-    else setFar(gap > FAR)
+    else setBelow(!pinned.current || paused.current)
   }, [ref, release, pin])
 
   useEffect(() => {
@@ -181,17 +194,22 @@ export function useStickToBottom(ref: RefObject<HTMLElement | null>, fresh: unkn
     pin(true)
     const smooth = !(opts && typeof opts === 'object' && (opts as { smooth?: boolean }).smooth === false)
       && !matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (!smooth) { set(el, el.scrollHeight - el.clientHeight); return }
+    // a flick still coasting (iOS) overrides every top set meanwhile: a frame without
+    // overflow stops it
+    el.style.overflowY = 'hidden'
     // your jump glides to the moving bottom and lands on it
     const step = () => {
       const e = ref.current
       if (!e || !pinned.current) { raf.current = null; return }
       const target = e.scrollHeight - e.clientHeight
-      set(e, glide(e.scrollTop, target))
+      set(e, smooth ? glide(e.scrollTop, target) : target)
       raf.current = e.scrollTop >= target - 1 ? null : requestAnimationFrame(step)
     }
-    raf.current = requestAnimationFrame(step)
-  }, [ref, pin])
+    raf.current = requestAnimationFrame(() => {
+      el.style.removeProperty('overflow-y')
+      step()
+    })
+  }, [ref, pin, stop])
 
   const keep = useCallback((id: string) => {
     const el = ref.current
@@ -206,7 +224,7 @@ export function useStickToBottom(ref: RefObject<HTMLElement | null>, fresh: unkn
     stop()
     pin(false)
     anchor.current = above?.dataset.id ? { id: above.dataset.id, top: offsetOf(el, above.dataset.id)! } : null
-  }, [ref, pin])
+  }, [ref, pin, stop])
 
-  return { onScroll, unseen: unseen && far, jump, keep }
+  return { onScroll, below, unseen, jump, keep }
 }

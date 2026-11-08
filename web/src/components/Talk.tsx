@@ -62,7 +62,7 @@ export function Talk({ cid, convo, active, name, user, send, placeholder, noTool
   const online = useOnline()
   const offline = convo.reconnecting || !online
 
-  const { onScroll, unseen, jump, keep } = useStickToBottom(
+  const { onScroll, below, unseen, jump, keep } = useStickToBottom(
     transcript, [convo.messages.length, convo.live?.message_id], [cid], [cid, convo.messages.length > 0])
   useEffect(() => {
     setPending(null)
@@ -127,7 +127,7 @@ export function Talk({ cid, convo, active, name, user, send, placeholder, noTool
                 onSend={post} onStop={() => void stop()} setNote={setNote} attempt={attempt}
                 placeholder={placeholder} noToolsText={noToolsText} takesPrefill={false}
                 notices={<>{noteLine}{notices}</>} tag={tag} onTag={onTag}
-                jump={unseen && <NewMessages onClick={jump} />} />
+                jump={below && <NewMessages unseen={unseen} onClick={jump} />} />
     </>
   )
 }
