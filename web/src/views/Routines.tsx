@@ -575,7 +575,7 @@ function RunPage({ id, night, go, active, schedules }: {
             </Section>
             {(s?.partner || cid) && (
               <Section id="r-talk" title="Turns">
-                {cid ? <Talk key={cid} cid={cid} active={active} /> : <p className="routines-prose routines-prose--quiet">{STATE_WORD.waiting}</p>}
+                {cid ? <Talk key={cid} cid={cid} active={active} result={r.result} /> : <p className="routines-prose routines-prose--quiet">{STATE_WORD.waiting}</p>}
               </Section>
             )}
             <Section id="r-ask" title="Prompt">
@@ -592,13 +592,16 @@ function RunPage({ id, night, go, active, schedules }: {
 }
 
 /* The run's conversation as turns: the reviewer's lines and its own, what it was asked left
-   out (it is the Prompt section) */
-function Talk({ cid, active }: { cid: string; active: boolean }) {
+   out (it is the Prompt section), and its last line when that is the run's result (it is
+   the Result section) */
+function Talk({ cid, active, result }: { cid: string; active: boolean; result: string | null }) {
   const her = useName()
   const convo = useConversation(active ? cid : null)
-  const items = (convo.messages as ChatMessage[]).filter(m => (m.role === 'user' || m.role === 'assistant') && m.intercom?.from !== 'system:schedules'
+  const lines = (convo.messages as ChatMessage[]).filter(m => (m.role === 'user' || m.role === 'assistant') && m.intercom?.from !== 'system:schedules'
     && m.content.trim())
-  if (!items.length) return convo.conversation ? <p className="routines-prose routines-prose--quiet">{convo.running ? STATE_WORD.running : 'No turns'}</p> : <LoadingRow />
+  if (!lines.length) return convo.conversation ? <p className="routines-prose routines-prose--quiet">{convo.running ? STATE_WORD.running : 'No turns'}</p> : <LoadingRow />
+  const end = lines[lines.length - 1]!
+  const items = end.role === 'assistant' && result != null && end.content.trim() === result.trim() ? lines.slice(0, -1) : lines
   return (
     <div className="routines-talk">
       {items.map(m => {
