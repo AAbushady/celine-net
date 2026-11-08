@@ -7,21 +7,37 @@ address or its token's name, reaches the user).
 `to` takes several, comma separated. The agent's words: `me` (the sender's own conversation),
 `parent` (the conversation that started a sub-agent), `team` (the sender's own
 sub-agents), `all`, `user`, `bastet`,
-a conversation id, the name of a sub-agent or mission, `run:<id>` (a Routine's run) or
-`routine:<name>` (its newest run with a conversation). `team` and `all` are expanded
-into recipients when the message is sent, the sender left out.
+a conversation id (whole, or its first SHORT characters or more as the tools show it
+when no other conversation starts with them), the name of a sub-agent or mission,
+`run:<id>` (a Routine's run) or `routine:<name>` (its newest run with a conversation).
+A name goes before a short id. `team` and `all` are expanded into recipients when the
+message is sent, the sender left out.
 
 A sub-agent writes up and down its own chain only: to itself, its parent and its own
 sub-agents (`_reach`); the user and Bastet hear from it through its parent."""
 from __future__ import annotations
 
+import re
 import sqlite3
 
 from ..core.states import LIVE_SQL
 
+SHORT = 8           # the shortest id that addresses a conversation: past_conversations shows 8
+HEX = re.compile(r"[0-9a-f]+")
+
 
 def _conversation(c: sqlite3.Connection, cid: str) -> sqlite3.Row | None:
     return c.execute("SELECT id, agent_of FROM conversations WHERE id=?", (cid,)).fetchone()
+
+
+def _by_prefix(c: sqlite3.Connection, key: str) -> str | None:
+    """The one conversation, not in the Trash, whose id starts with `key` (SHORT hex
+    characters or more); None when none or several do."""
+    if len(key) < SHORT or not HEX.fullmatch(key):
+        return None
+    rows = c.execute("SELECT id FROM conversations WHERE id LIKE ? || '%' AND "
+                     "trashed_at IS NULL LIMIT 2", (key,)).fetchall()
+    return rows[0][0] if len(rows) == 1 else None
 
 
 def members(c: sqlite3.Connection, root: str) -> list[str]:
@@ -156,7 +172,8 @@ def resolve(c: sqlite3.Connection, to: str, sender: str,
             cid = _run(c, addr) if addr.startswith(("run:", "routine:")) else \
                 addr[6:] if addr.startswith("agent:") else addr
             if _conversation(c, cid) is None:
-                cid = None if addr.startswith("agent:") else _by_name(c, addr, me)
+                cid = _by_prefix(c, cid) if addr.startswith("agent:") else \
+                    _by_name(c, addr, me) or _by_prefix(c, addr)
                 if cid is None:
                     if addr.startswith("agent:"):
                         raise KeyError(addr[6:])

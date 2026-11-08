@@ -639,6 +639,29 @@ async def test_a_sub_agent_is_addressed_by_its_exact_name(store):
         raise AssertionError("a name in another case reaches nobody")
 
 
+async def test_a_conversation_is_addressed_by_the_short_id_the_tools_show(store):
+    """past_conversations hands out 8 characters of an id; intercom__send took only the
+    whole id, and a message meant for that thread started a new one."""
+    from celine.intercom import addresses
+    me = await conversations.create(store, "me")
+    chat = await conversations.create(store, "chat")
+    for to in (chat[:8], f"agent:{chat[:8]}", chat[:12]):
+        found = await store.read(lambda c: addresses.resolve(c, to, f"agent:{me}"))
+        assert found == (f"agent:{chat}", [(f"agent:{chat}", chat)]), to
+    for to in (chat[:7], "ZZZZZZZZ"):
+        with pytest.raises(ValueError, match="is not an address"):
+            await store.read(lambda c: addresses.resolve(c, to, f"agent:{me}"))
+    twin = chat[:8] + "0" * 24
+    await store.write(lambda c: c.execute(
+        "INSERT INTO conversations(id, title, created_at, updated_at) "
+        "SELECT ?, 'twin', created_at, updated_at FROM conversations WHERE id=?", (twin, chat)))
+    with pytest.raises(ValueError, match="is not an address"):
+        await store.read(lambda c: addresses.resolve(c, chat[:8], f"agent:{me}"))
+    named = await conversations.create(store, "s", agent_of=me, agent_name=chat[:8])
+    found = await store.read(lambda c: addresses.resolve(c, chat[:8], f"agent:{me}"))
+    assert found[1] == [(f"agent:{named}", named)], "a sub-agent's name goes first"
+
+
 async def test_a_name_is_looked_up_among_the_senders_own_sub_agents_only(store):
     from celine.intercom import addresses
     parent = await conversations.create(store, "p")

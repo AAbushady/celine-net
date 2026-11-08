@@ -117,7 +117,8 @@ class IntercomSkill:
         text: Annotated[str, "The message."],
         to: Annotated[str, '"user" for {{username}}, "me" for yourself, "parent", "team", '
                            '"all" for everyone working, "bastet", a sub-agent\'s or '
-                           'mission\'s name, a conversation id, run:<id> for a Routine\'s run '
+                           'mission\'s name, a conversation id (its first 8 characters '
+                           'do), run:<id> for a Routine\'s run '
                            'or routine:<name> for its newest run. Several, comma '
                            'separated. '
                            'With reply_to and no to, it goes to the one who wrote that '
