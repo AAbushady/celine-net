@@ -3,7 +3,8 @@
 /* the app is one screen; panes scroll, the page never does (clip, so not even
    scrollIntoView can move it) */
 /* --vh: the visible height (main.tsx), which shrinks under an on-screen keyboard on
-   every browser, iOS too */
+   every browser, iOS too; the whole screen in an app installed on the home screen while
+   no keyboard is up */
 html { height: var(--vh, 100dvh); }
 html, body, #root { overflow: clip; }
 body, #root { height: 100%; }
