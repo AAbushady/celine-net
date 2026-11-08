@@ -5,6 +5,7 @@ from __future__ import annotations
 from chat_fixtures import until, user_says
 
 import copy
+import math
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 
@@ -755,6 +756,46 @@ async def test_the_users_request_waits_past_every_limit_and_names_the_holder():
     assert limits[0][0] == Priority.AGENT and limits[0][1], "everyone else's wait has one"
     wait = next(w for w in waits if w["state"] == "waiting")
     assert wait["holder"] == "World news"
+
+
+async def test_a_runs_turn_and_its_tools_calls_wait_for_a_slot_without_a_limit():
+    """A run's turn gave up after background_wait_seconds while its own sub-agents held
+    the model; a title still gives up."""
+    llm = _short_wait_llm()
+    held, limits = Held(), {}
+    acquire = llm.scheduler.acquire
+
+    async def recorded(t, **kw):
+        limits[t.label] = kw.get("timeout")
+        return await acquire(t, **kw)
+    llm.scheduler.acquire = recorded
+
+    def bg(label, **kw):
+        return llm.bind(FakeBackend([TextDelta("b"), Done(reason="stop")]), role="chat",
+                        priority=Priority.BACKGROUND, label=label, **kw)
+    turn = bg("World news", conversation_id="run", turn_id="t1", wait=math.inf)
+    tool = bg("models__ask", conversation_id="run", turn_id="t1")
+    title = bg("title", conversation_id="chat")
+    out: dict[str, list] = {}
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(_drain, llm.bind(held, role="chat", priority=Priority.AGENT, label="sub"))
+        await until(lambda: llm.scheduler.running)
+
+        async def ask(name, b):
+            try:
+                out[name] = await _drain(b)
+            except QueueTimeout as e:
+                out[name] = [e]
+        for name, b in (("turn", turn), ("tool", tool), ("title", title)):
+            tg.start_soon(ask, name, b)
+        await until(lambda: "title" in out)
+        held.go.set()
+    assert limits == {"sub": 0.2, "World news": math.inf, "models__ask": math.inf,
+                      "title": 0.2}, "its tool's call takes the turn's wait"
+    assert isinstance(out["title"][0], QueueTimeout)
+    assert isinstance(out["turn"][-1], Done) and isinstance(out["tool"][-1], Done)
+    llm.forget_turn("t1")
+    assert "t1" not in llm.turn_queue_wait
 
 
 async def test_the_snapshot_says_which_reply_another_model_wrote(store):

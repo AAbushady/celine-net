@@ -3,6 +3,7 @@ and the growth jobs that ship with a fresh install (schedules/)."""
 from __future__ import annotations
 
 import lzma
+import math
 import sqlite3
 import tarfile
 import tomllib
@@ -18,6 +19,7 @@ from celine.backends.queue import Priority
 from celine.config import ROOT
 from celine.boot import load
 from celine.conversations import store as conversations
+from celine.core.bus import EventBus
 from celine.core.services import Services
 from celine.intercom import Intercom
 from celine.schedules import Schedule, parse, read_partner, runs as runs_mod
@@ -26,6 +28,7 @@ from celine.schedules.runs import IN_USE, PASSED, Scheduler, binding, waited_on
 from celine.schedules.variables import tool_failures
 from celine.skills import Registry
 from celine.skills.notebook import Notebook
+from celine.turns.dispatcher import Dispatcher
 
 pytestmark = pytest.mark.anyio
 UTC = timezone.utc
@@ -66,26 +69,39 @@ def test_every_shipped_schedule_loads_through_the_parser():
 
 
 async def test_the_partner_binds_behind_the_user_with_the_schedules_label(store, cfg):
+    """A sub-agent's own sub-agent bound as a chat's agent work, ahead of its run, and
+    took the model's slots from it; a run's calls waited 120 s and failed it."""
     bound = {}
     llm = SimpleNamespace(bind=lambda backend, **kw: bound.update(kw) or "b")
     sched = Scheduler(_app(store, cfg, llm))
     s = Schedule("reflection", "Reflection", "0 5 * * *", "p")
     assert sched._partner_backend("cid", s) == "b"
-    assert (bound["priority"], bound["label"], bound["fallback"]) == \
-        (Priority.BACKGROUND, "Reflection", False), "on the role's own model only"
+    assert (bound["priority"], bound["label"], bound["fallback"], bound["wait"]) == \
+        (Priority.BACKGROUND, "Reflection", False, math.inf), "on the role's own model only"
 
     cfg.schedules = {"reflection": s}
     run_cid = await conversations.create(store, "run")
     sub = await conversations.create(store, "scout", agent_of=run_cid, agent_name="scout")
+    deeper = await conversations.create(store, "spot", agent_of=sub, agent_name="spot")
     await store.write(lambda c: c.execute(
         "INSERT INTO runs(id, schedule, label, slot, night, state, conversation_id, "
         "created_at) VALUES('r', 'reflection', 'Reflection', 'x', '2026-10-16', 'running', ?, "
         "'x')", (run_cid,)))
-    for cid in (run_cid, sub):
+    for cid in (run_cid, sub, deeper):
         assert await store.read(lambda c: binding(c, cid, cfg)) == {
-            "priority": Priority.BACKGROUND, "label": "Reflection"}
+            "priority": Priority.BACKGROUND, "wait": math.inf, "label": "Reflection"}
     chat = await conversations.create(store, "talk")
     assert await store.read(lambda c: binding(c, chat, cfg)) is None
+
+    d = Dispatcher(store, cfg, EventBus(), lambda: None, Registry())
+    d.llm = SimpleNamespace(bind=lambda backend, **kw: kw)
+    run = await store.read(lambda c: binding(c, deeper, cfg))
+    kw = d._backend_for({"id": "t", "conversation_id": deeper, "origin": "intercom"},
+                        None, run=run)
+    assert (kw["priority"], kw["wait"], kw["label"], kw["fallback"]) == \
+        (Priority.BACKGROUND, math.inf, "Reflection", False)
+    kw = d._backend_for({"id": "t2", "conversation_id": chat, "origin": "intercom"}, None)
+    assert (kw["priority"], kw["wait"]) == (Priority.AGENT, None), "the queue's wait"
 
 
 async def test_the_start_gate_sees_a_live_mission(store):

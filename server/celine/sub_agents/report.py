@@ -6,7 +6,8 @@ included), and every sub-agent of its own done. That is checked at every end of 
 turns and jobs and of its sub-agents' (the dispatcher's `on_end`). A report goes only
 for work it was given: a stretch with a brief or a message from its parent or the user
 since its last report; a message from its own sub-agent alone gets no report. It goes
-to the one that started it, never further up. The report is a head (its name, how its
+to the one that started it, never further up. It wakes its parent unless it was
+stopped or works in a run that ended (homes.run_of); then it lands asleep. The report is a head (its name, how its
 last turn ended, what its work since its last report took: the models that answered,
 the tokens in and out, the seconds its turns ran, the notes it changed, the files a
 drone changed) and its final
@@ -20,7 +21,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from .. import metrics
+from .. import homes, metrics
 from ..conversations.tree import final_words
 from ..core.states import LIVE_SQL
 from ..guard.sources import agent_read_outside
@@ -157,9 +158,13 @@ def _facts(c: sqlite3.Connection, cid: str) -> dict | None:
     # stopped: its last turn was aborted, or its last job cancelled (a Stop that came
     # after the turn had ended). Such a report never wakes the parent.
     stopped = state == "aborted" or bool(job and job["state"] == "cancelled")
+    # a run that ended (stopped, failed, done) takes no more turns: a report into it,
+    # from a sub-agent whose own turn had ended before the Stop, lands without waking it
+    run = homes.run_of(c, parent)
     reason = (turn["reason"] or "") if turn and state != "done" else ""
     return {"parent": parent, "text": last_answer(c, cid), "state": state, "reason": reason,
-            "stopped": stopped, "reply_to": reply_to, "work": work(c, cid),
+            "wake": not stopped and (run is None or run["state"] == "running"),
+            "reply_to": reply_to, "work": work(c, cid),
             "outside": agent_read_outside(c, cid), "name": name_of(c, f"agent:{cid}"),
             "cap": cap(c, parent)}
 
@@ -207,13 +212,13 @@ async def _report(services, cid: str) -> None:
         reason += f"\n\n{CUT}" if shown < total else ""
         answer = f"{answer.rstrip()}\n\n{reason}" if answer.strip() else reason
     text = f"{head(f['name'], f['state'], f['work'])}\n\n{answer}"
-    # a sub-agent that was stopped reports without waking its parent: the parent
-    # stopped it (its Stop cascades) or knows, and a Stop must stick
+    # a sub-agent that was stopped, or works in a run that ended, reports without waking
+    # its parent: the parent stopped it (its Stop cascades) or knows, and a Stop must stick
     sent = await services.intercom.send(
         f"agent:{cid}", f"agent:{f['parent']}", text, kind="report",
         reply_to=f["reply_to"], data={"state": f["state"], "work": f["work"], **({"outside": {
             "source": f"sub-agent {f['name'] or ''}".strip(), "by": None}}
-            if f["outside"] else {})}, wake=not f["stopped"],
+            if f["outside"] else {})}, wake=f["wake"],
         only_if=lambda c: quiet(c, cid) and asked(c, cid, f["parent"]) == f["reply_to"])
     if sent is not None:
         metrics.SUB_AGENTS_FINISHED.labels(f["state"]).inc()

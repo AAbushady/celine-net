@@ -216,6 +216,41 @@ async def test_a_stop_sticks_a_stopped_sub_agent_reports_quietly_and_its_schedul
     assert await _turns(store, parent) == [], "the report started no parent turn"
 
 
+async def test_a_report_into_a_run_that_ended_lands_without_waking_it(store, cfg):
+    """A sub-agent whose own turn had failed before the run's Stop still had sub-agents at
+    work; when they were stopped its report woke the stopped run, which did its work."""
+    run_cid = await conversations.create(store, "run")
+    await store.write(lambda c: c.execute(
+        "INSERT INTO runs(id, schedule, label, slot, night, state, conversation_id, "
+        "created_at) VALUES('r', 'growth', 'Growth check', 'x', '2026-11-08', 'running', ?, "
+        "'x')", (run_cid,)))
+    d = Dispatcher(store, cfg, EventBus(), lambda: None, Registry())
+    intercom = Intercom(store, d.notify)
+    d.intercom = intercom
+    app = Services(cfg=cfg, store=store, dispatcher=d, intercom=intercom)
+
+    async def failed_sub(name):
+        sub = await conversations.create(store, name, agent_of=run_cid, agent_name=name)
+        await intercom.send(f"agent:{run_cid}", f"agent:{sub}", "count the notes",
+                            kind="brief")
+        await store.write(lambda c: c.execute(
+            "UPDATE turns SET state='failed', reason='Waited 120s for m; it is busy with "
+            "other requests.' WHERE conversation_id=?", (sub,)))
+        await report.on_end(app, sub)
+        return await store.read(lambda c: c.execute(
+            "SELECT wake, data FROM intercom WHERE kind='report' AND from_addr=?",
+            (f"agent:{sub}",)).fetchone())
+
+    rep = await failed_sub("note reuse")
+    assert rep["wake"] == 1 and '"failed"' in rep["data"], "a running run hears it"
+    await store.write(lambda c: c.execute("UPDATE turns SET state='done'"))
+    await store.write(lambda c: c.execute("UPDATE runs SET state='stopped'"))
+    before = await _turns(store, run_cid)
+    rep = await failed_sub("seen use")
+    assert rep["wake"] == 0 and '"failed"' in rep["data"]
+    assert await _turns(store, run_cid) == before, "the report started no turn in the run"
+
+
 async def test_a_start_over_max_running_is_queued_and_starts_when_one_is_done(store, cfg):
     """More sub-agents than the limit are queued, not refused."""
     cfg.settings.general["sub_agents.max_running"] = 1

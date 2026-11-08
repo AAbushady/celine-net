@@ -640,8 +640,9 @@ through the same Router (below) but do not queue here.
   Background work raises `NoModel`; its work item is deferred.
 - **Stop / timeout.** A stopped turn's waiting request leaves the queue at once
   (`QueueCancelled`); the turn ends `aborted`. Background work gives up after
-  `background_wait_seconds` with a retryable error. Waiting time is credited to the
-  turn's clock.
+  `background_wait_seconds` with a retryable error, except a Routine's run, which waits
+  as long as it takes (`runs.RUN_WAIT`, the `wait` of its binding; a call for one of its
+  turns takes the turn's). Waiting time is credited to the turn's clock.
 
 - **Visible.** Each call appends durable `llm.queue` events to the conversation
   (`waiting`, `running`, `left`); the global feed gets a `llm.queue` snapshot on every
@@ -928,7 +929,9 @@ not loopback, private, link-local, a single label or .local, .lan, .home.arpa, .
 done when its conversation is quiet and so are its own sub-agents (`report.quiet`);
 `sub_agents/report.py` then sends one intercom `report` to `agent:<parent>`, never
 further up: a head (name, state, models, tokens, seconds, notes changed) and its final
-answer cut to `REPORT_SHARE` of the parent's window. What it opened closes
+answer cut to `REPORT_SHARE` of the parent's window. It wakes the parent unless the
+sub-agent was stopped or works in a run that ended (`homes.run_of`); then it lands
+without waking it, so a Stop sticks. What it opened closes
 (`leftovers.py`). A sub-agent writes only to itself, its parent and its own sub-agents
 (`addresses._reach`).
 `read(name, wait)` looks at one, `stop(name)` stops its turn, jobs and scheduled
@@ -1410,8 +1413,10 @@ turn; no other run is running. The queue is ordered by night, then by how deep t
 schedule follows, then by slot.
 
 **A run** is one background conversation (`trigger_key` `run:<run id>`) on the
-schedule's role, its turns bound behind every interactive request and on the role's own
-model only (`runs.binding`, the dispatcher reads it), with the filled prompt as its first
+schedule's role, its turns and its sub-agents' at any depth (`homes.run_of`) bound behind
+every interactive request, waiting for a slot as long as it takes (`RUN_WAIT`, never
+`background_wait_seconds`; every model call made for those turns waits so too), and on
+the role's own model only (`runs.binding`, the dispatcher reads it), with the filled prompt as its first
 message from `system:schedules` and a rule: you are not here, its final answer is the result, `intercom__start_chat` for what
 needs you. With a `partner`, it answers the prompt first, then the partner (on the run's
 role, outside the turn loop, with read-only tools) and it alternate up to `rounds` lines;

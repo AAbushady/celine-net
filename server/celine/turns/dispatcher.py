@@ -240,7 +240,8 @@ class Dispatcher:
         and job turns after, a Routine's run (`run`, schedules/runs.binding) last. The
         user's turn and a run's run on exactly the first model of their role (no
         fallback: when that model fails, the turn fails); other trigger and job turns
-        walk the list. Time spent waiting for a model is given back to the turn's wall
+        walk the list. A run's calls wait for a slot as long as the run's `wait` says.
+        Time spent waiting for a model is given back to the turn's wall
         `clock`. `label`: who the calls are for in the model queue (the conversation's
         title; a run's schedule)."""
         fixed = self.backend_factory() if self.backend_factory is not None else None
@@ -250,8 +251,9 @@ class Dispatcher:
         user = (turn.get("origin") or "user") == "user"
         store, cid = self.store, turn["conversation_id"]
         priority = Priority.INTERACTIVE if user else Priority.AGENT
+        wait = None
         if run is not None:
-            priority, label = run["priority"], run["label"]
+            priority, label, wait = run["priority"], run["label"], run["wait"]
 
 
         async def emit(data: dict) -> None:
@@ -260,7 +262,7 @@ class Dispatcher:
                 await turns.set_backend(store, turn["id"], data["backend"], data["model"])
 
         from ..attachments import Images
-        return self.llm.bind(fixed, role="chat", priority=priority,
+        return self.llm.bind(fixed, role="chat", priority=priority, wait=wait,
                              fallback=not user and run is None,
                              keep_waiting=turn.get("reason") == "keep_waiting",
                              conversation_id=cid, turn_id=turn["id"], token=token,

@@ -27,6 +27,17 @@ def root(c: sqlite3.Connection, cid: str) -> sqlite3.Row | None:
     return r
 
 
+def run_of(c: sqlite3.Connection, cid: str) -> sqlite3.Row | None:
+    """The run `cid` works in: the run whose conversation is the top of its chain, so the
+    run's own conversation and every sub-agent under it, at any depth. None: any other
+    conversation."""
+    top = root(c, cid)
+    if top is None:
+        return None
+    return c.execute("SELECT id, schedule, label, state FROM runs WHERE conversation_id=?",
+                     (top["id"],)).fetchone()
+
+
 def run_link(night: str, run_id: str) -> str:
     """Where a schedule's run opens."""
     return f"/routines/{night}/run/{run_id}"

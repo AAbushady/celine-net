@@ -33,10 +33,11 @@ missed nights run night by night, each about its own date.
 
 A run. One background conversation (`run:<id>`, hidden from the chat list) with the
 filled prompt as its first message, from `system:schedules`; its persona, notes and
-tools as in any conversation, on the schedule's role. The agent's turns and the partner's calls
-wait behind every interactive request (Priority BACKGROUND, `binding`), named by the
-schedule's label, on the role's own model only: no other model (turns/dispatcher.py
-binds them so). What the result is it reads with the prompt and after the partner's
+tools as in any conversation, on the schedule's role. The agent's turns, its sub-agents'
+at any depth and the partner's calls wait behind every interactive request (Priority
+BACKGROUND, `binding`), for as long as it takes (RUN_WAIT: the run's ceiling bounds
+them, never `background_wait_seconds`), named by the schedule's label, on the role's own
+model only: no other model (turns/dispatcher.py binds them so). What the result is it reads with the prompt and after the partner's
 talk, from final.md beside this file (note.md names the note): the whole result, in
 full, nothing asked again. With a partner, the partner prompt (on the same role, with the
 read-only tools of READS) and it alternate up to `rounds` lines, the partner may end
@@ -77,6 +78,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import posixpath
 import re
 import sqlite3
@@ -105,6 +107,7 @@ MAX_SLOTS = 2000             # slots made per schedule in one look
 CHECKED = "schedules.checked"
 PARTNER_STEPS = 12           # the partner's tool steps before one line
 READS = ("notebook", "past_conversations", "chat_archive")   # the partner's read tools
+RUN_WAIT = math.inf          # a run's model calls wait for a slot as long as it takes
 END = re.compile(r"\s*\bEND\s*$")
 
 MISSED = f"Missed while the app was off for more than {CATCH_UP_DAYS} days"
@@ -283,19 +286,18 @@ def idle(c: sqlite3.Connection, at: datetime, missions: bool = False) -> bool:
 
 
 def binding(c: sqlite3.Connection, cid: str, cfg) -> dict | None:
-    """How a turn of conversation `cid` binds its model when it is a run's (a sub-agent
-    of one too): {priority: BACKGROUND, label: the schedule's}, on the role's own model
-    only; None for any other conversation. turns/dispatcher.py binds with it
+    """How a turn of conversation `cid` binds its model when it works in a run
+    (homes.run_of: the run's own conversation, or a sub-agent at any depth under it):
+    {priority: BACKGROUND, wait: RUN_WAIT, label: the schedule's}, on the role's own
+    model only; None for any other conversation. turns/dispatcher.py binds with it
     (`run_binding`, set at start)."""
     from ..backends.queue import Priority
-    # one hop: a sub-agent starts no sub-agents (sub_agents/api.py)
-    run = c.execute("SELECT r.schedule, r.label FROM conversations c JOIN runs r ON "
-                    "r.conversation_id = coalesce(c.agent_of, c.id) WHERE c.id = ?",
-                    (cid,)).fetchone()
+    run = homes.run_of(c, cid)
     if run is None:
         return None
     s = (getattr(cfg, "schedules", None) or {}).get(run["schedule"])
-    return {"priority": Priority.BACKGROUND, "label": shown(s) if s else run["label"]}
+    return {"priority": Priority.BACKGROUND, "wait": RUN_WAIT,
+            "label": shown(s) if s else run["label"]}
 
 
 def finished(c: sqlite3.Connection, cid: str) -> bool:
@@ -912,8 +914,8 @@ class Scheduler:
             return fixed
         from ..backends.queue import Priority
         return self.app.llm.bind(fixed, role=s.role, priority=Priority.BACKGROUND,
-                                 conversation_id=cid, label=shown(s), fallback=False,
-                                 voice=False)
+                                 wait=RUN_WAIT, conversation_id=cid, label=shown(s),
+                                 fallback=False, voice=False)
 
     def _partner_tools(self) -> dict:
         reg = self.app.registry

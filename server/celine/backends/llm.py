@@ -22,7 +22,9 @@ with the turn's id). A wait for a model stops the turn's clock and the
 time limit of the tool that waits (TOOL_CLOCKS).
 
 Priority belongs to the caller: the user's turn is interactive, trigger and job turns
-are agent, titles, descriptions and captions are background.
+are agent, titles, descriptions and captions are background. A Routine's run is
+background with a `wait` of its own (schedules/runs.RUN_WAIT, no limit), which every call
+made for its turns takes.
 
 When no model of the task can answer (a call with fallback):
 - an interactive or agent call waits: it says so once ("waiting" with reason
@@ -185,6 +187,7 @@ class LLM:
         self.turn_priority: dict[str, Priority] = {}
         self.turn_clock: dict[str, Any] = {}       # a turn's wall clock, credited for waits
         self.turn_waits: dict[str, Any] = {}       # Keep waiting turns: their Stop token
+        self.turn_queue_wait: dict[str, float] = {}   # a turn's own wait for a slot (a run's)
 
     # ---- settings -------------------------------------------------------------------
 
@@ -270,10 +273,15 @@ class LLM:
         a busy provider is waited for (QueuedBackend._attempt). `label`: who the calls
         are for in the queue (the conversation's title, a schedule's name); else the
         role's name. A call for a turn (`turn_id`: a tool's vision, Writing or
-        models__ask call) credits its waits to the turn's clock, and in a Keep waiting
-        turn it waits like the turn, until the turn's Stop."""
+        models__ask call) credits its waits to the turn's clock, waits for a slot as
+        long as the turn's own `wait` (a run's), and in a Keep waiting turn it waits like
+        the turn, until the turn's Stop."""
         if turn_id:
             self.turn_priority[turn_id] = priority
+            if wait is not None:
+                self.turn_queue_wait[turn_id] = wait
+            else:
+                wait = self.turn_queue_wait.get(turn_id)
             if clock is not None:
                 self.turn_clock[turn_id] = clock
             clock = self.turn_clock.get(turn_id)
@@ -292,6 +300,7 @@ class LLM:
 
     def forget_turn(self, turn_id: str) -> None:
         self.turn_priority.pop(turn_id, None)
+        self.turn_queue_wait.pop(turn_id, None)
         self.turn_clock.pop(turn_id, None)
         self.turn_waits.pop(turn_id, None)
 
