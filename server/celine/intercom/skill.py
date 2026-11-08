@@ -13,7 +13,7 @@ from ..core.ids import clock, iso, parse_when, when
 from ..skills import ToolContext, ToolResult, guide, tool, described
 from ..clock import zone
 from . import store as rows
-from .addresses import GUARD, GUARD_NAMES, Refused
+from .addresses import GUARD, GUARD_NAMES, Refused, resolve
 from .render import header, who
 
 TEXT_MAX = 60       # characters of a scheduled message's text in its instructions
@@ -23,6 +23,32 @@ AWAY = ("background", "mission")     # kinds where start_chat is offered
 COVERS = timedelta(hours=24)    # a thread to the user from the same source this recent
 ACTIONS = 6         # the source's last tool calls the new chat's opening names
 WAIT_MAX = 600      # seconds send(wait=true) holds its turn for the user's answer at most
+IN_CHAT = ('This is a chat with {user}: your reply here is your message to them, and a '
+           'message for later is a reminder to "me" at that time.')
+
+
+def _chat_with_user(c, cid: str) -> bool:
+    """`cid` is a chat the user has with her: a chat at the top of its chain."""
+    r = c.execute("SELECT kind, agent_of FROM conversations WHERE id=?", (cid,)).fetchone()
+    return r is not None and r["kind"] == "chat" and not r["agent_of"]
+
+
+def _to_user_from_chat(c, cid: str, to: str, reply_to: int | None) -> bool:
+    """A message from a chat with the user that would go to the user: by `to`, or as a
+    reply to their message or to one of hers that went to them. Her reply in the chat
+    reaches them there (turns/store.py _reply_notice), so the Intercom would show it twice."""
+    if not _chat_with_user(c, cid):
+        return False
+    sender = f"agent:{cid}"
+    if to.strip():
+        try:
+            return ("user", None) in resolve(c, to, sender)[1]
+        except (ValueError, KeyError, Refused):
+            return False            # the send says what is wrong with the address
+    r = c.execute("SELECT from_addr, to_addr FROM intercom WHERE id=?",
+                  (reply_to,)).fetchone() if reply_to is not None else None
+    return r is not None and (r["from_addr"] == "user" or (
+        r["from_addr"] == sender and "user" in r["to_addr"].split(", ")))
 
 
 def _short(text: str) -> str:
@@ -102,6 +128,8 @@ class IntercomSkill:
                 f"#{here['id']} from {sender}.")
         if here["from"] == "user" and not here["sub_agent"]:     # intercom/answer.py
             line += f" Your answer goes into that thread for {self.cfg.user}."
+            if here["chat"]:
+                return line             # IN_CHAT: no intercom__send to them from a chat
         if here["sub_agent"] and not here["from"].startswith("agent:"):
             return line         # it writes up its chain only (addresses._reach)
         if here["from"].startswith("system:"):       # schedules/runs.py reads the reply
@@ -115,7 +143,8 @@ class IntercomSkill:
         self,
         ctx: ToolContext,
         text: Annotated[str, "The message."],
-        to: Annotated[str, '"user" for {{username}}, "me" for yourself, "parent", "team", '
+        to: Annotated[str, '"user" for {{username}} (not from a chat with them: there your '
+                           'reply is the message), "me" for yourself, "parent", "team", '
                            '"all" for everyone working, "bastet", a sub-agent\'s or '
                            'mission\'s name, a conversation id (its first 8 characters '
                            'do), run:<id> for a Routine\'s run '
@@ -169,6 +198,9 @@ class IntercomSkill:
         if not guard.enabled(self.cfg) and any(
                 w.strip() in GUARD_NAMES for w in to.split(",")):
             return ToolResult(content="Bastet is off; nobody reads this.", is_error=True)
+        if await ctx.store.read(lambda c: _to_user_from_chat(c, ctx.conversation_id, to,
+                                                             reply_to)):
+            return ToolResult(content=IN_CHAT.format(user=self.cfg.user), is_error=True)
         files = []
         for ref in attachments or []:
             row = await her_file(ctx.store, ref.strip(), ctx.conversation_id, self.cfg.user)
@@ -365,7 +397,8 @@ def _here(c, cid: str, turn: str | None) -> dict | None:
     if r is None:
         return None
     sub = c.execute("SELECT agent_of FROM conversations WHERE id=?", (cid,)).fetchone()
-    return {**rows.view(c, r["id"], cid), "sub_agent": bool(sub and sub["agent_of"])}
+    return {**rows.view(c, r["id"], cid), "sub_agent": bool(sub and sub["agent_of"]),
+            "chat": _chat_with_user(c, cid)}
 
 
 def _team_of(c, cid: str) -> list[dict]:

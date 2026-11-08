@@ -85,7 +85,7 @@ async def test_a_message_she_sends_from_that_turn_answers_in_the_thread(store, c
     from celine.intercom.skill import IntercomSkill
     from celine.skills import ToolContext
     ic = Intercom(store)
-    cid = await conversations.create(store, title="downloads")
+    cid = await conversations.create(store, title="downloads", kind="mission")
     first, reply = await _replied(store, ic, cid)
     turn = reply["turn_id"]
     ctx = ToolContext(cid, turn, "x", store, cfg, None)  # type: ignore[arg-type]

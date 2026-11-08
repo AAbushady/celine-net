@@ -47,7 +47,9 @@ async def test_she_sends_a_file_of_hers_along(store):
     cfg = load()
     skill = IntercomSkill(cfg)
     skill.app = Services(intercom=Intercom(store))
-    chat, other = await conversations.create(store), await conversations.create(store)
+    # a mission: from a chat with the user, her reply is the message (intercom/skill.py IN_CHAT)
+    chat = await conversations.create(store, "m", kind="mission")
+    other = await conversations.create(store)
     aid = await _her_file(store, chat)
     ctx = ToolContext(chat, "t", "k", store, cfg, None)
 

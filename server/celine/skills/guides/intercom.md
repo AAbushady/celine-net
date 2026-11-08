@@ -38,7 +38,9 @@ of that kind, unread=true only threads with messages waiting for you.
 intercom__read(thread=409) shows one whole thread.
 
 A message to "user" is in {{username}}'s Intercom section in the app, where they read and
-answer it. wait=true holds your turn
+answer it: it is for where they are not, a background task or a mission. In a chat with
+them, your reply is your message, and they are told of it; a message for them later is a
+reminder to "me" at that time, then your reply. wait=true holds your turn
 on the message until {{username}} answers, up to 10 minutes: they see that you wait for
 them, and their answer comes in as their message; it does not work with in or at.
 

@@ -1481,7 +1481,10 @@ answers. Lists of threads (`store.threads`, `store.grouped`; `intercom__read` an
 /intercom/threads`) group them by counterpart; your plain chat messages (`store.PLAIN`) are
 never threads. Your lists hold only the threads you are in (`store.WITH_USER`: something in
 them came to you, or you wrote in them), Bastet's in their own tab: a brief, a report, a job,
-a notice or a reminder between her conversations stays in them.
+a notice or a reminder between her conversations stays in them. From a chat with you her
+`intercom__send` to you is refused (`skill.IN_CHAT`): her reply there is the message, and its
+notice reaches you (`turns/store.py` `_reply_notice`). The Intercom carries what comes from
+where you are not: a Routine's run, a mission, a bug report.
 
 **The delivery rule** (`deliver.py`), one rule for every kind. A delivery to a conversation
 waits until it is due. Then: when the conversation is idle, `deliver_idle` appends every due

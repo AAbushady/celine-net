@@ -478,11 +478,37 @@ async def test_her_answer_to_a_host_script_reaches_the_user(store):
         assert row["to_addr"] == "user", (to, reply_to)
 
 
+async def test_in_a_chat_with_the_user_her_reply_is_the_message(store, cfg):
+    """From a chat with the user, a message to them showed twice: her call in the chat and
+    a thread in the Intercom. There her reply is the message; elsewhere it goes as before."""
+    from celine.intercom import store as rows
+    from celine.intercom.skill import IN_CHAT
+    ic = Intercom(store)
+    skill = IntercomSkill(cfg)
+    skill.app = SimpleNamespace(intercom=ic)
+    chat = await conversations.create(store)
+    ctx = ToolContext(chat, "t", "k", store, cfg, None)
+    mine = (await ic.send(f"agent:{chat}", "user", "Bug #1: it broke"))["intercom_id"]
+    theirs = (await ic.send("user", "", "how?", reply_to=mine))["intercom_id"]
+    before = await store.read(lambda c: c.execute("SELECT count(*) FROM intercom").fetchone()[0])
+    for to, reply_to in (("user", None), ("me, user", None), ("system:schedules", None),
+                         ("", theirs), ("", mine)):
+        out = await skill.send(ctx, "done?", to, reply_to=reply_to)
+        assert out.is_error and out.content == IN_CHAT.format(user=cfg.user), (to, reply_to)
+    assert await store.read(lambda c: c.execute(
+        "SELECT count(*) FROM intercom").fetchone()[0]) == before, "nothing was sent"
+    assert not (await skill.send(ctx, "check the oven", "me", in_="30 min")).is_error
+    mission = await conversations.create(store, "m", kind="mission")
+    out = await skill.send(ToolContext(mission, "t", "k", store, cfg, None), "done?", "user")
+    assert not out.is_error
+    assert (await store.read(lambda c: rows.view(c, out.display["id"])))["to"] == "user"
+
+
 async def test_wait_holds_until_the_user_answers(store, cfg):
     ic = Intercom(store)
     skill = IntercomSkill(cfg)
     skill.app = SimpleNamespace(intercom=ic)
-    cid = await conversations.create(store)
+    cid = await conversations.create(store, "m", kind="mission")
     shown = anyio.Event()
     notes = []
 
