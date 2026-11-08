@@ -267,27 +267,44 @@ def test_the_nightly_backups_are_made_once_a_night_and_seven_kept(tmp_path):
     assert "notes.xz" in kept, "a name that is not a night stays"
 
 
-async def test_tool_failures_are_one_line_per_tool(store):
-    cid = await conversations.create(store, "Searching")
+async def test_tool_failures_say_each_error_and_the_conversations_it_happened_in(store):
+    """The tally gave a tool's first error and every conversation where the tool failed
+    for any reason, by title alone: two runs with one title read as one, and the review
+    looked for an error where it had not happened."""
+    first = await conversations.create(store, "Searching")
+    second = await conversations.create(store, "Searching")
 
     def fn(c):
-        for i, (name, state, at) in enumerate((
-                ("web__search", "error", "2026-10-15T20:00:00.000+00:00"),
-                ("web__search", "error", "2026-10-15T21:00:00.000+00:00"),
-                ("shell__run", "error", "2026-10-16T01:00:00.000+00:00"),
-                ("web__search", "ok", "2026-10-15T22:00:00.000+00:00"),
-                ("web__search", "error", "2026-10-14T20:00:00.000+00:00"))):
+        for i, (cid, name, state, error, at) in enumerate((
+                (first, "web__search", "error", "SearXNG is down", "2026-10-15T20:00:00.000+00:00"),
+                (second, "web__search", "error", "SearXNG is down", "2026-10-15T21:00:00.000+00:00"),
+                (second, "web__search", "error", "bad query", "2026-10-15T21:30:00.000+00:00"),
+                (first, "shell__run", "error", "exit 1", "2026-10-16T01:00:00.000+00:00"),
+                (first, "web__search", "ok", "found", "2026-10-15T22:00:00.000+00:00"),
+                (first, "web__search", "error", "SearXNG is down", "2026-10-14T20:00:00.000+00:00"),
+                *((first, "notebook__read", "error", f"n{k}.md does not exist",
+                   "2026-10-16T02:00:00.000+00:00") for k in range(5)))):
             c.execute("INSERT INTO messages(id, conversation_id, role, content, created_at) "
                       "VALUES(?, ?, 'assistant', '', ?)", (f"m{i}", cid, at))
             c.execute("INSERT INTO messages(id, conversation_id, role, content, created_at) "
-                      "VALUES(?, ?, 'tool', ?, ?)", (f"r{i}", cid, f"SearXNG is down {i}", at))
+                      "VALUES(?, ?, 'tool', ?, ?)", (f"r{i}", cid, error, at))
             c.execute("INSERT INTO tool_calls(id, message_id, result_message_id, name, "
                       "arguments, state, started_at) VALUES(?, ?, ?, ?, '{}', ?, ?)",
                       (f"t{i}", f"m{i}", f"r{i}", name, state, at))
     await store.write(fn)
     got = await store.read(lambda c: tool_failures(c, date(2026, 10, 16), UTC))
-    assert got == ("- web__search: 2 failed. First error: SearXNG is down 0 In: Searching.\n"
-                   "- shell__run: 1 failed. First error: SearXNG is down 2 In: Searching.")
+    a, b = f"Searching {first[:8]}", f"Searching {second[:8]}"
+    assert got == (
+        "- notebook__read: 5 failed.\n"
+        f"  - once: n0.md does not exist In: {a}.\n"
+        f"  - once: n1.md does not exist In: {a}.\n"
+        f"  - once: n2.md does not exist In: {a}.\n"
+        "  - 2 more failed with 2 other errors.\n"
+        "- web__search: 3 failed.\n"
+        f"  - 2 times: SearXNG is down In: {a}, {b}.\n"
+        f"  - once: bad query In: {b}.\n"
+        "- shell__run: 1 failed.\n"
+        f"  - once: exit 1 In: {a}.")
     assert await store.read(lambda c: tool_failures(c, date(2026, 10, 1), UTC)) == \
         runs_mod.NONE
 

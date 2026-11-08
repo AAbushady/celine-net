@@ -4,8 +4,9 @@ when its run starts, each only when the prompt names it:
 - {{mood}}: its mood now (skills/mind.mood_line);
 - {{on_mind}}: the notes whose `keys:` come up in its last thoughts and its last
   exchange with {{username}} (turns/loads.key_in), each with its summary;
-- {{tool_failures}}: per tool, the calls that failed that night: how many, the first
-  error, the conversations (a digest instead of every transcript);
+- {{tool_failures}}: per tool, the calls that failed that night: how many, and its most
+  frequent errors, each with the conversations it happened in by title and short id (a
+  digest instead of every transcript);
 - {{voice_counts}}: its chat replies of the last 7 days against {{username}}'s
   messages: slop hits per 1,000 characters (turns/slop.find), the phrases it uses far
   more (turns/slop.profile), the share of replies that start
@@ -26,7 +27,8 @@ from . import NONE, night_start
 
 DAYS = 7                       # the voice counts' window
 TOP = 20                       # phrases it uses far more than the user
-ERROR_CHARS = 200              # of the first error text
+ERROR_CHARS = 200              # of an error's text
+ERRORS_SHOWN = 3               # the most frequent errors of a tool, each with where
 THOUGHTS = 5                   # its last thoughts {{on_mind}} looks in
 ON_MIND = 8                    # the most notes {{on_mind}} names
 SHORT = re.compile(r"\b(short|shorter|brief|briefly|tl;?dr|kurz)\b", re.I)
@@ -105,30 +107,44 @@ async def on_mind(app) -> str:
 # ---- tool_failures ---------------------------------------------------------------------
 
 def tool_failures(c: sqlite3.Connection, night: date, tz) -> str:
-    """The failed calls of `night` (12:00 the day before to 12:00 on its date), one
-    line per tool, the most failures first; none of a locked conversation
-    (conversations/store.locked)."""
+    """The failed calls of `night` (12:00 the day before to 12:00 on its date): a line
+    per tool, the most failures first, and under it a line per error (its first
+    ERROR_CHARS, the most frequent ERRORS_SHOWN) with the conversations it happened in,
+    each by title and its short id as past_conversations takes it; none of a locked
+    conversation (conversations/store.locked)."""
     from ..conversations.store import locked_sql
     lo = night_start(night, tz)
     rows = c.execute(
-        "SELECT tc.name, r.content AS error, coalesce(nullif(cv.title, ''), 'Untitled') "
-        "AS title FROM tool_calls tc JOIN messages m ON m.id = tc.message_id "
+        "SELECT tc.name, r.content AS error, cv.id AS cid, "
+        "coalesce(nullif(cv.title, ''), 'Untitled') AS title FROM tool_calls tc "
+        "JOIN messages m ON m.id = tc.message_id "
         "JOIN conversations cv ON cv.id = m.conversation_id "
         "LEFT JOIN messages r ON r.id = tc.result_message_id "
         "WHERE tc.state = 'error' AND tc.started_at >= ? AND tc.started_at < ? "
         f"AND NOT {locked_sql('cv')} ORDER BY tc.started_at", (iso(lo), iso(lo + timedelta(days=1)))).fetchall()
-    tools: dict[str, dict] = defaultdict(lambda: {"n": 0, "error": "", "in": {}})
+    # tool -> error -> [count, {conversation: its label}], in the order first seen
+    tools: dict[str, dict[str, list]] = defaultdict(dict)
     for r in rows:
-        t = tools[r["name"]]
-        t["n"] += 1
-        t["error"] = t["error"] or " ".join((r["error"] or "").split())[:ERROR_CHARS]
-        t["in"][r["title"]] = True
+        error = " ".join((r["error"] or "").split())[:ERROR_CHARS] or "(no text)"
+        seen = tools[r["name"]].setdefault(error, [0, {}])
+        seen[0] += 1
+        seen[1][r["cid"]] = f"{r['title']} {r['cid'][:8]}"
     if not tools:
         return NONE
-    return "\n".join(
-        f"- {name}: {t['n']} failed. First error: {t['error'] or '(no text)'} "
-        f"In: {', '.join(t['in'])}."
-        for name, t in sorted(tools.items(), key=lambda x: -x[1]["n"]))
+
+    def count(errors: dict) -> int:
+        return sum(n for n, _ in errors.values())
+    out = []
+    for name, errors in sorted(tools.items(), key=lambda x: -count(x[1])):
+        out.append(f"- {name}: {count(errors)} failed.")
+        ranked = sorted(errors.items(), key=lambda x: -x[1][0])
+        for error, (n, where) in ranked[:ERRORS_SHOWN]:
+            times = "once" if n == 1 else f"{n} times"
+            out.append(f"  - {times}: {error} In: {', '.join(where.values())}.")
+        if rest := ranked[ERRORS_SHOWN:]:
+            out.append(f"  - {sum(n for _, (n, _) in rest)} more failed with "
+                       f"{len(rest)} other errors.")
+    return "\n".join(out)
 
 
 # ---- voice_counts ------------------------------------------------------------------------
