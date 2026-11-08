@@ -293,6 +293,16 @@ BACKGROUND = ("EXISTS (SELECT 1 FROM intercom r JOIN intercom_deliveries d ON "
               "bg.kind = 'background')")
 
 
+# A thread the user is in: a message in it came to them, or they wrote one that is not a
+# plain chat message (PLAIN). The user's lists hold only these; what goes on between
+# conversations (a brief, a report, a job, a notice, a reminder) stays in them.
+WITH_USER = ("EXISTS (SELECT 1 FROM intercom t WHERE t.thread = i.thread AND (EXISTS ("
+             "SELECT 1 FROM intercom_deliveries u WHERE u.intercom_id = t.id AND "
+             "u.to_addr = 'user') OR (t.from_addr = 'user' AND NOT (t.to_addr <> 'user' AND "
+             "t.kind = 'message' AND t.due_at IS NULL AND t.until_at IS NULL AND "
+             "t.reply_to IS NULL))))")
+
+
 def _mine(addr: str | None, received: bool) -> tuple[str, list]:
     """SQL and its arguments: message `i` came to `addr`, or (not `received`) `addr`
     wrote it; every message when `addr` is None."""
@@ -323,7 +333,8 @@ def _shelf(archived: bool) -> str:
 
 def threads(c: sqlite3.Connection, addr: str | None, unread: bool = False,
             reader: str | None = None, received: bool = False, kind: str | None = None,
-            with_: str | None = None, archived: bool | None = None) -> list[dict]:
+            with_: str | None = None, archived: bool | None = None,
+            user_in: bool = False) -> list[dict]:
     """The threads `addr` wrote in or received in (None: every thread; `received`: only
     the messages that came to `addr`, so the count and the newest are of those), newest
     activity first, as {thread, last (its newest id), count, unread (waiting for
@@ -334,10 +345,13 @@ def threads(c: sqlite3.Connection, addr: str | None, unread: bool = False,
     newest's state). `with_`: only the threads someone is in by that name, address or
     conversation id ("user": the user). The name leaves out the app's senders when
     someone else is in it ("nightly sweep", not "the app, nightly sweep"). `archived`: only
-    the threads the user archived, or none of them; None, as her own listing: both."""
+    the threads the user archived, or none of them; None, as her own listing: both.
+    `user_in`: only the threads the user is in (WITH_USER), as the user's lists show them."""
     ts, reader = now(), reader or addr
     mine, margs = _mine(addr, received)
     where = f"NOT {PLAIN} AND NOT {BACKGROUND} AND {mine}"
+    if user_in:
+        where += f" AND {WITH_USER}"
     args = [reader, ts, *margs]
     if kind:
         where += " AND i.kind = ?"
@@ -418,11 +432,10 @@ def restore(c: sqlite3.Connection, tids: list[int]) -> list[int]:
 
 
 def archivable(c: sqlite3.Connection) -> list[int]:
-    """What Archive read takes: the threads All lists where nothing waits for the user, and
-    the job results. A thread whose bug report stands open is not done, read or not."""
-    plain = threads(c, None, reader="user", archived=False)
-    found = [t["thread"] for t in plain if not t["unread"]]
-    found += [t["thread"] for t in threads(c, None, reader="user", kind="job", archived=False)]
+    """What Archive read takes: the threads All lists where nothing waits for the user. A
+    thread whose bug report stands open is not done, read or not."""
+    found = [t["thread"] for t in threads(c, None, reader="user", archived=False, user_in=True)
+             if not t["unread"]]
     kept = {r[0] for r in c.execute("SELECT thread FROM bugreports WHERE state = 'open'")}
     return [t for t in dict.fromkeys(found) if t is not None and t not in kept]
 

@@ -18,7 +18,7 @@ import {
 import { Portrait } from '../components/Portrait'
 import { Attached } from '../components/Transcript'
 import {
-  KINDS, KIND_PLURAL, KIND_WORD, WaitingCount, addressName, intercomApi, isIntercomEvent, isScheduled, senderName,
+  LISTED_KINDS, KIND_PLURAL, KIND_WORD, WaitingCount, addressName, intercomApi, isIntercomEvent, isScheduled, senderName,
   type IntercomMessage, type Kind, type Source, type Thread, type ThreadsPage,
 } from '../lib/intercom'
 import { useName } from '../lib/name'
@@ -100,7 +100,6 @@ type Row =
   | { type: 'group'; key: string; name: string; icon: LucideIcon; n: number; who: Who }
   | { type: 'thread'; key: string; t: Thread; waiting: boolean; under?: string }
   | { type: 'more'; key: string; n: number; who: Who }
-  | { type: 'jobs'; key: string; n: number }
 
 export function Intercom({ active }: { active: boolean }) {
   const nav = useNav()
@@ -183,10 +182,9 @@ function List({ active, onNew }: { active: boolean; onNew: () => void }) {
         if (g.more > 0) out.push({ type: 'more', key: `m:${w.address}`, n: g.more, who: w })
       }
     }
-    if ((show === 'all' || onShelf) && !s && !who && list.data?.jobs?.count) out.push({ type: 'jobs', key: 'jobs', n: list.data.jobs.count })
     return out
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groups, waits, group, who, sort, s, show, onShelf, list.data])
+  }, [groups, waits, group, who, sort, s])
 
   const shown = from
   const picker = usePicker(`${show} ${all} ${kind} ${shelf}`)
@@ -272,7 +270,7 @@ function List({ active, onNew }: { active: boolean; onNew: () => void }) {
                                         ...(guardOn ? [{ value: 'guard', label: 'Guard', count: guardN }] : [])] }}
                      filters={[
                        { label: 'Type', icon: Shapes, picked: kind ? KIND_PLURAL[kind] : undefined, onClear: () => setKind(null),
-                         items: KINDS.map(k => ({ label: KIND_PLURAL[k], current: kind === k, onSelect: () => setKind(k) })) },
+                         items: LISTED_KINDS.map(k => ({ label: KIND_PLURAL[k], current: kind === k, onSelect: () => setKind(k) })) },
                        { label: 'From', icon: User, picked: who?.name, onClear: () => setWho(null),
                          items: froms.map(f => ({ label: f.name, face: <Who name={f.name} size="sm" />, current: who?.address === f.address, onSelect: () => setWho(f) })) },
                      ]}
@@ -290,7 +288,6 @@ function List({ active, onNew }: { active: boolean; onNew: () => void }) {
                          renderRow={r => r.type === 'group'
                            ? <GroupHead icon={r.icon} title={r.name} count={count(r.n, 'thread')} onClick={() => setWho(r.who)} />
                            : r.type === 'more' ? <ListRow title="Show more" meta={r.n} onClick={() => setWho(r.who)} />
-                           : r.type === 'jobs' ? <ListRow icon={Shapes} title={KIND_PLURAL.job} meta={r.n} onClick={() => { setShow('all'); setKind('job') }} />
                            : <ThreadRow t={r.t} waiting={r.waiting} under={r.under} pick={picker.row(String(r.t.thread))} menu={menu(r.t, r.waiting)}
                                         onOpen={() => open(r.t)} onMenu={e => ctx.open(e, menu(r.t, r.waiting), titleOf(r.t))} />} />
           </div>

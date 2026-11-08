@@ -122,14 +122,8 @@ class GroupOut(BaseModel):
     more: int                       # threads not in items
 
 
-class JobsOut(BaseModel):
-    count: int
-    newest: int | None
-
-
 class ThreadsPage(BaseModel):
     groups: list[GroupOut]
-    jobs: JobsOut | None            # job results, no threads (without kind and a name)
     next: str | None
 
 
@@ -143,14 +137,13 @@ async def threads(request: Request, with_: str = Query("user", alias="with"),
                   limit: int = Query(50, ge=1, le=200),
                   cursor: str | None = None) -> ThreadsPage:
     """Threads grouped by who they are with, the group with the newest activity first,
-    each group with its newest PER_GROUP threads and a count of the rest. `with`: `user`
-    (default) for the threads where something came to you, `all` for every thread,
-    `guard` for Bastet's threads (the Guard tab; Waiting for you never has them),
-    else a name, stored address or conversation id: every thread with them, up to
-    `limit` per group. `kind`: only messages of that kind. Job results are threads only
-    with kind=job; otherwise they are one count (`jobs`, null with a kind or a name).
-    `archived`: only the threads you archived, up to `limit` per group; without it none of
-    them.
+    each group with its newest PER_GROUP threads and a count of the rest. Only threads you
+    are in (store.WITH_USER), but for Bastet's. `with`: `user` (default) for the threads
+    where something came to you, `all` for every thread you are in, `guard` for Bastet's
+    threads (the Guard tab; Waiting for you never has them), else a name, stored address
+    or conversation id: every thread with them that you are in, up to `limit` per group.
+    `kind`: only messages of that kind. `archived`: only the threads you archived, up to
+    `limit` per group; without it none of them.
     Your plain chat messages are never threads. `limit` groups a page; `next` is the
     following page's `cursor`."""
     addr = "user" if with_ == "user" else None
@@ -159,12 +152,11 @@ async def threads(request: Request, with_: str = Query("user", alias="with"),
 
     def fn(c):
         found = rows.threads(c, addr, unread, reader="user", received=addr == "user",
-                             kind=kind, with_=who, archived=archived)
+                             kind=kind, with_=who, archived=archived,
+                             user_in=who != rows.GUARD)
         groups, nxt = rows.grouped(c, found, limit if who or archived else PER_GROUP, limit,
                                    before)
-        return {"groups": groups, "next": page_cursor((nxt,)) if nxt else None,
-                "jobs": None if kind or who else rows.jobs(c, addr, received=addr == "user",
-                                                           archived=archived)}
+        return {"groups": groups, "next": page_cursor((nxt,)) if nxt else None}
 
     return ThreadsPage(**await request.app.state.services.store.read(fn))
 

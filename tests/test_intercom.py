@@ -396,15 +396,12 @@ async def test_her_threads_group_by_who_and_chat_and_job_results_are_no_threads(
                                  base_url="http://t") as http:
         page = (await http.get("/api/intercom/threads")).json()     # to you
         assert [(g["name"], g["threads"]) for g in page["groups"]] == [("Celine", 1)]
-        assert page["jobs"] == {"count": 0, "newest": None} and page["next"] is None
-        first = (await http.get("/api/intercom/threads?with=all&limit=1")).json()
-        assert [g["name"] for g in first["groups"]] == ["Celine"] and first["next"]
-        second = (await http.get(f"/api/intercom/threads?with=all&limit=1&cursor="
-                                 f"{first['next']}")).json()
-        assert [(g["name"], len(g["items"]), g["more"]) for g in second["groups"]] == \
-            [("scout one, Celine", 3, 1)]
+        assert page["next"] is None and "jobs" not in page
+        every = (await http.get("/api/intercom/threads?with=all&limit=1")).json()
+        assert [g["name"] for g in every["groups"]] == ["Celine"] and every["next"] is None, \
+            "your lists hold only threads you are in: the scout's reports stay in her chat"
         one = (await http.get("/api/intercom/threads?with=scout one")).json()
-        assert [len(g["items"]) for g in one["groups"]] == [4]
+        assert one["groups"] == []
         assert (await http.get("/api/intercom/threads?kind=nope")).status_code == 400
 
 
@@ -559,6 +556,31 @@ def _listed(page) -> set[int]:
     return {t["thread"] for g in page["groups"] for t in g["items"]}
 
 
+async def test_your_lists_hold_only_the_threads_you_are_in(store):
+    """All listed every thread in the house: her briefs and their reports, jobs, the app's
+    notices into her chats and her reminders to herself sat beside what was meant for you."""
+    from celine.intercom import Intercom, store as rows
+    ic = Intercom(store)
+    chat = await conversations.create(store)
+    sub = await conversations.create(store, "s", agent_of=chat, agent_name="scout")
+    me, her = f"agent:{chat}", f"agent:{sub}"
+    to_you = (await ic.send(me, "user", "done?"))["intercom_id"]
+    brief = (await ic.send(me, her, "look around", kind="brief"))["intercom_id"]
+    await ic.send(her, me, "found it", kind="report", reply_to=brief)
+    await store.write(lambda c: rows.insert(c, me, me, "job", "made it"))
+    await ic.send("system:app", me, "Keep going.", kind="notice", wake=False)
+    await ic.send(me, me, "check the oven", due_at="2999-01-01T00:00:00.000+00:00")
+    asked = (await ic.send(me, "user", "which one?"))["intercom_id"]
+    await ic.send("user", me, "the red one", reply_to=asked)
+    await ic.send("user", me, "just chatting")                       # plain: never a thread
+    async with await _archive_app(store) as http:
+        page = (await http.get("/api/intercom/threads?with=all")).json()
+        assert _listed(page) == {to_you, asked}
+        assert _listed((await http.get("/api/intercom/threads?with=scout")).json()) == set()
+    found = await store.read(lambda c: rows.threads(c, me))
+    assert {t["thread"] for t in found} >= {to_you, brief, asked}, "her own listing has hers"
+
+
 async def test_archive_moves_a_thread_out_of_the_lists_until_something_newer_lands(store):
     """All kept every thread for good, done or not. An archived thread is read and out of
     the lists; her own listing still has it, and a newer message brings it back."""
@@ -607,7 +629,7 @@ async def test_a_scheduled_message_brings_an_archived_thread_back_when_it_lands(
 
 async def test_archive_read_takes_what_is_done_and_leaves_what_is_not(store):
     """What waits stays, and so does an open bug report: read is not done. A closed one
-    goes, and job results leave their count."""
+    goes. A job result is no thread of yours."""
     from celine.intercom import Intercom, store as rows
     ic = Intercom(store)
     cid = await conversations.create(store)
@@ -616,7 +638,7 @@ async def test_archive_read_takes_what_is_done_and_leaves_what_is_not(store):
     done = (await ic.send(me, "user", "fyi"))["intercom_id"]
     bug = (await ic.send(me, "user", "open bug"))["intercom_id"]
     closed = (await ic.send(me, "user", "closed bug"))["intercom_id"]
-    job = await store.write(lambda c: rows.insert(c, me, "user", "job", "made it"))
+    await store.write(lambda c: rows.insert(c, me, me, "job", "made it"))
     await store.write(lambda c: rows.read(c, [done, bug, closed]))
     await store.write(lambda c: c.executemany(
         "INSERT INTO bugreports(title, severity, what, state, created_at, thread) "
@@ -624,9 +646,9 @@ async def test_archive_read_takes_what_is_done_and_leaves_what_is_not(store):
         [("open", bug), ("closed", closed)]))
     async with await _archive_app(store) as http:
         got = (await http.post("/api/intercom/threads/archive?read=1")).json()["archived"]
-        assert set(got) == {done, closed, job}
+        assert set(got) == {done, closed}
         page = (await http.get("/api/intercom/threads?with=all")).json()
-        assert _listed(page) == {waits, bug} and page["jobs"]["count"] == 0
+        assert _listed(page) == {waits, bug}
         page = (await http.get("/api/intercom/threads?with=all&archived=true")).json()
-        assert _listed(page) == {done, closed} and page["jobs"]["count"] == 1
+        assert _listed(page) == {done, closed}
         assert (await http.post("/api/intercom/threads/archive?read=1")).json() == {"archived": []}

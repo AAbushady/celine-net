@@ -64,7 +64,7 @@ block at the end of this file lists the words no UI string uses.
 | Export, Download, Upload | | everyone |
 | Favourites, Add to Favourites, Remove from Favourites | pictures and tracks kept as favourites (a Toolbar toggle, the heart) | Google Photos, Apple Photos "Favourites" |
 | Unread | a notification or message you have not seen (a dot, a count) | Gmail, Slack |
-| Direct messages | the Intercom Type filter for plain messages (beside Instructions, Results, Jobs, Notices, Triggers); not Messages, which is the archive place | Slack "Direct messages", Discord "Direct Messages" |
+| Direct messages | the Intercom Type filter for plain messages (beside Instructions, Results, Notices); not Messages, which is the archive place | Slack "Direct messages", Discord "Direct Messages" |
 | Play, Pause | the mini player of a track | everyone |
 | Copied | what Copy says once it has copied | ChatGPT, Claude "Copied" |
 | Variants, Variant | the pictures made for one picture block, pick one of four | Leonardo "Variations" |

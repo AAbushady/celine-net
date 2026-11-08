@@ -79,11 +79,11 @@ type ThreadGroup = {
   more: number
 }
 
-/** a page of GET /intercom/threads: job results are one count (null with a kind or a name) */
-export type ThreadsPage = { groups: ThreadGroup[]; jobs: { count: number; newest: number | null } | null; next: string | null }
+/** a page of GET /intercom/threads */
+export type ThreadsPage = { groups: ThreadGroup[]; next: string | null }
 
-/** `user` for the threads where something came to you, `all` for every thread (agent to agent too),
-    else a name or an address: every thread with them */
+/** `user` for the threads where something came to you, `all` for every thread you are in,
+    `guard` for Bastet's, else a name or an address: every thread with them that you are in */
 type ThreadsWith = string
 
 /** a bug report it filed: each one is its own thread (bugreports/store.py) */
@@ -93,6 +93,8 @@ type Recipient = { to: string; name: string; line: string | null }
 
 export const KINDS = ['message', 'brief', 'report', 'job', 'notice', 'trigger'] as const
 export type Kind = typeof KINDS[number]
+/** the kinds a thread you are in holds: jobs and triggers go between her own conversations */
+export const LISTED_KINDS: Kind[] = ['message', 'brief', 'report', 'notice']
 
 export const intercomApi = {
   threads: (q: { with: ThreadsWith; kind: Kind | null; unread?: boolean; archived?: boolean; limit?: number; cursor?: string | null }, signal?: AbortSignal) =>
