@@ -444,7 +444,7 @@ export function Celine({ active, status, sidebarOpen, onSidebar, onWork }: {
                      lead: <HerFace who={who} size="sm" speaking={convo.running} />,
                      title:
                        <span className="chat-who">
-                         {name}<MoodText mood={mood} />
+                         <span className="chat-who__name">{name}</span><MoodText mood={mood} />
                          {renaming === current?.id ? (
                            <InlineEdit value={conversationTitle} label="Rename conversation" onCancel={() => setRenaming(null)}
                                        onSave={t => { setRenaming(null); if (t && t !== conversationTitle) rename(current.id, t) }} />

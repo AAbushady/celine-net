@@ -84,7 +84,11 @@
   .chat-who { max-width: calc(100cqi - 2 * var(--s-3) - var(--h-md) - var(--face-sm) - 2 * var(--s-2) - var(--s-1) - var(--acts, 2) * var(--h-md)); }
   .chat-events { padding-left: 0; }
   .chat-greeting .chat-mood { max-width: 100%; white-space: normal; overflow-wrap: anywhere; text-overflow: clip; }
-  .chat-head__title { display: none; }
+  /* room for one thing: the conversation's title (the tab bar names her), else her name
+     and mood */
+  .chat-who:has(> .chat-head__title) { display: block; max-width: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chat-who:has(> .chat-head__title) > :is(.chat-who__name, .chat-mood) { display: none; }
+  .chat-head__title { display: inline; font-size: inherit; font-weight: inherit; letter-spacing: inherit; color: inherit; }
 }
 
 /* where Activity and Thoughts open: their Drawer is a column of the chat's row */
