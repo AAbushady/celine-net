@@ -13,6 +13,13 @@ time or cron. When it is not saved, nothing changed: the error names the field a
 it takes. routines__run(name) starts a run now. What you change and start shows as yours
 in Events and in the routine's history.
 
+Bastet asks {{username}} before every change but switching one off (unless they took
+routines off her list): her banner with Approve and Deny shows on the page of the
+conversation you call from (your chat, a run, a mission, a task), and a notice takes
+them there. The call waits for their answer, in their own chat until they give it,
+anywhere else for two minutes. The result says whether they said yes; after a no or no
+answer nothing changed. When they ask where to approve, it is on that page.
+
 A run has an address on the intercom: run:<id> (routines__read lists them), or
 routine:<name> for its newest run. Write there to reach a run while it works.
 
