@@ -62,7 +62,8 @@ class Box:
         self.name = f"test-shellboxd-{name}"
         docker("rm", "-f", self.name, check=False)
         docker("run", "-d", "--name", self.name, "--init", "--hostname", "shellbox",
-               "--cap-add", "SYS_PTRACE", "-v", f"{hash_file(key_hash)}:/etc/shellbox/key.hash:ro",
+               "--cap-add", "SYS_PTRACE", "--cap-drop", "NET_RAW", "--cap-drop", "MKNOD",
+               "-v", f"{hash_file(key_hash)}:/etc/shellbox/key.hash:ro",
                "-p", "127.0.0.1::8770", *run_args, IMAGE,
                *(command or []))
         if wait:

@@ -356,16 +356,21 @@ def _meant(name: str, missing: list[str], props: list[str]) -> str | None:
         iter(difflib.get_close_matches(name, props, 1, 0.5)), None)
 
 
+# some models send a list or an object as a JSON string
+_JSON = {"array": list, "object": dict}
+
+
 def _lenient(args: dict | None, schema: dict) -> dict | None:
-    """The arguments with a plain value written as a string read as its type where the
-    schema asks for one: "true"/"False" for a boolean, "10" for a number. Anything else
-    as it came, for _invalid to name."""
+    """The arguments with a value written as a string read as its type where the schema
+    asks for one: "true"/"False" for a boolean, "10" for a number, a JSON list or object
+    for a list or an object. Anything else as it came, for _invalid to name. The guard and
+    the tool both get this result, so what a step types stays visible to the guard."""
     if not isinstance(args, dict):
         return args
     props, out = schema.get("properties", {}), dict(args)
     for key, v in args.items():
         kind = _kind(props.get(key) or {})
-        if not isinstance(v, str) or kind not in ("boolean", "integer", "number"):
+        if not isinstance(v, str) or kind not in ("boolean", "integer", "number", *_JSON):
             continue
         t = v.strip()
         if kind == "boolean" and t.lower() in ("true", "false"):
@@ -374,6 +379,13 @@ def _lenient(args: dict | None, schema: dict) -> dict | None:
             out[key] = int(t)
         elif kind == "number" and re.fullmatch(r"-?\d+(\.\d+)?", t):
             out[key] = float(t) if "." in t else int(t)
+        elif kind in _JSON:
+            try:
+                read = json.loads(t)
+            except (ValueError, RecursionError):
+                continue
+            if isinstance(read, _JSON[kind]):
+                out[key] = read
     return out
 
 
@@ -385,8 +397,7 @@ def _takes(schema: dict) -> str:
                      for k, p in props.items()) or "no parameters"
 
 
-# lists and objects are left to the tools: several read a string as one (a comma list,
-# a JSON list in a string)
+# lists and objects are left to the tools: several read a string as one (a comma list)
 _FITS = {"string": (str,), "integer": (int,), "number": (int, float), "boolean": (bool,)}
 _WORD = {"string": "a string", "integer": "a whole number", "number": "a number",
          "boolean": "true or false"}

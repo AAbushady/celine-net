@@ -12,12 +12,14 @@ PACKAGE = Path(prompts.__file__).parent
 # what the reader passes to `fill`; a file not here takes no values
 FILLS = {
     "turns/compact.md": {"words": 100},
+    "turns/limit.md": {"limit": "100 steps"},
     "skills/mind_appraisal.md": {"emotions": "pleasure, arousal"},
     "sub_agents/fragment.md": {"agent_name": "a", "parent": "b", "cap": "1,966",
                                 "can": "read", "where": "here"},
     "sub_agents/drone.md": {"agent_name": "a", "parent": "b", "device": "Mac"},
     "schedules/final.md": {"note": ""},
     "schedules/note.md": {"path": "diary/today.md"},
+    "schedules/missing.md": {"lines": "- diary/today-review.md (Self-review): the run left no note"},
 }
 
 

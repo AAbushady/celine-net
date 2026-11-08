@@ -141,6 +141,13 @@ enabled = true
 # Queries and fetched URLs leave this machine; it is told never to put archive
 # content into them unless you asked. Only public http(s) addresses are fetched.
 
+[video]
+enabled = true
+# Watching videos (skills/video.py): a YouTube link or a film from Plex, fetched and watched
+# by the watch helper on the GPU machine (a server outside this repo, Settings, Features,
+# Watching), with picture and sound, or as stills and subtitles while the GPU is in use.
+# YouTube and Plex see the request; the helper is reached on the Docker host only.
+
 [email]
 enabled = true
 # One email account over IMAP that it manages (skills/mail.py). The server, user and password

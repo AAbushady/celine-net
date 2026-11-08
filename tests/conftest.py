@@ -119,6 +119,9 @@ def _scratch_data_dir(tmp_path, monkeypatch, _template_db):
     database is migrated with its row in it, as after a start."""
     import shutil
     monkeypatch.setenv("CELINE_DATA_DIR", str(tmp_path / "var"))
+    # the watch helper's default address is the Docker host, which a test container reaches:
+    # a closed port instead, so no probe meets a real helper
+    monkeypatch.setenv("CELINE_VIDEO_URL", "http://127.0.0.1:9")
     (tmp_path / "var").mkdir()
     shutil.copyfile(_template_db, tmp_path / "var" / "celine.db")
     shutil.copyfile(log_path(_template_db), tmp_path / "var" / "log.db")

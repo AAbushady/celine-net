@@ -2,19 +2,21 @@
 
 The stack is one compose project, meant for a service VM or any machine with Docker.
 It needs no GPU: the models run on other machines and you add them in the app. The
-reranker is optional in the stack (profile `reranker`, on the CPU or on this machine's
-GPU). Every other service except `celine` is optional too: see Profiles.
+embedder and the reranker can run in the stack instead (profiles `embedder`, on the CPU, and
+`reranker`, on the CPU or on this machine's GPU). Every other service except `celine` is
+optional too: see Profiles.
 
 ```
  browser ──► [reverse proxy, https] ──► celine :8766 (the only published port)
                                           ├─► discord-link :8768   the Discord account
                                           ├─► wa-link      :8767   the WhatsApp linked device
                                           ├─► searxng      :8080   web search
+                                          ├─► embedder     :8080   makes Topic search's vectors
                                           ├─► reranker     :8080   orders archive search results
                                           ├─► shellbox     :8770   Celine's own Linux computer
                                           ├─► browser      :8771   Celine's own Brave
                                           └─► model servers        added in Settings, Models
- volume "data":  app/   discord-link/   wa-link/   reranker/   shellbox/
+ volume "data":  app/   discord-link/   wa-link/   embedder/   reranker/   shellbox/
 ```
 
 | Service | Image | What it does |
@@ -23,6 +25,7 @@ GPU). Every other service except `celine` is optional too: see Profiles.
 | `discord-link` | `celine-discord-link` | Owns the Discord login, keeps a journal, serves Celine's Discord read tools. |
 | `wa-link` | `celine-wa-link` | Owns the WhatsApp linked device, keeps a journal, serves Celine's WhatsApp read tools. |
 | `searxng` | `searxng/searxng` | A private metasearch engine for Celine's web skill. |
+| `embedder` | `ggml-org/llama.cpp:server` | Qwen3-Embedding-0.6B on llama-server, for the Topic search task. Only with the profile `embedder`. |
 | `reranker` | `ggml-org/llama.cpp:server` | bge-reranker-v2-m3 on llama-server, for the Reranking task. Only with the profile `reranker`. |
 | `shellbox` | `celine-shellbox` | Celine's own Debian computer, where her terminals run. |
 | `browser` | `celine-browser` | Celine's own Brave on a screen of its own, with her home. |
@@ -30,8 +33,8 @@ GPU). Every other service except `celine` is optional too: see Profiles.
 ## Profiles
 
 `COMPOSE_PROFILES` in `.env` picks the optional services: `shellbox` (its computer and its
-morning reset), `browser`, `discord`, `whatsapp`, `web` (SearXNG) and `reranker`.
-`.env.example` lists the first five. The app starts with none of them; a service you do
+morning reset), `browser`, `discord`, `whatsapp`, `web` (SearXNG), `embedder` and
+`reranker`. `.env.example` lists the first five. The app starts with none of them; a service you do
 not start needs none of its keys, and its feature can be switched off in Settings,
 Features (docs/customize.md). `SHELLBOX_RESET_AT` (HH:MM in `TZ`, default `04:00`) is
 the hour of the shellbox's daily reset, run by the `shellbox-manager` service of the
@@ -86,13 +89,6 @@ features on. Everything can be changed later in Settings:
 When a connector loses its internet access, its page in Settings says so. Once it is
 back, press Sync now to catch up.
 
-### Images from a registry
-
-To pull prebuilt images instead of building: set `CELINE_IMAGES` (for example
-`registry.example.net/you/celine-net`) and `CELINE_TAG` in `.env`, `docker login`, then
-`docker compose pull && docker compose up -d --no-build`. The machine then needs only
-`docker-compose.yml`, `.env` and `config/searxng/settings.yml`.
-
 ## Where the data lives
 
 Everything is on one Docker volume, `data` (named `<project>_data` by Docker, for
@@ -106,6 +102,7 @@ folder.
 | `discord-link/` | `discord-link` at `/data` | `token` (the Discord login, mode 600), `state.db` (the journal, the chosen DMs and servers), `media/`, `lock` |
 | `wa-link/` | `wa-link` at `/data` | `store.db` (the linked device), `state/` (the journal, media, lock) |
 | `shellbox/` | `shellbox` at `/home/celine` | Celine's home in its shellbox: its notes, scripts, what it installed. A backup can leave it out. |
+| `embedder/` | `embedder` at `/models` | Only with the profile `embedder`: the model, downloaded on first start (about 0.64 GB). Nothing private; a backup can leave it out. |
 | `reranker/` | `reranker` at `/models` | Only with the profile `reranker`: the model, downloaded on first start (about 0.6 GB). Nothing private; a backup can leave it out. |
 
 Nothing secret is in an image or in the compose file. The keys in `.env` reach the
@@ -156,8 +153,7 @@ Back up first: a new version may migrate the databases, and an older version ref
 a database a newer one has migrated.
 
 ```sh
-git pull && docker compose up -d --build          # built here
-docker compose pull && docker compose up -d       # from the registry
+git pull && docker compose up -d --build
 ```
 
 The volume is kept. Migrations run at startup. The connectors keep their logins.
@@ -186,9 +182,9 @@ turn that starts before then sees it.
 | `CELINE_TRUSTED_PROXIES` | The reverse proxy's addresses or networks, comma separated. Only these may forward the client's address. Default: none. |
 | `CELINE_LOGIN=on`, `CELINE_HEALTH_PORT=8765` (in the image) | The login is always on in the container. The health check asks port 8765 on the container's loopback, which nothing outside can reach. |
 | `CELINE_METRICS_PORT=8772` (in the image) | Prometheus numbers at `GET /metrics` on their own port, loopback only. See Monitoring. |
-| `CELINE_IMAGES`, `CELINE_TAG` | Where the images come from and which tag. Default: built here as `celine/celine-*:latest`. |
 | `TZ` | The containers' time zone, default UTC: log lines, the Discord connector's dates and the app's day and hour counts. Set it to the zone chosen in Settings, General. |
 | `CELINE_SHELL_URL`, `CELINE_BROWSER_URL`, `CELINE_SEARXNG_URL` | Where the app reaches the shellbox, the browser and SearXNG, the first time: they seed Settings, Features (`var/settings/services.toml`), which wins once saved. It calls the boxes with `keys/shell.key` and `keys/browser.key`. |
+| `CELINE_VIDEO_URL` | Where the app reaches the watch helper (Settings, Features, Watching), the first time; without it, `http://host.docker.internal:8790`, the Docker host. It calls the helper with `keys/video.key`; the helper checks its hash, `keys/video.hash`. |
 | `/etc/shellbox/llm.key` (the shellbox, from `app/keys/shellbox-llm.key`) | The model proxy's key, the app's and the shellbox's (with `SHELLBOX_LLM_URL`, `http://celine:8766/llm`): its agent CLIs call its models with it. Not a provider key. |
 
 ## Shellbox
@@ -234,14 +230,15 @@ with a prompt that says so.
 - Only its home, `/home/celine` on the volume's `shellbox/` folder, is kept. pip and
   npm install into `~/.local` there. Everything else is the image.
 - None of the app's data is in there: no archive, no notebook, no keys, no login.
-- It keeps Docker's default capabilities and allows setuid, because sudo needs both.
-  `mem_limit`, `pids_limit` and `cpus` keep it from taking the machine down; `/tmp` is
-  a 2 GB tmpfs that counts against its memory.
-- Its own network: the app reaches it; the connectors and the search engine do not. The internet and your LAN are open to it.
-  If it can do without them, `internal: true` is the recommended setting: uncomment it under `networks: shellbox` (and
-  `browser`) in the compose file: the box then reaches only the app, so a web page or message
-  that tricked her into running a command cannot reach your LAN or the internet from there. It can no
-  longer install packages or fetch pages from the box then.
+- It keeps Docker's default capabilities but `NET_RAW` and `MKNOD`, and allows setuid,
+  because sudo needs them. `mem_limit`, `pids_limit` and `cpus` keep it from taking the
+  machine down; `/tmp` is a 2 GB tmpfs that counts against its memory.
+- It sits behind `shellbox-net` (`egress/firewall.sh`): the app reaches it; the connectors
+  and the search engine do not. It reaches the public internet. Your LAN and the Docker
+  host are dropped, and root in the box cannot change that.
+  If it can do without the internet too, uncomment `internal: true` under `networks: shellbox` (and
+  `browser`) in the compose file: the box then reaches only the app. It can no longer
+  install packages or fetch pages from the box then.
 
 Every morning the shellbox goes back to a fresh image: recreating the container throws
 away everything outside its home. The `shellbox-manager` service does it, inside the
@@ -309,8 +306,8 @@ Calls: `POST /do` (one action in a named tab, or a restart), `POST /control` (Ta
 - The agent's extensions: every folder in `~/.browser-extensions` with a `manifest.json`; each
   start loads them. A broken one hangs Brave's start, so the second launch goes without
   them, and its next result says so.
-- `seccomp:unconfined`, because Brave's own sandbox needs user namespaces, which
-  Docker's seccomp profile blocks; nobody has a shell in this box. Never
+- `browser/seccomp.json`, Docker's default profile plus `clone`, `unshare`, `setns` and
+  `chroot`, because Brave's own sandbox needs user namespaces, which the default blocks. Never
   `apparmor:unconfined`: where unprivileged user namespaces are restricted (Ubuntu
   24.04), Docker's default AppArmor profile is what lets Brave make them.
 - 3 GB, 2 CPUs, 1024 processes; `/tmp` is a 1 GB tmpfs inside that.
@@ -318,8 +315,9 @@ Calls: `POST /do` (one action in a named tab, or a restart), `POST /control` (Ta
   a second later, and kills a browserd whose `/health` stays silent for 10 s. Every start
   reopens its tabs at their last addresses (`~/.browser/celine-tabs.json`; not its
   throwaway tabs); its next result says so.
-- Its own network: only the app reaches it, no port is published. The internet and the
-  LAN are open to it. The shellbox's morning reset leaves it running.
+- It sits behind `browser-net`, the same firewall as the shellbox's: only the app reaches
+  it, no port is published. It reaches the public internet. Your LAN and the Docker host
+  are dropped. The shellbox's morning reset leaves it running.
 - The browser page's live view: the app relays Xvnc (port 5900 on that network, no
   password, since only the app is on it) to noVNC in the page. Xvnc takes keys, mouse
   and pasted text only while you have taken the browser.
@@ -359,6 +357,32 @@ anything but public http(s): `file://`, loopback, private LAN ranges, link-local
 and `.local`-style names are refused, redirects are checked hop by hop, and the address
 actually connected to is checked again (DNS rebinding). Limits: 20 s per fetch, 5 MB of
 HTML, 25 MB of PDF, 5 redirects.
+
+## Embedder
+
+Topic search finds messages by meaning, and needs an embedding model. The stack can run one
+itself: Qwen3-Embedding-0.6B on llama.cpp's `llama-server`, service `embedder`, with the
+profile `embedder` (`COMPOSE_PROFILES=embedder` in `.env`).
+
+- **First start.** The container downloads `Qwen/Qwen3-Embedding-0.6B-GGUF` (Q8_0, about
+  0.64 GB) from Hugging Face into the volume's `embedder/` folder, then serves it.
+  `llama-server`'s downloader can be slow (about 1 MB/s here, while plain `curl` from the
+  same container did 28 MB/s), so give it time; `docker compose ps` shows "starting"
+  meanwhile.
+- **In the app.** Settings, Models: add a provider of type llama-server at
+  `http://embedder:8080`. An empty Topic search role fills itself from it. A service you add
+  after the app is up starts with `docker compose up -d --no-deps embedder`, which leaves the
+  app running, so its vault stays unlocked.
+- **CPU and memory.** It takes `EMBEDDER_CPUS` cores (default 4) and at most
+  `EMBEDDER_MEM_LIMIT` (default 6g). On 4 cores of a desktop CPU it did about 450
+  tokens a second, and a search takes about 0.1 s. Memory grows with the square of an input's
+  tokens: 4000 tokens took about 5 GB, and 8900 filled a 12 GB limit. So it has one slot of
+  4096 tokens, and the app cuts an input the server refuses as too long until it fits. A CPU
+  does one input at a time anyway, so more slots buy nothing.
+- **Another model.** Set `EMBEDDER_MODEL` in `.env` and check `query_prefix` in
+  `config/kb.toml`, which fits Qwen3-Embedding. The larger 4B took 148 s for one batch of 128
+  passages on 4 cores, and four at once ran past the app's 300 s limit. A larger model needs
+  more cores or a GPU. A model with other vectors rebuilds the index.
 
 ## Reranker
 
@@ -494,16 +518,10 @@ other branches build nothing. A push runs only the jobs whose files changed.
   master.
 
 GitHub Actions: `.github/workflows/test.yml` runs the gates on every push and pull
-request; `images.yml` builds the six images on master and on a `v*` tag and pushes them
-to `ghcr.io/<owner>/celine-net/celine-*`, tagged `latest` (master), the tag as pushed
-(`v1.2`) and the commit. `CELINE_TAG=v1.2` keeps a machine on a release; `CHANGELOG.md`
-says what each one changed.
+request.
 
-To pull them, set `CELINE_IMAGES=<registry>` in `.env` (the project's
-`$CI_REGISTRY_IMAGE`, for example `registry.example.net/you/celine-net`) and
-`CELINE_TAG` when not `latest`, then `docker login <registry>`. To build one yourself
-from the repository root: `docker build -f wa-link/Dockerfile .`. After changing the
-dependencies of discord-link, run `uv lock` in `connectors/discord`.
+To build one image yourself from the repository root: `docker build -f wa-link/Dockerfile .`.
+After changing the dependencies of discord-link, run `uv lock` in `connectors/discord`.
 
 ## Monitoring
 

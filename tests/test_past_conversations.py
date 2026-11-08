@@ -85,6 +85,38 @@ async def test_a_day_is_an_index_a_read_is_a_slice_and_a_tool_call_reads_raw(sto
     assert (await skill.read_tool_call(ctx, "nope")).is_error
 
 
+async def test_a_read_back_marks_where_a_result_took_an_image(store):
+    """A screen meant to be seen went to the model after its result's text; the stored
+    text holds no image, so both reads say one was there."""
+    cfg = load()
+    skill = PastConversations(cfg)
+    a = await conversations.create(store, "Looks")
+    here = await conversations.create(store)
+    shot = '{"see": true, "shot": {"id": "f1", "sha256": "x"}}'
+
+    def chat(c):
+        m = tree.append(c, store, a, None, "user", "look at it", "user")
+        r = tree.append(c, store, a, m["id"], "assistant", "", "model")
+        for cid_, display in (("s1", shot), ("s2", None)):
+            res = tree.append(c, store, a, r["id"], "tool", "The screen is in the image.",
+                              "model")
+            c.execute("INSERT INTO tool_calls(id, message_id, result_message_id, name, "
+                      "arguments, state, display) VALUES(?,?,?,?,?,?,?)",
+                      (cid_, r["id"], res["id"], "browser__look", '{"what": "screen"}', "ok",
+                       display))
+    await store.write(chat)
+    ctx = ToolContext(conversation_id=here, turn_id="t", tool_call_id="x", store=store,
+                      config=cfg, emit=None)
+    line = "[an image came with this result to the model; a read-back holds its text only]"
+    names = (await skill.read(ctx, a[:8])).content
+    assert "call s1 browser__look ok, an image with its result" in names
+    assert "call s2 browser__look ok\n" in names + "\n"
+    full = (await skill.read(ctx, a[:8], tools="full")).content
+    assert full.count(line) == 1
+    assert (await skill.read_tool_call(ctx, "s1")).content.endswith(line)
+    assert line not in (await skill.read_tool_call(ctx, "s2")).content
+
+
 async def test_read_and_search_give_times_in_the_apps_time_zone(store):
     cfg = load()
     cfg.timezone = "Europe/Berlin"

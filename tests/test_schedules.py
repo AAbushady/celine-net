@@ -643,7 +643,7 @@ async def test_the_api_ships_four_schedules_and_edits_previews_runs_and_deletes(
 
 class Writer(FakeBackend):
     """A real run: a lead-in line beside the notebook__write of
-    the whole note, which ends its turn (the runner's quiet end). `script` maps words of
+    the whole note, then its last reply. `script` maps words of
     the newest message to its step, a list of events or a callable that makes it."""
 
     def __init__(self, script: dict):
@@ -687,20 +687,33 @@ async def _one_run(store, cfg, backend, clock=None) -> dict:
 async def test_a_note_she_wrote_is_the_result_not_the_line_beside_the_write(store, cfg):
     review = "# Self-review\n\nWent well: the search.\nDid not: the mail."
     backend = Writer({"Review the night": [TextDelta("Writing the review now."),
-                                           *_write(NOTE, review)]})
+                                           *_write(NOTE, review)],
+                      "Saved": [TextDelta("It is written."), Done(reason="stop")]})
     row = await _one_run(store, cfg, backend)
     note = (cfg.her.notebook / NOTE).read_text()
     assert note.endswith(review), "nothing is written over the note it wrote"
     assert "Writing the review now" not in note
     assert row["result"] == review, "the note is the result the next run reads"
-    assert len(backend.calls) == 1, "its turn ended with the write, no step more"
+    assert "It is written" not in note, "her last reply adds nothing to it"
+    assert len(backend.calls) == 2, "the write did not end its turn"
 
 
-async def test_a_turn_that_ends_with_another_write_leaves_the_note_unwritten(store, cfg):
-    """Her lead-in beside a write of another note is no answer: the note is not written,
-    the run says so, the lead-in stays its result as it came."""
+async def test_a_lead_in_beside_another_write_goes_on_to_the_answer(store, cfg):
+    """A write of another note does not end the run's turn: its answer is the note."""
+    backend = Writer({"Review the night": [TextDelta("Merged the notes, now the review."),
+                                           *_write("thoughts/x.md", "The merge.")],
+                      "Saved": [TextDelta("The review."), Done(reason="stop")]})
+    row = await _one_run(store, cfg, backend)
+    assert (cfg.her.notebook / NOTE).read_text().endswith("The review.")
+    assert row["state"] == "done" and row["result"] == "The review." and not row["error"]
+
+
+async def test_nothing_said_after_another_write_leaves_the_note_unwritten(store, cfg):
+    """Her lead-in beside a write of another note is no answer: with nothing after it the
+    note is not written, the run says so, the lead-in stays its result as it came."""
     backend = Writer({"Review the night": [TextDelta("Merged the notes:"),
-                                           *_write("thoughts/x.md", "The merge.")]})
+                                           *_write("thoughts/x.md", "The merge.")],
+                      "Saved": [Done(reason="stop")]})
     row = await _one_run(store, cfg, backend)
     assert not (cfg.her.notebook / NOTE).exists()
     assert row["state"] == "done" and row["result"] == "Merged the notes:"
@@ -752,7 +765,8 @@ async def test_a_note_she_wrote_again_keeps_its_text_not_the_closing_line(store,
     note.parent.mkdir(parents=True, exist_ok=True)
     note.write_text(review)
     backend = Writer({"Review the night": [TextDelta("Got the whole picture now."),
-                                           *_write(NOTE, review)]})
+                                           *_write(NOTE, review)],
+                      "Saved": [TextDelta("It is written."), Done(reason="stop")]})
     row = await _one_run(store, cfg, backend)
     from celine.skills.notebook import unstamped
     assert unstamped(note.read_text()) == review, "the note she wrote stays as she wrote it"
@@ -778,7 +792,8 @@ async def test_a_log_note_she_adds_to_gives_only_what_she_added(store, cfg):
     backend = Writer({"Review the night": [TextDelta("Adding tonight."), *[
         ToolCallDelta(index=0, id="w", name="notebook__write", arguments=json.dumps(
             {"path": NOTE, "content": added, "mode": "append",
-             "summary": "Reviews."})), Done(reason="tool_calls")]]})
+             "summary": "Reviews."})), Done(reason="tool_calls")]],
+        "Saved": [TextDelta("Added."), Done(reason="stop")]})
     row = await _one_run(store, cfg, backend)
     assert note.read_text().endswith("The night before.\n" + added), "nothing more appended"
     assert row["result"] == added.strip(), "the result is tonight's part"
@@ -886,3 +901,32 @@ async def test_routines_list_and_read_tell_a_run_in_the_app_zone(store, cfg):
     listed = (await skill.list(ctx)).content
     assert listed.endswith(", last run Fri 30 Oct 02:00 waiting"), listed
     assert "- run:r Fri 30 Oct 02:00 waiting" in (await skill.read(ctx, "world")).content
+
+
+async def test_a_later_run_hears_which_of_tonights_notes_are_not_there(store, cfg, tmp_path):
+    """A run done without its note: its result carries the error, and a later run of the
+    night is told which notes are missing, with why, so it does not read an empty path as
+    if it held something. A note that is there, a skipped run and its own are not listed."""
+    cfg.schedules = {"review": _s("review", note="diary/{{date}}-review.md"),
+                     "world": _s("world", note="diary/{{date}}-world.md"),
+                     "dream": _s("dream", note="dream/{{date}}.md"),
+                     "merge": _s("merge", note="diary/{{date}}-merge.md")}
+    root = tmp_path / "nb"
+    (root / "diary").mkdir(parents=True)
+    (root / "diary" / "2026-10-10-world.md").write_text("news")
+    lost = ("The note diary/2026-10-10-review.md was not written: the run ended with a tool call "
+            "and no answer after it.")
+    await store.write(lambda c: c.executemany(
+        "INSERT INTO runs(id, schedule, label, slot, night, state, result, error, created_at) "
+        "VALUES(?,?,?,?,?,?,?,?,'x')",
+        [("r1", "review", "Review", "1", "2026-10-10", "done", "Reviewing the night.", lost),
+         ("r2", "world", "World", "2", "2026-10-10", "done", "The news.", None),
+         ("r3", "dream", "Dream", "3", "2026-10-10", "skipped", None, None)]))
+    res = await store.read(lambda c: runs_mod.results(c, "2026-10-10"))
+    assert res["review"] == f"Reviewing the night.\n\n({lost})"
+    assert res["world"] == "The news."
+    gone = await store.read(lambda c: runs_mod.unwritten(
+        c, cfg, "2026-10-10", date(2026, 10, 10), "merge", root))
+    assert gone == [f"- diary/2026-10-10-review.md (Review): {lost}"]
+    assert await store.read(lambda c: runs_mod.unwritten(
+        c, cfg, "2026-10-10", date(2026, 10, 10), "review", root)) == [], "its own is not listed"

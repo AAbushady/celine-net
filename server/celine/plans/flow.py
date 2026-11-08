@@ -17,8 +17,8 @@ def stops(plan: dict | None, calls: list[dict]) -> bool:
 
 
 def keeps_going(plan: dict | None) -> bool:
-    """A step is open and it is not waiting on the user: a quiet step does not end the
-    turn (turns/runner.py), a mission gets its next turn (missions/watch.py)."""
+    """A step is open and it is not waiting on the user: a mission gets its next turn
+    (missions/watch.py)."""
     return plans.is_open(plan) and not plan["waiting"]
 
 

@@ -18,7 +18,8 @@ first that does not, in words:
 2. the model of its role can answer now, the Router says ("Waiting for <model>"); it
    starts by itself when the model comes back, the same night or days later;
 3. no turn a person waits on is live: a chat (not a trigger's), a turn the user
-   started in a mission ("Waiting until your chat is done"); a mission's
+   started in a mission ("Waiting until your chat is done"), unless it holds on the
+   user's answer to an approval; a mission's
    turns that go on by themselves hold no run unless Routines wait for missions is on
    (Settings, Advanced);
 4. no other run is running ("While Self-review runs"): one at a time, one model server.
@@ -45,12 +46,14 @@ that is there already gets it appended under "## <date> <label>" (run_date). A n
 wrote itself (a notebook__write or notebook__edit of that path that ended ok in the run)
 is the result instead, and the app writes nothing over it (only what it
 added, when it added to its end). The agent's words beside the write are a lead-in, not the
-result (a turn ends with that step, skills.ToolSpec needs_answer). A turn that ends with
-a tool call that is not the note's write has no answer: the run is done with the lead-in
+result. A turn that ends with no answer after its last tool call (an empty last reply, the
+step limit) and without the note's write: the run is done with the lead-in
 as its result, the note is not written, and the run's `error` says so. A note it wrote
 and then went on past (ok tool calls after its last write of it, the note older than the
 last of them) is the result still, and the run's `error` says how many calls came after
-it. The run is over
+it. A later run of the same night reads that error under the result (`results`), and its
+prompt ends with the night's notes that are not in the notebook, each with why (`unwritten`,
+missing.md), so it does not read a path that is empty as if it held something. The run is over
 when its conversation and its sub-agents are quiet and every sub-agent has reported
 (looked at after every turn or job end, the dispatcher's `on_end`). Every run first keeps the
 night's backups (schedules/backups.py: once a night, the later runs find them made).
@@ -118,9 +121,9 @@ RULE = ("This runs in the background: {{username}} is not here and reads nothing
         "live. {final} If something needs {{username}} to act or to know, start a chat "
         "for them with intercom__start_chat: a title and what they read first, short and "
         "complete.")
-PARTNER_LINE = ("In this run you talk with {who} first. Their lines come to you in this "
-                "conversation: answer here, in your own words. intercom__send reaches "
-                "{{username}}, not {who}.")
+PARTNER_LINE = ("In this run you talk with {who} first. {who} answers after your reply "
+                "ends, as a new message in this conversation: write your line as your "
+                "answer and end the reply. intercom__send reaches {{username}}, not {who}.")
 FINAL = "The talk with {who} is over. Now give your final answer to what this run asks of you. {final}"
 ASKED = "What {{name}} was asked for this run:"
 LAST = "This is your last line: give your closing line now."
@@ -219,25 +222,55 @@ def _insert(c: sqlite3.Connection, store, cfg, name: str, slot: datetime,
 
 def results(c: sqlite3.Connection, night: str) -> dict[str, str]:
     """{{result:<schedule>}} of every schedule with a finished run that night: its
-    answer, or "(no result: <why>)"; the latest run of a schedule counts."""
+    answer, with the run's error under it when it has one (its note not written, or
+    written before its last calls), or "(no result: <why>)"; the latest run of a
+    schedule counts."""
     out: dict[str, str] = {}
     for r in c.execute("SELECT schedule, state, result, error, reason FROM runs WHERE "
                        "night = ? AND state IN ('done', 'failed', 'skipped', 'stopped') "
                        "ORDER BY slot",
                        (night,)):
-        out[r["schedule"]] = r["result"] if r["state"] == "done" and r["result"] else \
-            f"(no result: {r['error'] or r['reason'] or 'no answer'})"
+        if r["state"] == "done" and r["result"]:
+            out[r["schedule"]] = r["result"] + (f"\n\n({r['error']})" if r["error"] else "")
+        else:
+            out[r["schedule"]] = f"(no result: {r['error'] or r['reason'] or 'no answer'})"
     return out
 
 
-def waited_on(c: sqlite3.Connection, missions: bool = False) -> bool:
+def unwritten(c: sqlite3.Connection, cfg, night: str, day: date, own: str, root) -> list[str]:
+    """The notes of that night's finished runs (done, failed or stopped; the latest run
+    of a schedule counts) that are not in the notebook at `root`, but `own`'s: one line
+    each, the note, its routine and why, from the run's error or reason."""
+    res = results(c, night)
+    last: dict[str, sqlite3.Row] = {}
+    for r in c.execute("SELECT schedule, state, error, reason FROM runs WHERE night = ? AND "
+                       "state IN ('done', 'failed', 'stopped') ORDER BY slot", (night,)):
+        last[r["schedule"]] = r
+    out = []
+    for name, r in last.items():
+        s = (getattr(cfg, "schedules", None) or {}).get(name)
+        if name == own or s is None or not s.note:
+            continue
+        path = fill(cfg, s.note, day, res)
+        if root is not None and (root / path).is_file():
+            continue
+        out.append(f"- {path} ({shown(s)}): {r['error'] or r['reason'] or 'the run left no note'}")
+    return out
+
+
+def waited_on(c: sqlite3.Connection, missions: bool = False,
+              parked: frozenset[str] = frozenset()) -> bool:
     """A turn a person waits on is live (WAITED_ON): in a mission the turns the user
-    started, every one of its turns with `missions` (Routines wait for missions)."""
+    started, every one of its turns with `missions` (Routines wait for missions). `parked`:
+    conversations whose turn holds on the user's answer to an approval, which can take all
+    night and asks the model nothing until then; a run may go on meanwhile, behind that
+    turn's next request."""
     mission = "1" if missions else "t.origin = 'user'"
+    skip = f" AND t.conversation_id NOT IN ({','.join('?' * len(parked))})" if parked else ""
     return c.execute(
         f"SELECT 1 FROM turns t JOIN conversations c ON c.id = t.conversation_id "
-        f"WHERE {WAITED_ON.format(mission=mission)} AND t.state IN {LIVE_SQL} LIMIT 1"
-    ).fetchone() is not None
+        f"WHERE {WAITED_ON.format(mission=mission)} AND t.state IN {LIVE_SQL}{skip} LIMIT 1",
+        tuple(parked)).fetchone() is not None
 
 
 def idle(c: sqlite3.Connection, at: datetime, missions: bool = False) -> bool:
@@ -499,7 +532,9 @@ class Scheduler:
             return
         waiting.sort(key=lambda r: (r["night"], depth(schedules, r["schedule"]), r["slot"]))
         missions = bool(self.app.cfg.r("routines_wait_for_missions"))
-        busy = await store.read(lambda c: waited_on(c, missions))
+        asks = getattr(getattr(self.app, "approvals", None), "waiting", None) or {}
+        parked = frozenset(a.conversation for a in asks.values())
+        busy = await store.read(lambda c: waited_on(c, missions, parked))
         from ..guard.freeze import frozen
         cold = await frozen(store) is not None
         unused = await store.read(lambda c: idle(c, self.now(), missions))
@@ -642,13 +677,18 @@ class Scheduler:
             start = self._note_text(note)
             if not fresh and start is not None and self._note_touched(note, started):
                 start = None
+            if fresh:
+                prompt = fill(cfg, s.prompt, day, res, await extras(self.app, s.prompt, night))
+                # tonight's notes that earlier runs left out: nothing there to read
+                root = cfg.her.notebook if getattr(cfg, "her", None) else None
+                gone = await store.read(lambda c: unwritten(c, cfg, r["night"], day, s.name, root))
+                if gone:
+                    prompt += "\n\n" + prompts.fill(cfg, __file__, "missing.md", lines="\n".join(gone))
             if not fresh:
                 answer, final = await self._resume(cid)
             elif s.partner:
-                prompt = fill(cfg, s.prompt, day, res, await extras(self.app, s.prompt, night))
                 answer, final = await self._dialogue(rid, s, cid, prompt, day, res, where)
             else:
-                prompt = fill(cfg, s.prompt, day, res, await extras(self.app, s.prompt, night))
                 answer, final = await self._turn(cid, "system:schedules", "\n\n".join(
                     [prompt, cfg.substitute(RULE.replace("{final}", where))]), "trigger",
                     {"run": rid})

@@ -145,6 +145,24 @@ async def test_a_sub_agent_asks_its_parent_and_the_answer_wakes_it_in_the_thread
     assert tuple(row) == (f"agent:{sub}", asked["intercom_id"], "folder")
 
 
+async def test_a_reply_to_her_own_message_goes_where_that_one_went(store):
+    """Her own thread to the user, answered with reply_to and no to: it reaches the user
+    in that thread, never her own conversation."""
+    from celine.intercom import Intercom
+    ic = Intercom(store)
+    parent, _ = await _family(store)
+    filed = await ic.send(f"agent:{parent}", "user", "Bug #13", subject="Bug #13")
+    more = await ic.send(f"agent:{parent}", "", "a scope correction",
+                         reply_to=filed["intercom_id"])
+    row, mine = await store.read(lambda c: (
+        tuple(c.execute("SELECT to_addr, thread FROM intercom WHERE id=?",
+                        (more["intercom_id"],)).fetchone()),
+        c.execute("SELECT count(*) FROM intercom_deliveries WHERE intercom_id=? AND "
+                  "conversation_id=?", (more["intercom_id"], parent)).fetchone()[0]))
+    assert row == ("user", filed["intercom_id"]) and mine == 0
+    assert await _queued(store, parent) == 0, "nothing wakes her"
+
+
 async def test_the_users_reply_marks_the_thread_read(store):
     """A message waits for the user until they reply (or dismiss it), not until they
     open the thread."""
@@ -524,3 +542,91 @@ async def test_her_chats_are_one_group_for_the_user(store, cfg):
             [("Celine", 2, sorted([f"agent:{a}", f"agent:{b}"]))]
         both = (await http.get("/api/intercom/threads?with=Celine")).json()
         assert [len(g["items"]) for g in both["groups"]] == [2]
+
+
+async def _archive_app(store):
+    import httpx
+    from fastapi import FastAPI
+    from celine.intercom import api as intercom_api
+    app = FastAPI()
+    app.state.services = Services()
+    app.include_router(intercom_api.router)
+    app.state.services.store = store
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t")
+
+
+def _listed(page) -> set[int]:
+    return {t["thread"] for g in page["groups"] for t in g["items"]}
+
+
+async def test_archive_moves_a_thread_out_of_the_lists_until_something_newer_lands(store):
+    """All kept every thread for good, done or not. An archived thread is read and out of
+    the lists; her own listing still has it, and a newer message brings it back."""
+    from celine.intercom import Intercom, store as rows
+    ic = Intercom(store)
+    cid = await conversations.create(store)
+    a = (await ic.send(f"agent:{cid}", "user", "backup failed"))["intercom_id"]
+    b = (await ic.send(f"agent:{cid}", "user", "second"))["intercom_id"]
+    async with await _archive_app(store) as http:
+        assert (await http.post("/api/intercom/threads/archive",
+                                json={"threads": [a, 99999]})).json() == {"archived": [a]}
+        assert await store.read(lambda c: rows.waiting(c, "user")) == 1, "it was read"
+        assert _listed((await http.get("/api/intercom/threads?with=all")).json()) == {b}
+        assert _listed((await http.get("/api/intercom/threads?with=all&archived=true")).json()) == {a}
+        assert (await http.get(f"/api/intercom?thread={a}")).json()["archived"] is True
+        mine = await store.read(lambda c: rows.threads(c, f"agent:{cid}"))
+        assert {t["thread"] for t in mine} == {a, b}, "her listing keeps it"
+
+        await ic.send(f"agent:{cid}", "user", "it failed again", reply_to=a)
+        assert _listed((await http.get("/api/intercom/threads?with=all")).json()) == {a, b}
+        assert _listed((await http.get("/api/intercom/threads?with=all&archived=true")).json()) == set()
+        assert await store.read(lambda c: rows.waiting(c, "user")) == 2
+        assert (await http.get(f"/api/intercom?thread={a}")).json()["archived"] is False
+
+        await http.post("/api/intercom/threads/archive", json={"threads": [a]})
+        assert (await http.post("/api/intercom/threads/restore",
+                                json={"threads": [a, b]})).json() == {"restored": [a]}
+        assert _listed((await http.get("/api/intercom/threads?with=all")).json()) == {a, b}
+
+
+async def test_a_scheduled_message_brings_an_archived_thread_back_when_it_lands(store):
+    from celine.intercom import Intercom, store as rows
+    ic = Intercom(store)
+    cid = await conversations.create(store)
+    a = (await ic.send(f"agent:{cid}", "user", "soon"))["intercom_id"]
+    later = await store.write(lambda c: rows.insert(
+        c, f"agent:{cid}", "user", "message", "now", reply_to=a, due_at="2999-01-01T00:00:00.000+00:00"))
+    async with await _archive_app(store) as http:
+        await http.post("/api/intercom/threads/archive", json={"threads": [a]})
+        assert _listed((await http.get("/api/intercom/threads?with=all")).json()) == set()
+        await store.write(lambda c: c.execute(
+            "UPDATE intercom SET due_at='2000-01-01T00:00:00.000+00:00' WHERE id=?", (later,)))
+        assert _listed((await http.get("/api/intercom/threads?with=all")).json()) == {a}
+        assert await store.read(lambda c: rows.waiting(c, "user")) == 1
+
+
+async def test_archive_read_takes_what_is_done_and_leaves_what_is_not(store):
+    """What waits stays, and so does an open bug report: read is not done. A closed one
+    goes, and job results leave their count."""
+    from celine.intercom import Intercom, store as rows
+    ic = Intercom(store)
+    cid = await conversations.create(store)
+    me = f"agent:{cid}"
+    waits = (await ic.send(me, "user", "answer me"))["intercom_id"]
+    done = (await ic.send(me, "user", "fyi"))["intercom_id"]
+    bug = (await ic.send(me, "user", "open bug"))["intercom_id"]
+    closed = (await ic.send(me, "user", "closed bug"))["intercom_id"]
+    job = await store.write(lambda c: rows.insert(c, me, "user", "job", "made it"))
+    await store.write(lambda c: rows.read(c, [done, bug, closed]))
+    await store.write(lambda c: c.executemany(
+        "INSERT INTO bugreports(title, severity, what, state, created_at, thread) "
+        "VALUES('t', 'low', 'w', ?, '2026-01-01T00:00:00.000+00:00', ?)",
+        [("open", bug), ("closed", closed)]))
+    async with await _archive_app(store) as http:
+        got = (await http.post("/api/intercom/threads/archive?read=1")).json()["archived"]
+        assert set(got) == {done, closed, job}
+        page = (await http.get("/api/intercom/threads?with=all")).json()
+        assert _listed(page) == {waits, bug} and page["jobs"]["count"] == 0
+        page = (await http.get("/api/intercom/threads?with=all&archived=true")).json()
+        assert _listed(page) == {done, closed} and page["jobs"]["count"] == 1
+        assert (await http.post("/api/intercom/threads/archive?read=1")).json() == {"archived": []}

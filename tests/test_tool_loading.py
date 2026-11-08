@@ -327,6 +327,23 @@ def test_the_name_form_goes_through_every_backend():
          "input_schema": {"type": "object"}}]
 
 
+def test_a_list_or_object_in_a_json_string_is_read_as_one_and_the_guard_sees_it():
+    from celine.guard import facts
+    from celine.skills.browser import steps_of
+    from celine.turns.tools import _lenient
+    schema = {"properties": {"steps": {"type": "array"}, "where": {"type": "object"},
+                             "name": {"type": "string"}}}
+    sent = '[{"do": "type", "target": "e11", "text": "hello"}]'
+    args = _lenient({"steps": sent, "where": '{"a": 1}', "name": sent}, schema)
+    assert args == {"steps": [{"do": "type", "target": "e11", "text": "hello"}],
+                    "where": {"a": 1}, "name": sent}, "a string stays one"
+    assert facts.typed(args["steps"]) == ["hello"]
+    assert steps_of(args["steps"])[0]["do"] == "type"
+    for kept in ("a, b", "[not json", '{"a": 1}', "[" * 100_000):
+        assert _lenient({"steps": kept}, schema) == {"steps": kept}
+    assert _lenient({"where": "[1]"}, schema) == {"where": "[1]"}
+
+
 def test_a_plain_value_in_a_string_is_read_as_its_type_and_a_wrong_name_gets_a_hint():
     from celine.turns.tools import _lenient, _meant
     schema = {"properties": {"unread": {"type": "boolean"}, "limit": {"type": "integer"},

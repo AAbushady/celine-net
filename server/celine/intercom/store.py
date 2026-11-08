@@ -21,18 +21,20 @@ def insert(c: sqlite3.Connection, from_addr: str, to: str, kind: str, text: str,
            store=None, turn: str | None = None) -> int:
     """One message and a pending delivery per recipient, inside a write. A reply joins
     the thread of the message it answers and keeps its subject; without `to` it goes to
-    the sender of that message. `turn`: the sender's turn; without reply_to the message
-    answers in a thread anyway (follows).
+    the sender of that message, and a reply to the sender's own message goes where that
+    one went. `turn`: the sender's turn; without reply_to the message answers in a
+    thread anyway (follows).
     -> its id."""
     thread = None
     if reply_to is not None:
-        r = c.execute("SELECT thread, subject, from_addr FROM intercom WHERE id=?",
+        r = c.execute("SELECT thread, subject, from_addr, to_addr FROM intercom WHERE id=?",
                       (reply_to,)).fetchone()
         if r is None:
             raise KeyError(reply_to)
         thread, subject = r["thread"], subject or r["subject"]
         if not to.strip():
-            to = r["from_addr"]       # a host script's: resolve makes it the user
+            # a host script's sender: resolve makes it the user
+            to = r["to_addr"] if r["from_addr"] == from_addr else r["from_addr"]
     stored, targets = resolve(c, to, from_addr, store)
     if reply_to is None and turn is not None:
         reply_to = follows(c, from_addr, stored, turn)
@@ -305,10 +307,23 @@ def _mine(addr: str | None, received: bool) -> tuple[str, list]:
 
 GUARD = "system:guard"
 
+# SQL, the threads archived now: nothing newer than `through` landed in them and nothing in
+# them waits for the user. Its ? is now.
+_ARCHIVED = ("(SELECT a.thread FROM intercom_archive a WHERE "
+             "(SELECT max(t.id) FROM intercom t WHERE t.thread = a.thread) <= a.through AND "
+             "NOT EXISTS (SELECT 1 FROM intercom u JOIN intercom_deliveries d ON "
+             "d.intercom_id = u.id WHERE u.thread = a.thread AND d.to_addr = 'user' AND "
+             "d.state = 'pending' AND (u.due_at IS NULL OR u.due_at <= ?)))")
+
+
+def _shelf(archived: bool) -> str:
+    """SQL: message `i` is in an archived thread, or in none. Its ? is now."""
+    return f"coalesce(i.thread, 0) {'IN' if archived else 'NOT IN'} {_ARCHIVED}"
+
 
 def threads(c: sqlite3.Connection, addr: str | None, unread: bool = False,
             reader: str | None = None, received: bool = False, kind: str | None = None,
-            with_: str | None = None) -> list[dict]:
+            with_: str | None = None, archived: bool | None = None) -> list[dict]:
     """The threads `addr` wrote in or received in (None: every thread; `received`: only
     the messages that came to `addr`, so the count and the newest are of those), newest
     activity first, as {thread, last (its newest id), count, unread (waiting for
@@ -318,7 +333,8 @@ def threads(c: sqlite3.Connection, addr: str | None, unread: bool = False,
     The user's plain chat messages are never listed; cancelled ones are (marked by the
     newest's state). `with_`: only the threads someone is in by that name, address or
     conversation id ("user": the user). The name leaves out the app's senders when
-    someone else is in it ("nightly sweep", not "the app, nightly sweep")."""
+    someone else is in it ("nightly sweep", not "the app, nightly sweep"). `archived`: only
+    the threads the user archived, or none of them; None, as her own listing: both."""
     ts, reader = now(), reader or addr
     mine, margs = _mine(addr, received)
     where = f"NOT {PLAIN} AND NOT {BACKGROUND} AND {mine}"
@@ -328,6 +344,9 @@ def threads(c: sqlite3.Connection, addr: str | None, unread: bool = False,
         args.append(kind)
     else:
         where += " AND i.kind <> 'job'"
+    if archived is not None:
+        where += f" AND {_shelf(archived)}"
+        args.append(ts)
     rows = c.execute(
         f"SELECT i.thread, max(i.id) AS last, count(*) AS n, sum({_UNREAD}) AS unread, "
         "(SELECT group_concat(a, ', ') FROM (SELECT t.from_addr || ', ' || t.to_addr AS a "
@@ -374,9 +393,46 @@ def waiting_ids(c: sqlite3.Connection, addr: str) -> list[int]:
         f"NOT {PLAIN} AND i.kind <> 'job' AND {_UNREAD}", [*tids, addr, now()])]
 
 
-def jobs(c: sqlite3.Connection, addr: str | None, received: bool = False) -> dict:
+def is_archived(c: sqlite3.Connection, tid: int) -> bool:
+    return c.execute(f"SELECT ? IN {_ARCHIVED}", (tid, now())).fetchone()[0] == 1
+
+
+def archive(c: sqlite3.Connection, tids: list[int]) -> list[int]:
+    """These threads out of the lists until something newer lands in them. -> those that
+    exist."""
+    out = []
+    for tid in tids:
+        through = c.execute("SELECT max(id) FROM intercom WHERE thread=?", (tid,)).fetchone()[0]
+        if through is not None:
+            c.execute("INSERT INTO intercom_archive(thread, through, archived_at) VALUES(?,?,?) "
+                      "ON CONFLICT(thread) DO UPDATE SET through=excluded.through, "
+                      "archived_at=excluded.archived_at", (tid, through, now()))
+            out.append(tid)
+    return out
+
+
+def restore(c: sqlite3.Connection, tids: list[int]) -> list[int]:
+    """These threads back in the lists. -> those that were archived."""
+    return [t for t in tids
+            if c.execute("DELETE FROM intercom_archive WHERE thread=?", (t,)).rowcount]
+
+
+def archivable(c: sqlite3.Connection) -> list[int]:
+    """What Archive read takes: the threads All lists where nothing waits for the user, and
+    the job results. A thread whose bug report stands open is not done, read or not."""
+    plain = threads(c, None, reader="user", archived=False)
+    found = [t["thread"] for t in plain if not t["unread"]]
+    found += [t["thread"] for t in threads(c, None, reader="user", kind="job", archived=False)]
+    kept = {r[0] for r in c.execute("SELECT thread FROM bugreports WHERE state = 'open'")}
+    return [t for t in dict.fromkeys(found) if t is not None and t not in kept]
+
+
+def jobs(c: sqlite3.Connection, addr: str | None, received: bool = False,
+         archived: bool | None = None) -> dict:
     """The job results among what `addr` wrote or received: {count, newest}."""
     mine, args = _mine(addr, received)
+    if archived is not None:
+        mine, args = f"{mine} AND {_shelf(archived)}", [*args, now()]
     r = c.execute(f"SELECT count(*), max(i.id) FROM intercom i WHERE i.kind = 'job' AND "
                   f"i.cancelled_at IS NULL AND {mine}", args).fetchone()
     return {"count": r[0], "newest": r[1]}

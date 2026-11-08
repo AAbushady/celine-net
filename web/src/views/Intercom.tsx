@@ -7,10 +7,12 @@
    into a new chat with it (the server carries its messages); a bug report's thread shows
    Open or Closed and its Close. New message: To (its conversation
    as a second step), Subject, the text and When. Reminders are messages here too.
+   Archive, a shelf: threads out of the lists until something newer lands in them. Archive read
+   takes what the server finds done.
    URL: /intercom, /intercom/<thread id>. */
 import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ArrowUpRight, Bot, CheckCheck, CircleCheck, CornerUpLeft, Flag, Info, Link, Mail, MessageCircle, MessageSquarePlus, MoreHorizontal, SearchX, Shapes, Terminal, User,
+  Archive, ArchiveRestore, ArrowUpRight, Bot, CheckCheck, CircleCheck, CornerUpLeft, Flag, Info, Link, Mail, MessageCircle, MessageSquarePlus, MoreHorizontal, PackageCheck, SearchX, Shapes, Terminal, User,
   type LucideIcon,
 } from 'lucide-react'
 import { Portrait } from '../components/Portrait'
@@ -29,7 +31,7 @@ import { useResource } from '../lib/useResource'
 import {
   Avatar, Button, Choice, ComposerBox, copied, cx, Dialog, Divider, Dot, EventLine, Field, GroupHead, ICON, InlineError, Input,
   ListRow, Loaded, LoadingRow, MenuButton, Message, PlaceHead, Segmented, SelectBar, TextArea, Toolbar, useContextMenu, usePicker,
-  coarse, VirtualList, type BulkResult, type MenuItem, type PickProps,
+  coarse, toast, VirtualList, type BulkResult, type MenuItem, type PickProps, type Shelf,
 } from '../ui'
 import './Intercom.css'
 
@@ -37,7 +39,7 @@ type Show = 'waiting' | 'all' | 'guard'
 type Who = { address: string; name: string }
 
 /* pages 1 to `pages`, each after the cursor of the one before */
-async function loadPages(q: { with: string; kind: Kind | null; unread?: boolean }, pages: number, signal: AbortSignal): Promise<ThreadsPage> {
+async function loadPages(q: { with: string; kind: Kind | null; unread?: boolean; archived?: boolean; limit?: number }, pages: number, signal: AbortSignal): Promise<ThreadsPage> {
   let page = await intercomApi.threads(q, signal)
   const groups = [...page.groups]
   for (let n = 1; n < pages && page.next; n++) {
@@ -81,6 +83,12 @@ function Face({ t }: { t: Thread }) {
   return <Who name={t.name} />
 }
 
+/* said after Archive: its Undo puts them back */
+const archivedNote = (threads: number[]) => toast({
+  text: threads.length === 1 ? 'Archived' : `${count(threads.length, 'thread')} archived`,
+  action: threads.length ? { label: 'Undo', onClick: () => void intercomApi.restore(threads) } : undefined,
+})
+
 const copyLink = (thread: number) => {
   copied(`${location.origin}/intercom/${thread}`)
 }
@@ -120,13 +128,16 @@ function List({ active, onNew }: { active: boolean; onNew: () => void }) {
   const [sort, setSort] = useState('Recent')
   const [group, setGroup] = useState('From')
   const [pages, setPages] = useState(1)
+  const [shelf, setShelf0] = useState<Shelf>('list')
+  const onShelf = shelf === 'archive'
+  const setShelf = (v: Shelf) => { setShelf0(v); setWho0(null); setKind(null) }
   const setWho = (w: Who | null) => { setWho0(w); if (w) setShow('all') }
   const all = who ? who.address : 'all'
-  useEffect(() => setPages(1), [all, kind])
+  useEffect(() => setPages(1), [all, kind, onShelf])
 
   const waiting = useResource(signal => loadPages({ with: 'user', kind, unread: true }, 4, signal), [kind],
                               { events: isIntercomEvent, enabled: active })
-  const list = useResource(signal => loadPages({ with: all, kind }, pages, signal), [all, kind, pages],
+  const list = useResource(signal => loadPages({ with: all, kind, archived: onShelf, limit: onShelf ? 200 : undefined }, pages, signal), [all, kind, pages, onShelf],
                            { events: isIntercomEvent, enabled: active })
   const guard = useResource(signal => loadPages({ with: 'guard', kind }, pages, signal), [kind, pages],
                             { events: isIntercomEvent, enabled: active })
@@ -141,7 +152,7 @@ function List({ active, onNew }: { active: boolean; onNew: () => void }) {
   const allN = list.data && !list.data.next && !who ? list.data.groups.reduce((n, g) => n + g.threads, 0) : undefined
   const guardOn = useFeatureOn('guard')
   const guardN = guard.data && !guard.data.next ? guard.data.groups.reduce((n, g) => n + g.threads, 0) : undefined
-  const from = who ? list : show === 'waiting' ? waiting : show === 'guard' ? guard : list
+  const from = who || onShelf ? list : show === 'waiting' ? waiting : show === 'guard' ? guard : list
   const groups = from.data?.groups ?? []
   const waits = useMemo(() => new Set((waiting.data?.groups ?? []).flatMap(g => g.items).map(t => t.thread)), [waiting.data])
 
@@ -172,13 +183,13 @@ function List({ active, onNew }: { active: boolean; onNew: () => void }) {
         if (g.more > 0) out.push({ type: 'more', key: `m:${w.address}`, n: g.more, who: w })
       }
     }
-    if (show === 'all' && !s && !who && list.data?.jobs?.count) out.push({ type: 'jobs', key: 'jobs', n: list.data.jobs.count })
+    if ((show === 'all' || onShelf) && !s && !who && list.data?.jobs?.count) out.push({ type: 'jobs', key: 'jobs', n: list.data.jobs.count })
     return out
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groups, waits, group, who, sort, s, show, list.data])
+  }, [groups, waits, group, who, sort, s, show, onShelf, list.data])
 
   const shown = from
-  const picker = usePicker(`${show} ${all} ${kind}`)
+  const picker = usePicker(`${show} ${all} ${kind} ${shelf}`)
   picker.keys.current = rows.flatMap(r => (r.type === 'thread' ? [String(r.t.thread)] : []))
   const dismissAll = useAction(async () => { await intercomApi.readAll(); waiting.reload() })
   const dismiss = useAction(async (thread: number) => { await intercomApi.dismiss(thread); waiting.reload() })
@@ -191,22 +202,50 @@ function List({ active, onNew }: { active: boolean; onNew: () => void }) {
     return out
   }
   const toChat = useAction(async (thread: number) => nav.go({ section: 'celine', conversation: await intercomApi.toChat(thread) }))
+  const changed = () => { list.reload(); waiting.reload() }
+  const archive = useAction(async (thread: number) => { archivedNote(await intercomApi.archive([thread])); changed() })
+  const archiveRead = useAction(async () => { archivedNote(await intercomApi.archiveRead()); changed() })
+  const restore = useAction(async (thread: number) => { await intercomApi.restore([thread]); changed() })
+  // what the server did, and the rest as not done
+  const moved = (keys: string[], done: number[], why: string): BulkResult => {
+    changed()
+    return { done: done.map(String), skipped: keys.filter(k => !done.includes(Number(k))).map(id => ({ id, reason: why })) }
+  }
+  const archiveMany = async (keys: string[]) => moved(keys, await intercomApi.archive(keys.map(Number)), 'It is gone.')
+  // Close: the bug reports among them; a closed one goes to the Archive (bugreports/api.py)
+  const closeMany = async (keys: string[]): Promise<BulkResult> => {
+    const out: BulkResult = { done: [], skipped: [] }
+    for (const k of keys) {
+      try {
+        const bug = await intercomApi.bugOf(Number(k))
+        if (bug?.state !== 'open') { out.skipped.push({ id: k, reason: 'It is not an open bug report.' }); continue }
+        await intercomApi.closeBug(bug.id)
+        out.done.push(k)
+      } catch (e) { out.skipped.push({ id: k, reason: e instanceof Error ? e.message : String(e) }) }
+    }
+    changed()
+    return out
+  }
+  const restoreMany = async (keys: string[]) => moved(keys, await intercomApi.restore(keys.map(Number)), 'It is back already.')
   const open = (t: Thread) => nav.go({ section: 'intercom', thread: t.thread })
   const menu = (t: Thread, isWaiting: boolean): MenuItem[] => [
     { label: 'Open', icon: ArrowUpRight, onSelect: () => open(t) },
     { label: 'Reply', icon: CornerUpLeft, onSelect: () => { replyTo = t.thread; open(t) } },
     { label: 'Continue in a chat', icon: MessageSquarePlus, onSelect: () => void toChat.run(t.thread) },
     ...(isWaiting ? [{ label: 'Dismiss', icon: CheckCheck, onSelect: () => void dismiss.run(t.thread) }] : []),
+    onShelf ? { label: 'Restore', icon: ArchiveRestore, onSelect: () => void restore.run(t.thread) }
+      : { label: 'Archive', icon: Archive, onSelect: () => void archive.run(t.thread) },
     'sep',
     { label: 'Copy link', icon: Link, onSelect: () => copyLink(t.thread) },
   ]
   const word = kind ? KIND_PLURAL[kind].toLowerCase() : null
   const empty = s ? 'No messages match'
+    : onShelf ? (word ? `No ${word} are archived` : 'Archive is empty')
     : show === 'waiting' && !who ? (word ? `No ${word} are waiting for you` : 'Nothing is waiting for you')
     : word ? `No ${word} yet` : 'No messages yet'
   const froms = (list.data?.groups ?? []).map(g => ({ address: g.addresses.length === 1 ? g.addresses[0]! : g.name, name: g.name }))
   const failed = !shown.data && shown.error
-  const error = dismissAll.error ?? dismiss.error ?? toChat.error
+  const error = dismissAll.error ?? dismiss.error ?? toChat.error ?? archive.error ?? archiveRead.error ?? restore.error
 
   return (
     <div className="list-page">
@@ -214,13 +253,20 @@ function List({ active, onNew }: { active: boolean; onNew: () => void }) {
                  back={who ? { label: 'All threads', onClick: () => setWho(null) } : undefined}
                  crumbs={who ? [{ label: 'Intercom', onClick: e => { e.preventDefault(); setWho(null) } }] : undefined}
                  search={{ value: q, onChange: setQ, placeholder: 'Search' }} picker={failed ? undefined : picker}
-                 actions={!who && <Button icon={CheckCheck} disabled={!waitN} loading={dismissAll.busy} onClick={() => void dismissAll.run()}>Dismiss all</Button>}
+                 shelf={who || failed ? undefined : { archive: true, value: shelf, onChange: setShelf }}
+                 actions={!who && !onShelf && <>
+                   <Button icon={CheckCheck} disabled={!waitN} loading={dismissAll.busy} onClick={() => void dismissAll.run()}>Dismiss all</Button>
+                   <Button icon={PackageCheck} loading={archiveRead.busy} onClick={() => void archiveRead.run()}>Archive read</Button>
+                 </>}
                  newLabel="New message" onNew={onNew} />
       {!failed && <div className="list-page__top">
         {picker.on
           ? <SelectBar picker={picker} noun={n => count(n, 'thread')}
-                       actions={[{ label: 'Dismiss', icon: CheckCheck, done: 'dismissed', run: dismissMany }]} />
-          : <Toolbar state={{ label: 'Show', value: show, onChange: v => { setShow(v as Show); if (v === 'waiting') setWho0(null) },
+                       actions={onShelf ? [{ label: 'Restore', icon: ArchiveRestore, done: 'restored', run: restoreMany }]
+                         : [{ label: 'Dismiss', icon: CheckCheck, done: 'dismissed', run: dismissMany },
+                            { label: 'Archive', icon: Archive, done: 'archived', run: archiveMany },
+                            { label: 'Close', icon: CircleCheck, done: 'closed', run: closeMany }]} />
+          : <Toolbar state={onShelf ? undefined : { label: 'Show', value: show, onChange: v => { setShow(v as Show); if (v === 'waiting') setWho0(null) },
                               options: [{ value: 'waiting', label: 'Waiting for you', count: waitN ?? undefined },
                                         { value: 'all', label: 'All', count: allN },
                                         ...(guardOn ? [{ value: 'guard', label: 'Guard', count: guardN }] : [])] }}
@@ -239,8 +285,8 @@ function List({ active, onNew }: { active: boolean; onNew: () => void }) {
         {() => (
           <div className="list-page__rows">
             <VirtualList items={rows} getKey={r => r.key} estimate={i => (rows[i]!.type === 'thread' ? 76 : rows[i]!.type === 'group' ? 56 : 48)}
-                         label="Threads" resetOn={`${show} ${all} ${kind} ${group}`}
-                         onEndReached={show !== 'waiting' && from.data?.next && !from.loading ? () => setPages(n => n + 1) : undefined}
+                         label="Threads" resetOn={`${show} ${all} ${kind} ${group} ${shelf}`}
+                         onEndReached={(onShelf || show !== 'waiting') && from.data?.next && !from.loading ? () => setPages(n => n + 1) : undefined}
                          renderRow={r => r.type === 'group'
                            ? <GroupHead icon={r.icon} title={r.name} count={count(r.n, 'thread')} onClick={() => setWho(r.who)} />
                            : r.type === 'more' ? <ListRow title="Show more" meta={r.n} onClick={() => setWho(r.who)} />
@@ -296,6 +342,12 @@ function ThreadPage({ id }: { id: number }) {
   // Close with text in the reply box: the text is why, posted in the thread as the app's line
   const close = useAction(async () => { if (bug) await intercomApi.closeBug(bug.id, text.trim()); setText(''); thread.reload(); report.reload() })
   const toChat = useAction(async () => nav.go({ section: 'celine', conversation: await intercomApi.toChat(id) }))
+  const archived = !!thread.data?.archived
+  const shelve = useAction(async () => {
+    if (archived) { await intercomApi.restore([id]); thread.reload(); return }
+    archivedNote(await intercomApi.archive([id]))
+    nav.go({ section: 'intercom' })
+  })
   // a reply goes to whoever wrote the newest message that is not yours; in a thread only
   // you wrote in, to whom you wrote
   const theirs = [...msgs].reverse().find(m => m.from !== 'user' && !m.from.startsWith('system:'))
@@ -324,6 +376,7 @@ function ThreadPage({ id }: { id: number }) {
                  actions={<>
                    {unread.length > 0 && <Button variant="ghost" icon={CheckCheck} loading={dismiss.busy} onClick={() => void dismiss.run()}>Dismiss</Button>}
                    {bug?.state === 'open' && <Button variant="ghost" icon={CircleCheck} loading={close.busy} onClick={() => void close.run()}>Close</Button>}
+                   {msgs.length > 0 && <Button variant="ghost" icon={archived ? ArchiveRestore : Archive} loading={shelve.busy} onClick={() => void shelve.run()}>{archived ? 'Restore' : 'Archive'}</Button>}
                    {msgs.length > 0 && <Button variant="ghost" icon={MessageSquarePlus} loading={toChat.busy} onClick={() => void toChat.run()}>Continue in a chat</Button>}
                  </>}
                  more={[
@@ -333,7 +386,7 @@ function ThreadPage({ id }: { id: number }) {
                  ]} />
       <div className="page intercom-thread__scroll">
         <div className="intercom-thread__col">
-          {(thread.error ?? dismiss.error ?? cancel.error ?? close.error ?? toChat.error) && <InlineError message={(thread.error ?? dismiss.error ?? cancel.error ?? close.error ?? toChat.error)!}
+          {(thread.error ?? dismiss.error ?? cancel.error ?? close.error ?? toChat.error ?? shelve.error) && <InlineError message={(thread.error ?? dismiss.error ?? cancel.error ?? close.error ?? toChat.error ?? shelve.error)!}
                                                                             onRetry={thread.error ? thread.reload : undefined} />}
           {!thread.data && !thread.error && <LoadingRow label="Loading the thread" />}
           {msgs.map(m => {

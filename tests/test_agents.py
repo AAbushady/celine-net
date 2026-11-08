@@ -455,6 +455,14 @@ async def test_a_cloud_model_asks_the_user_first_and_a_local_one_does_not(store,
     out = await agents.start(ctx, brief="Read the whole site.", name="site reader",
                              model="gpu/small")
     assert len(asked) == 1, "a local model starts without asking"
+    await store.write(lambda c: c.execute(
+        "INSERT INTO turns(id, conversation_id, state, origin, backend_id, created_at) "
+        "VALUES('here', ?, 'tools', 'user', 'or/big', '2026-01-01T00:00:00.000+00:00')",
+        (parent,)))
+    own = ToolContext(parent, "here", "y", store, cfg, emit)
+    same = await agents.start(own, brief="Read it.", name="same model", model="or/big")
+    assert len(asked) == 1 and same.content.startswith("same model started"), \
+        "the model this turn runs on starts without asking"
     assert out.content.startswith("site reader started"), out.content
     for model in ("or/big", None):
         out = await agents.start(ctx, brief="again", name="site reader", model=model)

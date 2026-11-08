@@ -151,7 +151,7 @@ async def test_a_valid_proposal_asks_with_before_and_after_and_deny_changes_noth
     assert (kind, closed) == ("approval.asked", "approval.closed")
     chat = asked["approval"]
     assert chat["label"] == "Settings" and chat["line"] == "Celine asks to change the General settings."
-    assert chat["changes"] == [{"label": "Turn time limit", "before": "1800",
+    assert chat["changes"] == [{"label": "Turn time limit", "before": "14400",
                                 "after": "3600"}]
     assert chat["why"] == "Long research turns stop at the limit."
     assert got.is_error and got.content == "sam denied it; nothing was done."
@@ -166,7 +166,7 @@ async def test_approve_saves_through_settings_and_bumps_the_version(app):
     got, _ = await _answer(app, sk.propose(
         ctx, target="general", changes={"turn_wall_clock_seconds": 3600}, why="w"), True)
     assert not got.is_error, got.content
-    assert got.content == "Changed General. Turn time limit: 1800 → 3600."
+    assert got.content == "Changed General. Turn time limit: 14400 → 3600."
     assert app.cfg.settings.general["turn_wall_clock_seconds"] == 3600
     assert version(app.cfg.settings.general) != v0
     on_disk = tomllib.loads((app.var / "settings" / "general.toml").read_text())

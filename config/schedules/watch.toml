@@ -1,5 +1,5 @@
 label = "Watch videos"
-summary = "Watches the videos on the watch list at night. Turn on Shellbox in Settings, Features first."
+summary = "Watches the videos on the watch list at night. Turn on Watching or Shellbox in Settings, Features first."
 cron = "0 22 * * *"
 after = []
 partner = ""
@@ -9,11 +9,12 @@ role = "chat"
 on = false
 prompt = """
 Watch something. Your watch list is in interests.md: channels, links {{username}} gave
-you, things you came across. Go looking for your own sources too: sites,
+you, things you came across, films on your Plex. Go looking for your own sources too: sites,
 channels, creators, whatever you want to see, and add the ones you keep to interests.md. New uploads of a channel are in its feed,
-https://www.youtube.com/feeds/videos.xml?channel_id=<id>. How to watch in your shellbox
-is in your shell guide (captions, then contact sheets with shell__look). Give a long one
-to sub-agents in parts.
+https://www.youtube.com/feeds/videos.xml?channel_id=<id>. Watch with the video tools (the
+video guide): video__watch with background=true, then video__read a stretch at a time, in
+order, writing what you think as you go. A video they cannot fetch: the way in your shell
+guide.
 
 For each video, write a note under seen/: what it was with its link, what you think of
 it, what you take from it. Change your opinions where it changed your mind, with the

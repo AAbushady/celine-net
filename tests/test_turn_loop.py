@@ -1,4 +1,4 @@
-"""The turn loop's ends: a step with an answer and a note ends the turn, a tool that fails
+"""The turn loop's ends: a step with words and a note goes on, a tool that fails
 twice the same way is out, a step runs at most 12 calls, no tool goes out as an empty
 stub, and Continue on a capped turn gets a fresh budget."""
 from __future__ import annotations
@@ -12,7 +12,7 @@ from chat_fixtures import until, user_says
 from celine.backends.base import Done, TextDelta, ToolCallDelta
 from fake_backend import FakeBackend
 from celine.boot import load
-from celine.conversations import store as conversations
+from celine.conversations import store as conversations, tree
 from celine.core.bus import EventBus
 from celine.skills import Registry, ToolResult, tool
 from celine.skills.meta import Skills
@@ -54,7 +54,7 @@ class Notebook:
     name = "notebook"
     description = "Her notes."
 
-    @tool(read_only=False, needs_answer=False)
+    @tool(read_only=False)
     async def write(self, ctx, path: str, text: str) -> ToolResult:
         """Write a note."""
         return ToolResult(f"wrote {path}")
@@ -103,18 +103,50 @@ async def _results(store) -> list[tuple[str, str, str]]:
         "m.id = tc.result_message_id ORDER BY tc.rowid")])
 
 
-async def test_an_answer_with_a_note_written_ends_the_turn_in_one_step(store, cfg):
+async def test_words_beside_a_note_do_not_end_the_turn(store, cfg):
+    """A model that narrates writes a lead-in beside the write: what it was about to do
+    still runs."""
     reg = _registry(cfg, Notebook())
     cid = await conversations.create(store)
-    b = Replies([[TextDelta("Sure, noted."), *_calls(
-        ("notebook__write", {"path": "a.md", "text": "x"}))]])
+    b = Replies([[TextDelta("Writing the note, then telling Joe."), *_calls(
+        ("notebook__write", {"path": "a.md", "text": "x"}))],
+        [TextDelta("Told him."), Done(reason="stop")]])
     turn = await _run(store, cfg, reg, cid, b)
-    assert len(b.calls) == 1
+    assert len(b.calls) == 2
     state, texts = await store.read(lambda c: (
         c.execute("SELECT state FROM turns WHERE id=?", (turn["id"],)).fetchone()[0],
         [r[0] for r in c.execute("SELECT content FROM messages WHERE role='assistant' AND "
-                                 "conversation_id=?", (cid,))]))
-    assert state == "done" and texts == ["Sure, noted."]
+                                 "conversation_id=? ORDER BY created_at, rowid", (cid,))]))
+    assert state == "done" and texts == ["Writing the note, then telling Joe.", "Told him."]
+
+
+async def test_nothing_more_to_say_after_a_note_leaves_the_answer_standing(store, cfg):
+    """An answer, a note beside it, then an empty reply: the turn is done and the message
+    counts as answered."""
+    reg = _registry(cfg, Notebook())
+    cid = await conversations.create(store)
+    b = Replies([[TextDelta("Sure, noted."), *_calls(
+        ("notebook__write", {"path": "a.md", "text": "x"}))],
+        [Done(reason="stop")]])
+    turn = await _run(store, cfg, reg, cid, b)
+    assert len(b.calls) == 2
+    state, texts = await store.read(lambda c: (
+        c.execute("SELECT state FROM turns WHERE id=?", (turn["id"],)).fetchone()[0],
+        [r[0] for r in c.execute("SELECT content FROM messages WHERE role='assistant' AND "
+                                 "conversation_id=? ORDER BY created_at, rowid", (cid,))]))
+    assert state == "done" and texts == ["Sure, noted."], "the empty reply leaves no row"
+    assert await store.read(lambda c: tree.unanswered(c, cid)) is None
+
+
+async def test_an_empty_reply_with_nothing_said_before_it_still_fails(store, cfg):
+    reg = _registry(cfg, Notebook())
+    cid = await conversations.create(store)
+    b = Replies([_calls(("notebook__write", {"path": "a.md", "text": "x"})),
+                 [Done(reason="stop")]])
+    turn = await _run(store, cfg, reg, cid, b)
+    assert await store.read(lambda c: tuple(c.execute(
+        "SELECT state, reason_code FROM turns WHERE id=?", (turn["id"],)).fetchone())) == \
+        ("failed", "empty_reply")
 
 
 async def test_a_tool_that_fails_the_same_way_stays_usable(store, cfg):
@@ -176,12 +208,57 @@ async def test_continue_on_a_capped_turn_gets_a_fresh_step_budget(store, cfg):
     turn = await _run(store, cfg, reg, cid, b)
     state = await store.read(lambda c: c.execute(
         "SELECT state FROM turns WHERE id=?", (turn["id"],)).fetchone()[0])
-    assert state == "capped" and len(b.calls) == 2
+    assert state == "capped" and len(b.calls) == 3, "two steps, then the last one"
+    assert [s for _, s, _ in await _results(store)] == ["ok", "ok", "interrupted"], \
+        "the call made after the limit is kept, never run"
     await turns.continue_turn(store, cid, turn["id"], reg)
     again = await turns.claim(store, "w")
-    assert again["cap_base"] == 2
+    assert again["cap_base"] == 3
     await run_turn(again, store, cfg, b, EventBus(), Token(again["id"]), reg)
-    assert len(b.calls) == 4               # two more steps, not none
+    assert len(b.calls) == 6               # two more steps and a last one, not none
+
+
+async def test_at_the_step_limit_her_last_step_says_where_the_work_stands(store, cfg):
+    """The step after the limit has the app's line last, in that request only, with the
+    same tools (the cached prefix holds); her words end the turn done, the limit its
+    reason_code, and the line is stored nowhere."""
+    cfg.settings.general.update({"max_tool_iterations": 2})
+    reg = _registry(cfg, Notebook())
+    cid = await conversations.create(store)
+    write = _calls(("notebook__write", {"path": "a.md", "text": "x"}))
+    b = Replies([write, write,
+                 [TextDelta("Wrote a.md twice; b.md is left."), Done(reason="stop")]])
+    turn = await _run(store, cfg, reg, cid, b)
+    line = b.calls[-1][-1]
+    assert len(b.calls) == 3 and line["role"] == "user" and \
+        "reached its limit of 2 steps" in line["content"]
+    assert not any("limit of" in str(m.get("content")) for m in b.calls[1])
+    assert b.offered[-1] == b.offered[0]
+    state, code, reason, stored = await store.read(lambda c: (
+        *c.execute("SELECT state, reason_code, reason FROM turns WHERE id=?",
+                   (turn["id"],)).fetchone(),
+        [r[0] for r in c.execute("SELECT content FROM messages WHERE conversation_id=?",
+                                 (cid,))]))
+    assert (state, code, reason) == ("done", "max_tool_iterations",
+                                     "reached its limit of 2 steps")
+    assert "Wrote a.md twice; b.md is left." in stored
+    assert not any("limit of" in (s or "") for s in stored)
+    assert [s for _, s, _ in await _results(store)] == ["ok", "ok"]
+
+
+async def test_an_empty_last_step_ends_the_turn_capped_with_no_empty_row(store, cfg):
+    cfg.settings.general.update({"max_tool_iterations": 1})
+    reg = _registry(cfg, Notebook())
+    cid = await conversations.create(store)
+    b = Replies([_calls(("notebook__write", {"path": "a.md", "text": "x"})),
+                 [Done(reason="stop")]])
+    turn = await _run(store, cfg, reg, cid, b)
+    state, code, replies = await store.read(lambda c: (
+        *c.execute("SELECT state, reason_code FROM turns WHERE id=?",
+                   (turn["id"],)).fetchone(),
+        c.execute("SELECT count(*) FROM messages WHERE role='assistant' AND "
+                  "conversation_id=?", (cid,)).fetchone()[0]))
+    assert (state, code, replies) == ("capped", "max_tool_iterations", 1)
 
 
 async def test_tool_results_reach_her_as_the_tool_made_them(store, cfg):

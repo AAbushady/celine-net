@@ -226,7 +226,7 @@ async def test_general_holds_what_was_saved_and_the_fields_the_defaults(api):
 async def test_status_links_the_source_of_this_build(api, monkeypatch):
     """The AGPL's offer: GET /api/status `build.source` is the code this build runs, at its
     commit when the commit is known."""
-    repo = "https://github.com/LumiWasTaken/celine-net"
+    repo = "https://github.com/AAbushady/celine-net"
     try:
         for commit, source in (("904475d", f"{repo}/tree/904475d"), ("dev", repo)):
             monkeypatch.setenv("CELINE_COMMIT", commit)

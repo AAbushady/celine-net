@@ -1,0 +1,1 @@
+[From the app] This turn has reached its limit of {{limit}}, and this step is its last: a tool call in it does not run. Reply with what you did, what is left and your next step, so the work can go on from there.

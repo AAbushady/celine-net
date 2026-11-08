@@ -629,6 +629,19 @@ BUGREPORT: dict[str, Sentence] = {
     "list": lambda a, d, r: "Read its bug reports",
 }
 
+VIDEO: dict[str, Sentence] = {
+    "watch": lambda a, d, r: "Watched a video" +
+        (f": {_str(a.get('source'))}" if _str(a.get("source")) else ""),
+    "wait": lambda a, d, r: "Waited for a watch",
+    "read": lambda a, d, r: "Read what it watched" +
+        (f" from {_str(a.get('at'))}" if _str(a.get("at")) else ""),
+    "list": lambda a, d, r: "Listed its watches",
+    "stop": lambda a, d, r: "Stopped a watch",
+    "link_plex": lambda a, d, r: "Linked its Plex account",
+    "search_plex": lambda a, d, r: "Searched Plex" +
+        (f" for {_str(a.get('query'))}" if _str(a.get("query")) else ""),
+}
+
 SENTENCES: dict[str, dict[str, Sentence]] = {
     "chat_archive": CHAT_ARCHIVE, "user_documents": USER_DOCUMENTS, "notebook": NOTEBOOK,
     "past_conversations": PAST_CONVERSATIONS, "sub_agents": SUB_AGENTS,
@@ -636,6 +649,7 @@ SENTENCES: dict[str, dict[str, Sentence]] = {
     "shell": SHELL, "code": CODE, "web": WEB, "discord": DISCORD, "whatsapp": WHATSAPP,
     "skills": SKILLS, "email": EMAIL, "vault": VAULT, "browser": BROWSER, "plan": PLAN,
     "mind": MIND, "models": MODELS, "routines": ROUTINES, "bugreport": BUGREPORT,
+    "video": VIDEO,
 }
 
 

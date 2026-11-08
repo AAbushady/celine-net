@@ -160,6 +160,24 @@ async def test_the_answer_streams_back_as_the_provider_sent_it(proxy):
     assert bad.status_code == 400 and bad.json()["error"]["message"] == "context too long"
 
 
+async def test_a_media_address_stays_out_and_inline_data_goes_on(proxy):
+    def said(part):
+        return ask(proxy, messages=[{"role": "user", "content": [
+            {"type": "text", "text": "look at http://192.168.1.1/x"}, part]}])
+    for part in ({"type": "image_url", "image_url": {"url": "http://192.168.1.1/x.png"}},
+                 {"type": "image_url", "image_url": "http://127.0.0.1:8080/props"},
+                 {"type": "image_url", "image_url": {"url": "file:///etc/passwd"}},
+                 {"type": "video_url", "video_url": {"url": "https://example.com/v.mp4"}},
+                 {"type": "image", "source": {"type": "url", "url": "http://10.0.0.1/"}}):
+        r = await said(part)
+        assert r.status_code == 400 and "data: URL" in r.json()["error"]["message"], part
+    assert proxy.up.seen == [], "nothing reached the model server"
+    r = await said({"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}})
+    assert r.status_code == 200 and len(proxy.up.seen) == 1
+    r = await ask(proxy, messages=[{"role": "user", "content": "see http://192.168.1.1/"}])
+    assert r.status_code == 200, "an address in plain text is only text"
+
+
 async def test_calls_take_the_shellbox_lane_with_no_lock_of_their_own(proxy):
     proxy.up.hold = True
     sched = proxy.llm.scheduler

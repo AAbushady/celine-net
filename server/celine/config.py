@@ -20,7 +20,7 @@ ENV_FILE = ROOT / ".env"
 STATIC_DIR = Path(os.environ.get("CELINE_STATIC_DIR") or Path(__file__).parent / "static")
 
 # where the code is (the AGPL's offer of it to everyone who uses the app); a fork names its own
-REPOSITORY = "https://github.com/LumiWasTaken/celine-net"
+REPOSITORY = "https://github.com/AAbushady/celine-net"
 
 
 @functools.cache

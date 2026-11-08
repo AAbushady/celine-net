@@ -2,13 +2,14 @@
 citation check. Fake backend, tiny synthetic archive."""
 from __future__ import annotations
 
-from chat_fixtures import Script, user_says
+from chat_fixtures import PNG, Script, user_says
 
 import json
 
 import anyio
 import pytest
 
+from celine import attachments
 from celine.conversations import store as conversations, view
 from celine.backends.base import Done, TextDelta, ToolCallDelta
 from celine.boot import load
@@ -110,11 +111,30 @@ class T:
         return ToolResult(content="nothing found")
 
     @tool()
+    async def see(self, ctx) -> ToolResult:
+        """see"""
+        row = await attachments.save_generated(cfg_of(ctx), ctx.store, PNG, "s.png", "image/png",
+                                               ctx.tool_call_id, in_message=False)
+        shot = {k: row[k] for k in ("id", "sha256", "filename", "media_type", "bytes")}
+        return ToolResult(content="the screen", display={"see": True, "shot": shot})
+
+    @tool()
+    async def files(self, ctx) -> ToolResult:
+        """files"""
+        row = await attachments.save_generated(cfg_of(ctx), ctx.store, PNG, "f.png", "image/png",
+                                               ctx.tool_call_id, in_message=False)
+        return ToolResult(content="f.png:", images=[row["id"]])
+
+    @tool()
     async def hang(self, ctx) -> ToolResult:
         """hang"""
         await anyio.sleep_forever()          # until its turn's wall clock cuts it
         self.runs += 1
         return ToolResult(content="waited")
+
+
+def cfg_of(ctx):
+    return ctx.config
 
 
 def _reg(skill) -> Registry:
@@ -177,6 +197,31 @@ async def test_only_non_mutating_calls_of_one_reply_run_concurrently(store, cfg)
         assert mine == "a done" if first == "a" else "w done" not in mine, "one after another"
 
 
+@pytest.mark.parametrize("name, text", [("see", "the screen"), ("files", "f.png:")])
+async def test_a_result_with_an_image_shows_it_at_the_next_step_of_the_same_turn(
+        store, cfg, name, text):
+    """The next request of the turn holds the image, after the results of the reply and
+    the way a later build sends it, and so does every step after it."""
+    calls = [ToolCallDelta(index=0, id="v0", name=f"t__{name}", arguments="{}"),
+             ToolCallDelta(index=1, id="v1", name="t__same", arguments='{"q": "x"}'),
+             Done(reason="tool_calls")]
+    backend = Script([calls, _call(2, "t__same", {"q": "y"}),
+                      [TextDelta("k"), Done(reason="stop")]])
+    await _turn(store, cfg, _reg(T()), backend)
+
+    def parts(messages):
+        return [p for m in messages if isinstance(m["content"], list) for p in m["content"]]
+    assert not [p for p in parts(backend.calls[0]) if p["type"] != "text"]
+    for request in backend.calls[1:]:
+        roles = [m["role"] for m in request]
+        at = roles.index("tool")
+        assert roles[at:at + 3] == ["tool", "tool", "user"], roles
+        assert request[at]["content"] == f"{text}\n[the image follows]"
+        assert request[at + 2]["content"][0]["text"] == f"[the screen from t__{name}]"
+        assert [p["type"] for p in request[at + 2]["content"]] == ["text", attachments.IMAGE]
+    assert len(parts(backend.calls[2])) == 2, "one image, once"
+
+
 async def test_the_same_call_with_the_same_result_runs_every_time(store, cfg):
     """A call she repeats runs again, with tools offered on every step."""
     t = T()
@@ -208,17 +253,22 @@ async def test_identical_calls_of_one_step_each_run(store, cfg):
     assert (await _tool_results(store))[-2:] == ["nothing found", "nothing found"]
 
 
-async def test_when_her_time_is_up_the_turn_ends_capped(store, cfg):
-    """A turn that hits the wall clock mid-search ends with its reason: no hidden note,
-    no extra step."""
+async def test_when_her_time_is_up_her_last_step_says_where_the_work_stands(store, cfg):
+    """A turn that hits the wall clock mid-search stops the search, and one more step,
+    the app's line last in its request, gets her words on where the work stands: the
+    turn ends done with the limit as its reason_code."""
     cfg.settings.general.update({"turn_wall_clock_seconds": 0.4, "last_step_seconds": 5})
     t = T()
-    b = Script([_call(0, "t__hang", {}), [TextDelta("never asked"), Done(reason="stop")]])
+    b = Script([_call(0, "t__hang", {}),
+                [TextDelta("The search hung; the dates are left."), Done(reason="stop")]])
     t0 = anyio.current_time()
-    snap, _, _ = await _turn(store, cfg, _reg(t), b)
+    snap, _, final = await _turn(store, cfg, _reg(t), b)
     assert anyio.current_time() - t0 < 2 and t.runs == 0
-    assert len(b.calls) == 1, "no step after the time is up"
-    assert (snap["turn"]["state"], snap["turn"]["reason_code"]) == ("capped", "wall_clock")
+    line = b.calls[-1][-1]
+    assert len(b.calls) == 2 and line["role"] == "user" and \
+        "reached its limit of 1 minute of work" in line["content"]
+    assert (snap["turn"]["state"], snap["turn"]["reason_code"]) == ("done", "wall_clock")
+    assert final["content"] == "The search hung; the dates are left."
 
 
 class U:

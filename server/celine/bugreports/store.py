@@ -40,6 +40,13 @@ def _changed(c: sqlite3.Connection, store, cid: str | None, iids: list[int]) -> 
         store.global_event(c, INTERCOM_STATE, {"intercom_id": iid, "conversation_id": None})
 
 
+def shelve(c: sqlite3.Connection, store, r: dict) -> None:
+    """Inside a write: closed report `r`'s thread archived, through its newest message."""
+    if intercom.archive(c, [r["thread"]]):
+        store.global_event(c, INTERCOM_STATE, {"intercom_id": r["thread"],
+                                               "conversation_id": None})
+
+
 def file(c: sqlite3.Connection, store, cid: str, title: str, severity: str, what: str,
          where: str, wish: str) -> dict:
     """Inside a write: a new open report and its thread, a message from conversation

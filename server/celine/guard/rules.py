@@ -167,9 +167,10 @@ DEFAULTS: dict[str, dict[str, Any]] = {
     "leak": {"on": True, "does": "stop"},
     "damage": {"on": True, "does": "stop"},
     # what reaches out of her machines or changes her, until the owner's own list
-    # replaces it: a public share, her persona. What runs on her own box or Mac (the
+    # replaces it: a public share, her persona, a routine's prompt, which runs later with
+    # nobody watching. What runs on her own box or Mac (the
     # coding agent, a CLI sub-agent, a drone) is hers and not on it
-    "confirm": {"on": True, "tools": ["shell__share:public", "me__edit"]},
+    "confirm": {"on": True, "tools": ["shell__share:public", "me__edit", "routines__write"]},
     "sites": {"on": True, "does": "watch"},
     "stops": {"on": True, "does": "freeze", "count": 3},
     # after a stop, the same thing again another way: `first` the first
@@ -209,9 +210,19 @@ def escalates(rule: str, fired: set[str]) -> bool:
     return rule == "hijack" and bool(fired & {"leak", "damage"})
 
 
+def only_switches_off(name: str, args: dict) -> bool:
+    """routines__write with nothing but its name and on=false: it makes nothing run later
+    (the owner is told, schedules/skill.py)."""
+    given = {k for k, v in (args or {}).items() if v is not None}
+    return name == "routines__write" and given == {"name", "on"} and args["on"] is False
+
+
 def listed(tools: list[str], name: str, args: dict) -> bool:
     """Is the call on the confirm list: its tool, its skill, or "tool:arg" with that
-    argument set (shell__share:public, sub_agents__start:cli)?"""
+    argument set (shell__share:public, sub_agents__start:cli)? A routine only switched
+    off is not."""
+    if only_switches_off(name, args):
+        return False
     for entry in tools:
         what, _, arg = entry.partition(":")
         if what in (name, name.split("__")[0]) and (not arg or (args or {}).get(arg)):
@@ -327,7 +338,8 @@ async def probe(cfg, services) -> dict[str, str]:
     s = getattr(cfg, "settings", None)
     chain = [r for r in s.chain("small") if s.model(r) is not None] if s is not None else []
     if not chain:
-        return {"state": "unset", "detail": "Pick a decision model below."}
+        # never blocks its switch: the onboarding would save the guard off, not ask for a model
+        return {"state": "unset", "detail": "Pick a decision model below.", "blocks": False}
     second = current(cfg)["chain"]
     detail = f"Decision model: {_name(s, chain[0])}."
     if not (second.get("provider") and second.get("model")):

@@ -1,0 +1,4 @@
+{
+  "NativeMessagingUserLevelHosts": false,
+  "NativeMessagingBlocklist": ["*"]
+}

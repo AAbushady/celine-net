@@ -49,7 +49,7 @@ block at the end of this file lists the words no UI string uses.
 | Date: Today, This week, This month, This year | the date filter of Search, in the Toolbar | Gmail, Google Drive "Modified" |
 | All messages | every source's chats in one list, in Messages | Gmail "All Mail" for the same job |
 | Select, Select all, Done | selecting many | Apple Photos, Mail |
-| Archive, Archive older than | move out of the list, kept | ChatGPT "Archive", Gmail |
+| Archive, Archive older than, Archive read, Archived | move out of the list, kept; Archive read takes what is done on the Intercom | ChatGPT "Archive", Gmail |
 | Restore | back from the Archive or the Trash | Google Drive, Windows |
 | Trash, Move to Trash, You can restore it from the Trash. | the bin and moving there; the body of every Move to Trash? confirm | macOS, Gmail, Google Drive |
 | Delete permanently | only inside the Trash | Google Drive "Delete forever", Outlook "Permanently delete" |
@@ -158,7 +158,7 @@ block at the end of this file lists the words no UI string uses.
 | Turns on once the shellbox answers. | the line under a feature switch that cannot be on yet, the service named (the server's `needs`); a click on the switch shows it as a toast | plain |
 | Turns on once the shellbox is on., The shellbox is on., The shellbox is off. | the Shares switch: its `needs` while the Shellbox feature is off, and its probe's state line | plain |
 | Turn on Shares?, Turn on | the confirm a feature with a warning (Shares) asks before its switch goes on (Settings, Features and the Features Setup step); off needs no confirm | macOS, Windows "Turn on" |
-| The link of a share is its key. A page opens only for you while you are logged in, but anyone who gets a link can reach what it shares with a script until it ends (24 hours, or what you set) or you stop it. A public share opens for anyone. | the body of Turn on Shares? (the server's `warn`): the warning, the exception to "no explainer text" (AGENT.md rule 7) | plain |
+| The link of a share is its key. A page opens only for you while you are logged in, but anyone who gets a link can reach what it shares with a script until it ends (24 hours, or what you set) or you stop it. A public share opens for anyone. A shared page runs in your browser, so it can send requests to your own network. | the body of Turn on Shares? (the server's `warn`): the warning, the exception to "no explainer text" (AGENT.md rule 7) | plain |
 | Shares | the feature of what it shares from its shellbox (Settings, Features, Setup) | Google Drive "Shared"; plain |
 | Import, Importing, Done. 1,234 messages in the archive. | a Discord or WhatsApp Setup step once the account is linked: the first import, its line while it runs (the archive's message count, from the server) and its end; beside it the Messages switch | Google Photos, Apple Photos "Import" |
 | Logging in with a user account may break Discord's terms; use it at your own risk. | under Log in with QR code (Settings, Discord and its Setup step) | plain |
@@ -293,7 +293,7 @@ The words of the Events place (`server/celine/events.py` gives them).
 | First look, Second look, Yes, No | one decision's chain: the small model's verdict and why, then the big model's second look (guard/chain.py) | a second opinion, as people say it |
 | Question, Score, Model, Time, Source, Quote, Piece, Arguments | one decision's facts: what its small model was asked, the score it gave, which model, how long, where the text came from, what it quoted, the private piece, the call's arguments | OpenAI evals "score"; Chrome DevTools "Time" |
 | Allow once, Pass | answer a decision from its row as her banner does: the same call runs once; a pass on its rule in that chat | Chrome site permissions "Allow this time"; Pass as Bastet says it |
-| Open, Closed, Close, High, Medium, Low | a bug it filed: open until you close it (Close on its Intercom thread); its severity, beside Open in its row ("Open, high") | GitHub Issues "Open", "Closed", "Close issue"; Jira priority "High", "Medium", "Low" |
+| Open, Closed, Close, High, Medium, Low | a bug it filed: open until you close it (Close on its Intercom thread, or Close in Select), then its thread goes to the Archive; its severity, beside Open in its row ("Open, high") | GitHub Issues "Open", "Closed", "Close issue"; Jira priority "High", "Medium", "Low" |
 | No events yet, No events match | the empty list, and a list the filters empty | plain |
 
 ### Actions

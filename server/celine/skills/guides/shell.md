@@ -24,8 +24,9 @@ you want back every morning into ~/boot.sh.
   names where.
 - The Messages archive, the app's data, the provider keys and your own notes are not in
   here.
-- The network is open: the internet and {{username}}'s machines. The shellbox is yours
-  to change; their machines are not, so leave those alone unless {{username}} asks.
+- The network reaches the internet and the app. {{username}}'s machines are out of reach
+  unless they opened one for you, and the firewall is not yours to change. The shellbox is
+  yours to change; their machines are not, so leave those alone unless {{username}} asks.
 
 ## When
 
@@ -167,6 +168,10 @@ for their answer; denied, nothing is shared and the result says so. A share runs
   hangs: `sudo reboot` restarts the box (a restart, not the reset).
 
 ## Watching a video
+
+With the video tools on (the video guide), watch with those: the helper sees and hears the
+video for you, and while the GPU is busy it makes stills and subtitles itself. What follows is
+the way in your box, for a video the helper cannot fetch.
 
 ffmpeg and a font are in the box; yt-dlp lives in your home: `pipx install yt-dlp` once
 (`pipx upgrade yt-dlp` when YouTube breaks it).

@@ -1,6 +1,9 @@
 # celine-net as a service. docs/DEPLOY.md explains every part.
 #
-#   docker compose up -d      builds the images, or pulls them from CELINE_IMAGES
+#   docker compose up -d      builds what is missing; update with --build
+#
+# This project's images are only ever built here (pull_policy: never). HARDENING.md says
+# why, and what else differs from upstream.
 #
 # No keys to type: the app makes the stack's own keys into the volume at its start
 # (app/keys/, server/celine/keys.py), and every other service waits until it is healthy.
@@ -12,15 +15,16 @@
 # by service name on this project's network.
 #
 # Optional services are compose profiles: shellbox (its computer and its morning reset),
-# browser, discord, whatsapp, web (search), reranker. COMPOSE_PROFILES in .env picks
-# them; the app starts without any. Model servers are added in the app (Settings,
-# Models), never here.
+# browser, discord, whatsapp, web (search), embedder, reranker. COMPOSE_PROFILES in .env
+# picks them; the app starts without any. Other model servers are added in the app
+# (Settings, Models), never here.
 #
 # All state is on one volume, `data`, one folder per service:
 #   app/            the app: archive, settings, keys typed into Settings, characters,
 #                   and keys/ (the stack's own keys)
 #   discord-link/   the Discord login, its journal
 #   wa-link/        the WhatsApp linked device and its journal
+#   embedder/       the embedder's model (only with the profile "embedder")
 #   reranker/       the reranker's model (only with the profile "reranker")
 #   shellbox/       Celine's home, in its shellbox and its browser
 # The app makes the folders and sees the whole volume; every other service sees only its
@@ -30,12 +34,43 @@
 # named here once. Both boxes are built with it, the app gives its home to it.
 x-her-uid: &her-uid "1000"
 
+# The egress firewall (egress/firewall.sh), one per box. It owns the network namespace and
+# the box joins it (network_mode) without NET_ADMIN, so root in the box cannot change the
+# rules. The box reaches the app and the public internet, never the LAN or the Docker
+# host. If the firewall stops, the box has no network until it is recreated.
+x-egress: &egress
+  build:
+    context: .
+    dockerfile: egress/Dockerfile
+  image: localhost/celine/celine-egress:latest
+  pull_policy: never
+  restart: unless-stopped
+  init: true
+  environment:
+    EGRESS_ALLOW: ${EGRESS_ALLOW:-}
+  cap_drop: [ALL]
+  cap_add: [NET_ADMIN]
+  security_opt: ["no-new-privileges:true"]
+  read_only: true
+  tmpfs:
+    - /run
+  healthcheck:
+    test: ["CMD", "test", "-e", "/run/firewall-up"]
+    interval: 30s
+    timeout: 5s
+    start_period: 15s
+    start_interval: 1s
+    retries: 3
+  mem_limit: 64m
+  pids_limit: 32
+
 services:
   celine:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ${CELINE_IMAGES:-celine}/celine-app:${CELINE_TAG:-latest}
+    image: localhost/celine/celine-app:latest
+    pull_policy: never
     restart: unless-stopped
     ports:
       # loopback by default; CELINE_PUBLISH=8766 (or a LAN address) opens it to the
@@ -68,8 +103,16 @@ services:
   # is `celine` with sudo, so it can install anything. Only its home is kept; the rest
   # resets whenever the container is recreated (every morning, DEPLOY.md "Shellbox").
   # Nothing of the app's data is in here, and nothing in here can stop the app. It sits
-  # on its own network: the app reaches it, the connectors and the search engine are
-  # out of its reach; the internet and the LAN stay open to it.
+  # behind shellbox-net: the app reaches it, the connectors and the search engine are out
+  # of its reach; it reaches the public internet, and the LAN and the host are dropped.
+  shellbox-net:
+    <<: *egress
+    profiles: [shellbox]
+    hostname: shellbox
+    networks:
+      shellbox:
+        aliases: [shellbox]
+
   shellbox:
     profiles: [shellbox]
     build:
@@ -77,15 +120,18 @@ services:
       dockerfile: shellbox/Dockerfile
       args:
         HER_UID: *her-uid
-    image: ${CELINE_IMAGES:-celine}/celine-shellbox:${CELINE_TAG:-latest}
+    image: localhost/celine/celine-shellbox:latest
+    pull_policy: never
     restart: unless-stopped
     depends_on:
       celine:
         condition: service_healthy
+      shellbox-net:
+        condition: service_healthy
+        restart: true
     # a tiny init as PID 1 reaps the orphans of its background programs
     init: true
-    hostname: shellbox
-    networks: [shellbox]
+    network_mode: "service:shellbox-net"
     environment:
       # its models through the app (OPENAI_BASE_URL and OPENAI_API_KEY in its terminals):
       # the proxy's own key (mounted below), never a provider's
@@ -125,11 +171,13 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 3
-    # sudo needs setuid, so no cap_drop and no no-new-privileges here: Docker's default
-    # container isolation, plus limits so it can't take the machine down with it.
+    # sudo needs setuid, so no no-new-privileges here and most of Docker's default
+    # capabilities stay, plus limits so it can't take the machine down with it.
+    # NET_RAW goes because a packet socket skips the firewall; MKNOD has no use here.
     # SYS_PTRACE: shellboxd reads what a quiet program is blocked in (waiting for input,
     # or sleeping and downloading), from /proc/<pid>/syscall
     cap_add: [SYS_PTRACE]
+    cap_drop: [NET_RAW, MKNOD]
     mem_limit: 4g
     pids_limit: 1024
     cpus: 2
@@ -137,8 +185,15 @@ services:
   # Celine's browser: one Brave on a screen of its own (Xvnc), driven by
   # browser/browserd.py. Everything in it runs as celine with its home mounted, so its
   # profile (~/.browser) and downloads (~/Downloads) are its own, and the morning reset of
-  # its shellbox leaves it running. Its own network: the app reaches it, nothing else
-  # does; the internet and the LAN stay open to it.
+  # its shellbox leaves it running. It sits behind browser-net: the app reaches it, nothing
+  # else does; it reaches the public internet, and the LAN and the host are dropped.
+  browser-net:
+    <<: *egress
+    profiles: [browser]
+    networks:
+      browser:
+        aliases: [browser]
+
   browser:
     profiles: [browser]
     build:
@@ -146,14 +201,18 @@ services:
       dockerfile: browser/Dockerfile
       args:
         HER_UID: *her-uid
-    image: ${CELINE_IMAGES:-celine}/celine-browser:${CELINE_TAG:-latest}
+    image: localhost/celine/celine-browser:latest
+    pull_policy: never
     restart: unless-stopped
     depends_on:
       celine:
         condition: service_healthy
+      browser-net:
+        condition: service_healthy
+        restart: true
     # reaps what Brave and a killed browserd leave behind
     init: true
-    networks: [browser]
+    network_mode: "service:browser-net"
     environment:
       TZ: ${TZ:-UTC}
     volumes:
@@ -181,7 +240,11 @@ services:
     # Brave's own sandbox needs user namespaces, which Docker's seccomp profile
     # blocks. Never apparmor:unconfined: where unprivileged user namespaces are
     # restricted (Ubuntu 24.04), Docker's default AppArmor profile is what allows them.
-    security_opt: ["seccomp:unconfined"]
+    # It runs as celine and needs no capability; its sandbox holds without them, so a
+    # setuid binary in the image gives nothing back. browser/seccomp.json is Docker's default
+    # profile plus clone, unshare, setns and chroot, which that sandbox needs.
+    cap_drop: [ALL]
+    security_opt: ["seccomp=./browser/seccomp.json", "no-new-privileges:true"]
     mem_limit: 3g
     pids_limit: 1024
     cpus: 2
@@ -194,7 +257,8 @@ services:
     build:
       context: .
       dockerfile: shellbox-manager/Dockerfile
-    image: ${CELINE_IMAGES:-celine}/celine-shellbox-manager:${CELINE_TAG:-latest}
+    image: localhost/celine/celine-shellbox-manager:latest
+    pull_policy: never
     restart: unless-stopped
     network_mode: none
     environment:
@@ -216,7 +280,8 @@ services:
     build:
       context: .
       dockerfile: connectors/discord/Dockerfile
-    image: ${CELINE_IMAGES:-celine}/celine-discord-link:${CELINE_TAG:-latest}
+    image: localhost/celine/celine-discord-link:latest
+    pull_policy: never
     restart: unless-stopped
     depends_on:
       celine:
@@ -246,7 +311,8 @@ services:
     build:
       context: .
       dockerfile: wa-link/Dockerfile
-    image: ${CELINE_IMAGES:-celine}/celine-wa-link:${CELINE_TAG:-latest}
+    image: localhost/celine/celine-wa-link:latest
+    pull_policy: never
     restart: unless-stopped
     depends_on:
       celine:
@@ -273,6 +339,45 @@ services:
     # a large history sync or attachment can't take the machine down with it
     mem_limit: ${WA_LINK_MEM_LIMIT:-2g}
 
+  # Topic search's model: Qwen3-Embedding-0.6B on llama.cpp's llama-server (POST
+  # /v1/embeddings), on the CPU. Optional: it starts only with the profile "embedder"
+  # (COMPOSE_PROFILES=embedder in .env). The first start downloads the model (about 0.64 GB)
+  # into the volume's embedder/ folder. In the app: Settings, Models, a llama-server
+  # provider at http://embedder:8080. One slot of 4096 tokens: memory grows with the square
+  # of an input's tokens (DEPLOY.md, "Embedder"), and the app cuts what the server refuses.
+  embedder:
+    image: ghcr.io/ggml-org/llama.cpp:server-b11151
+    profiles: [embedder]
+    restart: unless-stopped
+    user: "1000:1000"
+    depends_on:
+      celine:
+        condition: service_healthy
+    command: ["-hf", "${EMBEDDER_MODEL:-Qwen/Qwen3-Embedding-0.6B-GGUF:Q8_0}",
+              "--alias", "qwen3-embedding", "--embedding", "--pooling", "last",
+              "-t", "${EMBEDDER_CPUS:-4}", "-np", "1", "--cache-ram", "0", "--no-cache-prompt",
+              "-c", "4096", "-b", "4096", "-ub", "4096"]
+    environment:
+      LLAMA_CACHE: /models
+      HF_HOME: /models
+    volumes:
+      - type: volume
+        source: data
+        target: /models
+        volume:
+          subpath: embedder
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30m          # the first start downloads the model
+      retries: 3
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    cpus: ${EMBEDDER_CPUS:-4}
+    mem_limit: ${EMBEDDER_MEM_LIMIT:-6g}
+    pids_limit: 256
+
   # The reranker for archive search: bge-reranker-v2-m3 on llama.cpp's llama-server
   # (POST /v1/rerank). Optional: it starts only with the profile "reranker"
   # (COMPOSE_PROFILES=reranker in .env). Leave it out when the reranker runs on a GPU
@@ -289,7 +394,7 @@ services:
       celine:
         condition: service_healthy
     command: ["-hf", "${RERANKER_MODEL:-gpustack/bge-reranker-v2-m3-GGUF:Q8_0}",
-              "--alias", "bge-reranker-v2-m3", "--reranking",
+              "--alias", "bge-reranker-v2-m3", "--reranking", "-t", "4",
               "-c", "8192", "-b", "2048", "-ub", "2048"]
     environment:
       LLAMA_CACHE: /models
@@ -308,13 +413,16 @@ services:
       retries: 3
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
+    cpus: 4
+    mem_limit: ${RERANKER_MEM_LIMIT:-4g}
+    pids_limit: 256
 
   # Web search for Celine's web skill: a private SearXNG (no API keys, no tracking).
   # json output on, limiter off (one client); settings in config/searxng/, served from the
   # volume with the secret filled in (app/keys/searxng-settings.yml).
   searxng:
     profiles: [web]
-    image: docker.io/searxng/searxng:2026.9.23-3cd69d30e
+    image: docker.io/searxng/searxng:2026.9.23-3cd69d30e@sha256:bcfaed4091d59f7ce85670bd701a2d0295872196dc19908a3965a8353b149f83
     restart: unless-stopped
     depends_on:
       celine:
@@ -342,10 +450,10 @@ volumes:
   data:
 
 networks:
-  # only the app and the shellbox. Both networks reach the internet and your LAN, so
-  # whatever runs in the box or the browser can too. For a stricter setup, uncomment
-  # `internal: true` on either: it then reaches only the app (no internet, no LAN, no
-  # package installs or web pages from that container).
+  # only the app and the shellbox. The firewalls keep the box and the browser off the LAN
+  # and the host; the public internet stays open to them. For a stricter setup, uncomment
+  # `internal: true` on either: it then reaches only the app (no internet, no package
+  # installs or web pages from that container).
   shellbox:
     # internal: true
   # only the app and the browser

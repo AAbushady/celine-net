@@ -2,7 +2,7 @@
 Features). While no file is saved, what needs a service (`needs_service`: the boxes,
 ComfyUI, SearXNG, the connectors, email, the vault) is off and the rest on (`seed`);
 once saved, every feature is on until the file says otherwise, but one with `start_on`
-False (shares, guard), which is on only once the file says so. `done` is False until a
+False (shares), which is on only once the file says so. `done` is False until a
 PUT says the onboarding finished (config status `setup`).
 
 Three tiers (TIERS): core, what she is made of, with no switch (CORE: the chat and each
@@ -115,7 +115,8 @@ BASE: tuple[Feature, ...] = (
             warn="The link of a share is its key. A page opens only for you while you are "
                  "logged in, but anyone who gets a link can reach what it shares with a "
                  "script until it ends (24 hours, or what you set) or you stop it. A public "
-                 "share opens for anyone."),
+                 "share opens for anyone. A shared page runs in your browser, so it can send "
+                 "requests to your own network."),
     Feature("browser", "Browser", "Turns on once the browser answers.",
             "An isolated Brave browser with ad blocking: pages, logins and forms, with a history you can review and a live view you can watch.",
             "Turn it off if you don't run the browser container.",
@@ -139,6 +140,11 @@ BASE: tuple[Feature, ...] = (
             "Replies read out loud, in a voice you pick.",
             "Turn it off if replies should stay text.",
             probe="celine.speech:probe_output", setup="speech", start_on=False),
+    Feature("video", "Watching", "Turns on once the watch helper answers.",
+            "{{name}} watches YouTube videos and films from your Plex with their picture and sound, through a "
+            "helper on your GPU machine.",
+            "Turn it off if you run no watch helper.",
+            skills=("video",), probe="celine.skills.video:probe", setup="service"),
     Feature("web", "Web search", "Turns on once SearXNG answers.",
             "Web search through your own SearXNG, with the pages found read as text or in the browser.",
             "Turn it off if nothing should be looked up on the internet.",
@@ -162,11 +168,11 @@ BASE: tuple[Feature, ...] = (
             "Logins from your Vaultwarden, which {{she}} types into websites in the browser for you.",
             "Turn it off if you have no Vaultwarden, or no password should be stored.",
             skills=("vault",), pages=("vault",), probe="celine.vault:probe", setup="vault"),
-    Feature("guard", "Guard", "Turns on once a decision model is picked.",
+    Feature("guard", "Guard", "Risky actions wait until a decision model is picked.",
             "Bastet, a second model that checks risky actions before they run and asks you "
             "when unsure.",
             "Turn it off if you want no second check before risky actions.",
-            probe="celine.guard.rules:probe", setup="guard", start_on=False),
+            probe="celine.guard.rules:probe", setup="guard"),
     Feature("documents", "Documents", "",
             "A folder of your documents, searched, read and cited.",
             "Turn it off if you have no documents to share.",

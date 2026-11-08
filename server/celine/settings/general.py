@@ -47,19 +47,21 @@ FIELDS: list[dict[str, Any]] = [
      "choices": [["watch", "Watch"], ["on", "On"]],
      "help": "Watch: every step runs at once, and Bastet writes down in Events what she "
              "would have done. On: Bastet checks a risky step before it runs.",
-     "default": "watch"},
+     "default": "on"},
     # Advanced: whole numbers, read where they are used (turns, jobs, uploads, backups)
     *({"key": k, "label": label, "type": "number", "unit": unit, "min": lo, "max": hi,
        "default": d, "advanced": True, **({"help": tip} if tip else {})}
       for k, label, unit, lo, hi, d, tip in (
         ("max_concurrent_turns", "Turns at once", None, 1, 64, 6,
          "How many chats may generate at the same time."),
-        ("max_tool_iterations", "Tool rounds per turn", None, 0, 100_000, 0,
-         "0 means no limit; only the turn time limit applies."),
-        ("turn_wall_clock_seconds", "Turn time limit", "seconds", 1, 86_400, 1800,
-         "The agent's work time in one turn, tools included."),
+        ("max_tool_iterations", "Tool rounds per turn", None, 0, 100_000, 100,
+         "0 means no limit; only the turn time limit applies. At either limit the agent "
+         "gets one more step, in which no tool runs, to say where the work stands."),
+        ("turn_wall_clock_seconds", "Turn time limit", "seconds", 1, 86_400, 14_400,
+         "The agent's work time in one turn, tools and the model's writing included."),
         ("last_step_seconds", "Last answer time", "seconds", 1, 3600, 180,
-         "After the turn time limit, the step that is running gets this long to finish."),
+         "After the turn time limit, the step that is running gets this long to finish, "
+         "and so does the step that says where the work stands."),
         ("tool_timeout_seconds", "Tool time limit", "seconds", 1, 86_400, 180, None),
         ("routine_max_minutes", "Routine time limit", "minutes", 0, 100_000, 180,
          "The longest one routine run may take. 0 means no limit."),

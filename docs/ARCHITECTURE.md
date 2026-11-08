@@ -103,10 +103,10 @@ applies at once:
 | Key | Default | Meaning |
 |---|---|---|
 | `max_concurrent_turns` | 6 | conversations generating at once (the dispatcher's workers follow it) |
-| `max_tool_iterations` | 0 | model/tool round trips per turn; 0 means no cap, the wall clock is the limit |
+| `max_tool_iterations` | 100 | model/tool round trips per turn; 0 means no cap, the wall clock is the limit |
 | `tool_timeout_seconds` | 180 | a blocking tool past this is cancelled |
 | `job_timeout_seconds` | 3600 | must exceed `tool_timeout_seconds` |
-| `turn_wall_clock_seconds` | 1800 | its work time in one turn, tools included |
+| `turn_wall_clock_seconds` | 14400 | its work time in one turn, tools and the model's writing included |
 | `last_step_seconds` | 180 | after the work time: the step under way may still finish |
 | `events_keep` | 500 | log entries kept per conversation once it is idle |
 | `history_messages` | 200 | transcript sent to the model; 0 means no cap |
@@ -313,7 +313,7 @@ queued turn whose conversation has nothing in `preparing`, `streaming` or `tools
 user's turns (`origin='user'`) first, then the oldest. A worker sleeps until `notify()`,
 which every write that queues a turn calls (no poll). When `turn_wall_clock_seconds` of
 work are over, no new tool call starts and a running one is stopped; no new step starts,
-and the turn ends `capped` with `reason_code` `wall_clock` (a Stop ends it `aborted`). Time spent waiting for a model does not count. Past the work time plus
+and the turn takes its last step (below; a Stop ends it `aborted`). Time spent waiting for a model in the queue does not count. Past the work time plus
 `last_step_seconds` the turn is `failed` with the reason and the conversation is free.
 
 States: `queued`, `preparing`, `streaming`, `tools`, then `done`, `aborted`, `failed`,
@@ -352,8 +352,15 @@ event. Calls record what the tool was (`tool_calls.mutating`, `mode`).
 4. If the model called tools: record them, run them through `tools._resolve`, append
    the results to the wire history, loop. Before every model request the runner takes
    what the intercom has due for the conversation (`intercom/deliver.take`), so a message
-   sent while it works reaches it at its next step. Stop at `max_tool_iterations` when
-   it is set, or the wall clock (`capped`). Several tool calls in one reply run in order.
+   sent while it works reaches it at its next step. Several tool calls in one reply run
+   in order.
+5. At `max_tool_iterations` steps (when set) or the wall clock: one more step, with the
+   app's line (`turns/limit.md`) last in its request, that one request only. No call
+   made in it runs. Its words end the turn `done`, with `reason` "reached its limit of
+   ..." and the limit as `reason_code`, so a routine has its answer and the user reads
+   where the work stands. A reply without words ends it `capped`, its calls kept and
+   `interrupted` (Continue runs a read-only one). The wall clock gives that step the
+   room of `last_step_seconds` from when it starts.
 
 Tool call ids are `turn:iteration:index`. A step reached again after a crash finds its
 own result in the journal and is replayed; it never runs twice.
@@ -916,7 +923,7 @@ once; the rest are queued, and `release` starts them oldest brief first. With `c
 model, calling its models through the model proxy (`api/llm_proxy.py`). A sub-agent
 starts its own, down to `MAX_DEPTH` (3) levels below the top conversation
 (`conversations.store.depth` reads the `agent_of` chain); the deepest is not offered
-the skill. A `model` on a cloud provider (`her_models.cloud`: its address is not on this network:
+the skill. A `model` the starting turn does not run on, on a cloud provider (`her_models.cloud`: its address is not on this network:
 not loopback, private, link-local, a single label or .local, .lan, .home.arpa, .internal) waits for the user's approval (kind `model`) at every start. A sub-agent is
 done when its conversation is quiet and so are its own sub-agents (`report.quiet`);
 `sub_agents/report.py` then sends one intercom `report` to `agent:<parent>`, never
@@ -1069,9 +1076,9 @@ whole, `step(n, state)` moves one. Every change appends `plan.state` {plan} to t
 conversation and, for a mission, `mission.state`. A step with a model switches the
 conversation to it when it becomes doing (`flow.follow_model`). The user speaking there
 clears `waiting` (`answered_sync`). The agent's request carries the plan in its tail every turn
-(`flow.block`). The runner's continue rule (`turns/runner.py`): a step whose calls are all
-`needs_answer=False` (notebook and mind writes, `skills.ToolSpec`) with answer text ends the turn only when no step is open or
-it waits; a `plan__step` that reached an ask checkpoint ends the turn at once.
+(`flow.block`). The runner's continue rule (`turns/runner.py`): a step with calls goes on to the
+next step, and its words beside them are no end of the turn; a `plan__step` that reached an ask
+checkpoint and a mission's wait end the turn at once.
 
 `routines` (`schedules/skill.py`): `list`, `read(name)`, `write(name, label, prompt,
 time|cron, on, note, after, wall_minutes)` and `run(name)`. A write goes through
@@ -1451,8 +1458,10 @@ never deleted.
 Tables: `intercom` (one row per message: `from_addr`, `to_addr`, `kind`, `subject`, `text`,
 `data` JSON for code, `wake`, `due_at`, `until_at`, `reply_to`, `thread`, `cancelled_at`),
 `intercom_deliveries` (one row per recipient: `to_addr`, `conversation_id`, `state` pending,
-delivered, read or cancelled, the `message_id` and `turn_id` it landed as) and
-`intercom_tokens`. Kinds: `message`, `brief`, `job`, `report`, `trigger`, `notice`.
+delivered, read or cancelled, the `message_id` and `turn_id` it landed as),
+`intercom_archive` (the threads you moved out of the lists: `thread`, `through` the newest id
+then; it holds while nothing newer landed and nothing in it waits for you, and only your
+lists read it, never its own `intercom__read`) and `intercom_tokens`. Kinds: `message`, `brief`, `job`, `report`, `trigger`, `notice`.
 
 **Addresses** (`addresses.py`): stored `user`, `agent:<conversation id>`, `team:<conversation
 id>` (that conversation and its sub-agents; the word `team` is the sender's own), `all` (every conversation with a live turn or
@@ -1654,7 +1663,9 @@ is in docs/DEPLOY.md.
 | `PATCH /missions/{cid}` | `{name?, brief?, report_to?, time_limit?, check_in?, steps?}`, the given fields only (any other key is a 400); the time limit's notice cancelled and scheduled again or removed |
 | `POST /intercom` | `{to, text, subject?, reply_to?, in?, at?, until?}` (`intercom/api.py`): from `user` with the app session, from `system:<name>` with a named token |
 | `GET /intercom?to=&from=&thread=&scheduled=&after=&limit=` | messages to and from stored addresses, in a thread, above id `after`, oldest first, each with its `state` (pending, sent, cancelled) and `unread`; `scheduled=true` |
-| `GET /intercom/threads?with=&kind=&unread=&limit=&cursor=` | threads grouped by who they are with, by name (all her chats are one group), the newest activity first (`ThreadsPage`): `{groups: [{name, addresses, threads, waiting, items, more}], jobs: {count, newest}, next}` |
+| `POST /intercom/threads/archive` | `{threads}`: out of the lists until something newer lands in them, what waits in them read; `?read=1`: every thread All lists where nothing waits and no bug report stands open, and the job results (Archive read); `{archived}` |
+| `POST /intercom/threads/restore` | `{threads}`: back in the lists; `{restored}` |
+| `GET /intercom/threads?with=&kind=&unread=&archived=&limit=&cursor=` | threads grouped by who they are with, by name (all her chats are one group), the newest activity first (`ThreadsPage`): `{groups: [{name, addresses, threads, waiting, items, more}], jobs: {count, newest}, next}` |
 | `POST /intercom/read` | `{ids}`: the user's deliveries of these become `read`; `?all=1`: everything that waits for the user (Dismiss all); `{read}` |
 | `POST /intercom/threads/{id}/conversations` | Continue in a chat: a new chat with it (titled by the thread's subject) that carries the thread, its messages landed as one `notice` from `system:app` without waking it |
 | `GET /intercom/stream?to=&after=` | server-sent events, `id:` the message id: every message above `after` (or `Last-Event-ID`), then each new one as it is sent (woken by the send, not by the bus); a comment line every 15 s |

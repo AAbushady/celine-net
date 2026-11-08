@@ -312,7 +312,7 @@ async def test_whoami_says_the_fallback_with_its_reason_and_a_sub_agent_its_pare
     assert "Shellbox: The shellbox at box:8700 does not answer." in out, "her words"
     assert "Browser: not set up." in out and "below" not in out and "fix" not in out
     assert "Web search: SearXNG answers." in out and out.count("Guard:") == 1
-    assert "Guard: off." in out
+    assert "Guard: on." in out
     assert "[image]" not in out and "—" not in out
 
     sub = await conversations.create(store, "s", agent_of=parent, agent_name="scout")

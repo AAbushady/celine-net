@@ -4,7 +4,7 @@
 # Everything runs as celine (HER_UID, as in its shellbox), with its home mounted, so its
 # profile (~/.browser) and downloads (~/Downloads) are its own. run.sh keeps browserd.py
 # running; browserd runs Xvnc (the screen) and Brave (CDP on 127.0.0.1 only) and gives
-# the app a small API. Its sandbox needs seccomp:unconfined (compose). Brave, not Chromium:
+# the app a small API. Its sandbox needs browser/seccomp.json (compose). Brave, not Chromium:
 # Chromium no longer runs Manifest V2 extensions, and the full uBlock Origin is one.
 
 FROM debian:trixie
@@ -31,6 +31,11 @@ WORKDIR /home/celine
 COPY --link --chmod=755 browser/run.sh /usr/local/bin/run.sh
 COPY --link browser/browserd.py /usr/local/bin/browserd
 COPY --link browser/snapshot.py /usr/local/bin/snapshot.py
+# The home folder is shared with the shellbox, so nothing that starts here may take code
+# from it: native messaging hosts would start outside Brave's sandbox, and Python's user
+# site would run inside browserd.
+COPY --link browser/policies.json /etc/brave/policies/managed/celine.json
+ENV PYTHONNOUSERSITE=1
 EXPOSE 8771
 
 CMD ["/usr/local/bin/run.sh"]

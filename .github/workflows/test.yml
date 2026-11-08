@@ -1,6 +1,6 @@
 # The gates (AGENT.md "Gates") on every push and pull request: the Python tests (in
 # parallel, then in one process) and ruff, the web build (useReveal check, eslint, tsc,
-# vite) and the WhatsApp connector's tests. images.yml builds the images.
+# vite) and the WhatsApp connector's tests.
 name: test
 on:
   push:

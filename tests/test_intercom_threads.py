@@ -92,6 +92,10 @@ async def test_a_message_she_sends_from_that_turn_answers_in_the_thread(store, c
     said = await IntercomSkill(cfg).tail_part(ctx)
     assert f'You are in thread #{first} "videos": this turn answers #{reply["intercom_id"]}' \
         in said and 'intercom__send(to="user") answers there by itself' in said
+    routine = IntercomSkill(cfg)._here_line({"thread": 9, "subject": None, "id": 9,
+                                             "from": "system:schedules", "sub_agent": False})
+    assert routine.endswith("Your reply in this conversation is the answer.")
+    assert "intercom__send" not in routine, "nothing reads a message sent to a Routine"
     sent = await ic.send(f"agent:{cid}", "user", "relaunched it", turn=turn)
     other = await ic.send(f"agent:{cid}", "user", "something else", turn=None)
     later = await ic.send(f"agent:{cid}", "user", "all done", subject="videos", turn="t2")

@@ -90,13 +90,14 @@ async def list_messages(request: Request, to: str | None = None,
     """Messages to `to` and from `from` (stored addresses), in `thread`, above id
     `after`, oldest first, each with its state (pending, sent, cancelled) and whether it
     waits for the user (`unread`) and where it came from (`source`); `scheduled`: only
-    those with a due time. With `thread`, also where the thread comes from (`source`);
-    the bug report it is: GET /api/bugreports?thread=."""
+    those with a due time. With `thread`, also where the thread comes from (`source`) and
+    whether it is archived (`archived`); the bug report it is: GET /api/bugreports?thread=."""
     def fn(c):
         out = {"messages": rows.listed(c, to=to, from_addr=from_, scheduled=scheduled,
                                        thread=thread, after=after, limit=limit)}
         if thread is not None:
             out["source"] = rows.thread_source(c, thread)
+            out["archived"] = rows.is_archived(c, thread)
         return out
 
     return await request.app.state.services.store.read(fn)
@@ -138,7 +139,8 @@ PER_GROUP = 3
 @router.get("/intercom/threads")
 async def threads(request: Request, with_: str = Query("user", alias="with"),
                   kind: Literal[rows.KINDS] | None = None,  # type: ignore[valid-type]
-                  unread: bool = False, limit: int = Query(50, ge=1, le=200),
+                  unread: bool = False, archived: bool = False,
+                  limit: int = Query(50, ge=1, le=200),
                   cursor: str | None = None) -> ThreadsPage:
     """Threads grouped by who they are with, the group with the newest activity first,
     each group with its newest PER_GROUP threads and a count of the rest. `with`: `user`
@@ -147,6 +149,8 @@ async def threads(request: Request, with_: str = Query("user", alias="with"),
     else a name, stored address or conversation id: every thread with them, up to
     `limit` per group. `kind`: only messages of that kind. Job results are threads only
     with kind=job; otherwise they are one count (`jobs`, null with a kind or a name).
+    `archived`: only the threads you archived, up to `limit` per group; without it none of
+    them.
     Your plain chat messages are never threads. `limit` groups a page; `next` is the
     following page's `cursor`."""
     addr = "user" if with_ == "user" else None
@@ -155,10 +159,12 @@ async def threads(request: Request, with_: str = Query("user", alias="with"),
 
     def fn(c):
         found = rows.threads(c, addr, unread, reader="user", received=addr == "user",
-                             kind=kind, with_=who)
-        groups, nxt = rows.grouped(c, found, limit if who else PER_GROUP, limit, before)
+                             kind=kind, with_=who, archived=archived)
+        groups, nxt = rows.grouped(c, found, limit if who or archived else PER_GROUP, limit,
+                                   before)
         return {"groups": groups, "next": page_cursor((nxt,)) if nxt else None,
-                "jobs": None if kind or who else rows.jobs(c, addr, received=addr == "user")}
+                "jobs": None if kind or who else rows.jobs(c, addr, received=addr == "user",
+                                                           archived=archived)}
 
     return ThreadsPage(**await request.app.state.services.store.read(fn))
 
@@ -225,6 +231,47 @@ async def read(request: Request, body: ReadIn | None = None, all: bool = False) 
         return {"read": await _read(request, lambda c: rows.waiting_ids(c, "user"))}
     ids = body.ids if body is not None else []
     return {"read": await _read(request, lambda c: ids)}
+
+
+class ThreadsIn(BaseModel):
+    threads: list[int]
+
+
+@router.post("/intercom/threads/archive", dependencies=[Depends(person_only)])
+async def archive(request: Request, body: ThreadsIn | None = None, read: bool = False) -> dict:
+    """These threads (`{threads}`) leave the lists until something newer lands in them; what
+    waits for you in them is read. `?read=1`: what Archive read takes (`store.archivable`).
+    -> {archived}."""
+    store = request.app.state.services.store
+    asked = body.threads if body is not None else []
+
+    def fn(c):
+        done = rows.archive(c, rows.archivable(c) if read else asked)
+        marks = ",".join("?" * len(done))
+        for iid in rows.read(c, [r[0] for r in c.execute(
+                f"SELECT id FROM intercom WHERE thread IN ({marks})", done)]):
+            store.global_event(c, INTERCOM_STATE, {"intercom_id": iid, "conversation_id": None})
+        if done:
+            store.global_event(c, INTERCOM_STATE, {"intercom_id": done[-1],
+                                                   "conversation_id": None})
+        return done
+
+    return {"archived": await store.write(fn)}
+
+
+@router.post("/intercom/threads/restore", dependencies=[Depends(person_only)])
+async def restore(request: Request, body: ThreadsIn) -> dict:
+    """These threads back in the lists. -> {restored}."""
+    store = request.app.state.services.store
+
+    def fn(c):
+        done = rows.restore(c, body.threads)
+        if done:
+            store.global_event(c, INTERCOM_STATE, {"intercom_id": done[-1],
+                                                   "conversation_id": None})
+        return done
+
+    return {"restored": await store.write(fn)}
 
 
 KEEP_OPEN = 15.0        # seconds between comment lines, so proxies keep the stream

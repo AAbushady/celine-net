@@ -7,6 +7,7 @@ from chat_fixtures import Script, user_says
 import json
 from types import SimpleNamespace
 
+import anyio
 import httpx
 import pytest
 
@@ -62,6 +63,55 @@ async def test_private_and_local_addresses_are_refused(monkeypatch):
     monkeypatch.setattr(web.anyio, "getaddrinfo", fake_gai)
     with pytest.raises(ToolRefused):
         await web._resolve_public("evil.example.com", 80)
+
+
+async def _local_server(reply: bytes):
+    """A server on loopback: -> its listener, its port, the connections it got."""
+    import anyio.abc
+    got = []
+
+    async def serve(stream):
+        got.append(1)
+        async with stream:
+            await stream.receive(4096)
+            await stream.send(reply)
+    listener = await anyio.create_tcp_listener(local_host="127.0.0.1")
+    return listener, listener.extra(anyio.abc.SocketAttribute.local_port), got, serve
+
+
+async def test_a_name_that_changes_after_the_check_gets_no_connection(monkeypatch):
+    """DNS rebinding: the check sees a public address, the connection would get a local one."""
+    listener, port, got, serve = await _local_server(b"")
+    answers = ["93.184.216.34", "127.0.0.1"]
+
+    async def rebind(host, p, **kw):
+        ip = answers.pop(0) if len(answers) > 1 else answers[0]
+        return [(2, 1, 6, "", (ip, p))]
+    monkeypatch.setattr(web.anyio, "getaddrinfo", rebind)
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(listener.serve, serve)
+        with pytest.raises(ToolRefused, match="private or local"):
+            await web.fetch(f"http://rebind.example:{port}/", ua="t", timeout=5,
+                            max_bytes=1000, pdf_max_bytes=1000)
+        tg.cancel_scope.cancel()
+    assert got == [], "no connection was made"
+
+
+async def test_a_page_is_read_from_the_address_that_was_checked(monkeypatch):
+    listener, port, got, serve = await _local_server(
+        b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n"
+        b"Connection: close\r\n\r\nok")
+
+    async def gai(host, p, **kw):
+        return [(10, 1, 6, "", ("::1", p, 0, 0)), (2, 1, 6, "", ("127.0.0.1", p))]
+    monkeypatch.setattr(web.anyio, "getaddrinfo", gai)
+    monkeypatch.setattr(web, "_public", lambda addr: True)
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(listener.serve, serve)
+        page = await web.fetch(f"http://pages.example:{port}/", ua="t", timeout=5,
+                               max_bytes=1000, pdf_max_bytes=1000)
+        tg.cancel_scope.cancel()
+    assert page.body == b"ok" and page.url == f"http://pages.example:{port}/" and got == [1]
 
 
 async def test_a_dead_resolver_is_not_a_wrong_host(monkeypatch):

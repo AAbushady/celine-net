@@ -91,12 +91,17 @@ class Routines:
         cron: Annotated[str | None, "A cron line (minute hour day month weekday) when it "
                                     "is not daily."] = None,
         role: Annotated[str | None, "The model role its turns run on, such as chat."] = None,
-        on: Annotated[bool | None, "true: it runs at its time; false: it does not."] = None,
+        on: Annotated[bool | None, "true: it runs at its time; false: it does not. false "
+                                   "alone is saved at once and {{username}} is told; "
+                                   "every other change waits for their approval."] = None,
         note: Annotated[str | None, "A notebook path its answer is written to, like "
                                     "radar/{{date}}.md. Empty: none."] = None,
         after: Annotated[list[str] | None, "Names of the routines of the same night it "
                                            "runs after."] = None,
         wall_minutes: Annotated[int | None, "The minutes it may run; the Routine time limit in Settings caps it."] = None,
+        daytime: Annotated[bool | None, "true: {{date}} is the calendar date of its slot. "
+                                        "false: the date of its night, which from 12:00 on "
+                                        "is the next date."] = None,
     ) -> ToolResult:
         """Make or change a Routine with the same checks as the Routines page. A change
         changes only what you give; everything else stays as it is. A new routine needs
@@ -118,7 +123,8 @@ class Routines:
             body["partner_prompt"] = old.partner_prompt
         body.update({k: v for k, v in (("label", label), ("prompt", prompt), ("role", role),
                                        ("on", on), ("note", note), ("after", after),
-                                       ("wall_minutes", wall_minutes)) if v is not None})
+                                       ("wall_minutes", wall_minutes),
+                                       ("daytime", daytime)) if v is not None})
         if time or cron:                     # the new when replaces the old one
             body.pop("cron", None)
             body.update({k: v for k, v in (("time", time), ("cron", cron)) if v})
@@ -128,6 +134,10 @@ class Routines:
             return ToolResult(content=f"Not saved ({e.field}): {e.message}", is_error=True)
         except CelineError as e:
             return ToolResult(content=f"Not saved: {e.message}", is_error=True)
+        if old is not None and old.on and not s.on and self.app.intercom is not None:
+            await self.app.intercom.send("system:app", "user",
+                                         f"Routine {shown(s)} was switched off by "
+                                         f"{self.cfg.substitute('{{name}}')}.", kind="notice")
         return ToolResult(content=f"Saved {shown(s)} ({s.name}), {_when(s)}, "
                                   f"{'on' if s.on else 'off'}.",
                           display={"routine": s.name, "new": old is None})

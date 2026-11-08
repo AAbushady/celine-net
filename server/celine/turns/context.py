@@ -274,6 +274,39 @@ class _Item:
                 "attachments": self.attachments, "calls": self.calls}
 
 
+def with_images(cfg, call: dict, res: str) -> tuple[str, list[dict]]:
+    """The result `res` of a stored call as it reads it, and the image parts it holds:
+    its files (shell__look, whose notes stay in the tool message) and a result meant to be
+    seen (browser__look's screen, display "see"). A step of the turn that made the call
+    and every later build send it the same way."""
+    images: list[dict] = []
+    if call.get("attachments"):
+        rendered = attachments.render(cfg, [
+            {"role": "tool", "content": res,
+             "attachments": call["attachments"]}])[0]["content"]
+        if isinstance(rendered, list):
+            res, images = rendered[0]["text"], rendered[1:]
+        else:
+            res = rendered
+    shown = call.get("display") or {}
+    shot = shown.get("shot") if shown.get("see") else None
+    if shot:
+        images.append({"type": attachments.IMAGE, "attachment": {
+            **{k: shot[k] for k in ("id", "filename", "sha256", "media_type")},
+            "size": attachments.image_size_of(attachments.blob_path(cfg, shot["sha256"]))}})
+    if images:
+        res += "\n" + ("[the image follows]" if len(images) == 1 else "[the images follow]")
+    return res, images
+
+
+def screen_message(cid: str, turn: str | None, call: dict, images: list[dict]) -> dict:
+    """A result's images as the message after the results of its reply: the chat templates
+    take image parts in user turns only. It goes on until the result is aged away."""
+    return {"role": "user", "content": [
+        {"type": "text", "text": f"[the screen from {call['name']}]"}, *images],
+        ORIGIN: origin(cid, turn=turn, call=call["id"], note="screen")}
+
+
 def _kept(call: dict, policy: Policy) -> bool:
     """A call that never ages (policy.never_age): its arguments and result go whole."""
     return any((call.get("name") or "").startswith(p) for p in policy.never_age)
@@ -365,36 +398,12 @@ class _Plan:
                 images: list[dict] = []
                 if stubbed:
                     res = compact.stub(c["name"], c["arguments"], c["result"], self.cited)
-                elif c.get("attachments"):
-                    # the result's files (shell__look): their notes stay in the tool
-                    # message, the image parts go below
-                    rendered = attachments.render(self.cfg, [
-                        {"role": "tool", "content": res,
-                         "attachments": c["attachments"]}])[0]["content"]
-                    if isinstance(rendered, list):
-                        res, images = rendered[0]["text"], rendered[1:]
-                    else:
-                        res = rendered
-                # a result meant to be seen (browser__look's screen, display "see")
-                shown = (c.get("display") or {}) if not stubbed else {}
-                shot = shown.get("shot") if shown.get("see") else None
-                if shot:
-                    images.append({"type": attachments.IMAGE, "attachment": {
-                        **{k: shot[k] for k in ("id", "filename", "sha256", "media_type")},
-                        "size": attachments.image_size_of(
-                            attachments.blob_path(self.cfg, shot["sha256"]))}})
-                if images:
-                    res += "\n" + ("[the image follows]" if len(images) == 1
-                                   else "[the images follow]")
+                else:
+                    res, images = with_images(self.cfg, c, res)
                 out.append({"role": "tool", "tool_call_id": c["id"], "content": res,
                             ORIGIN: came})
-                # the chat templates take image parts in user turns only: a result's
-                # images follow the results of the reply as a user message, until the
-                # result is aged away
                 if images:
-                    screens.append({"role": "user", "content": [
-                        {"type": "text", "text": f"[the screen from {c['name']}]"}, *images],
-                        ORIGIN: origin(it.cid, turn=it.turn, call=c["id"], note="screen")})
+                    screens.append(screen_message(it.cid, it.turn, c, images))
             out += screens
         else:
             out = wire_message(self.cfg, it)
