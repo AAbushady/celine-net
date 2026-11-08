@@ -44,13 +44,16 @@ embed    = true          # passages into the semantic index ([embeddings] below)
 # The Topic search model in Settings, Models makes the vectors. This block
 # is the index shape. An index remembers what its model produces (a fingerprint); a
 # model that produces other vectors, or another `dims`, rebuilds it.
-batch      = 128
+# A CPU embedder (the stack's `embedder`) does one input at a time, and a memory lookup's
+# request waits behind every input sent before it: 16 passages, one request in flight, is
+# a few seconds. A GPU server builds faster with batch = 128 and workers = 4.
+batch      = 16
 max_input_chars = 12000   # the server gives each input 4096 tokens; longer ones are cut
 # query_prefix and dims fit Qwen3-Embedding (qwen3-embedding:8b): it wants an instruction
 # on the query side only, and makes 4096 dims. Another model: query_prefix = "" unless its
 # card names one, and dims = its vector size (fewer dims are smaller and a little less exact).
 query_prefix = "Instruct: Given a question, retrieve chat messages that answer it\nQuery: "
-workers = 4               # requests in flight during a build
+workers = 1               # requests in flight during a build
 dims    = 4096            # stored as int8 plus sign bits; a model with fewer keeps all of its own
 # The semantic index: sessions (cut at pauses) -> overlapping passages..
 # Changing any of these re-cuts every chat on the next build; unchanged passages keep

@@ -7,10 +7,12 @@ from __future__ import annotations
 
 import json
 import math
+import threading
+from collections import OrderedDict
 
 import pytest
 
-from chat_fixtures import user_says
+from chat_fixtures import until, user_says
 from notes_fixtures import notes_cfg, select_turn, write_notes
 
 from celine.conversations import store as conversations, tree
@@ -24,16 +26,30 @@ NOOR = ("keys: Noor, climbing\n\nNoor is a friend.\n\n## Climbing\nNoor climbs e
 WORDS = ("climb", "bakery", "friend")
 
 
-def _fake(cfg, query, texts):
-    """A vector per text: how often each of WORDS comes up, plus a little of everything."""
-    def vec(t):
-        return [t.lower().count(w) for w in WORDS] + [0.01]
-    return vec(query), [vec(t) for t in texts]
+def _vec(t):
+    """How often each of WORDS comes up, plus a little of everything."""
+    return [t.lower().count(w) for w in WORDS] + [0.01]
+
+
+class Model:
+    """The embedding model: every text it was given, in calls."""
+
+    def __init__(self):
+        self.calls: list[list[str]] = []
+
+    def __call__(self, cfg):
+        def embed(texts):
+            self.calls.append(texts)
+            return [_vec(t) for t in texts]
+        return ("fake", 0), "", embed
 
 
 @pytest.fixture(autouse=True)
-def _vectors(monkeypatch):
-    monkeypatch.setattr(recall, "_embed", _fake)
+def model(monkeypatch):
+    m = Model()
+    monkeypatch.setattr(recall, "_model", m)
+    monkeypatch.setattr(recall, "_kept", OrderedDict())
+    return m
 
 
 def _cfg(tmp_path, **context):
@@ -138,15 +154,59 @@ async def test_never_carried_off_left_out_outside_the_folder_or_with_auto_off(
 
 async def test_an_embedding_model_that_does_not_answer_is_said(store, tmp_path,
                                                                 monkeypatch):
-    def down(cfg, query, texts):
+    def down(cfg):
         raise SemanticError("No embedding model is set.")
-    monkeypatch.setattr(recall, "_embed", down)
+    monkeypatch.setattr(recall, "_model", down)
     cfg = _cfg(tmp_path)
     await write_notes(store, cfg, {"people/noor.md": NOOR})
     cid = await conversations.create(store)
     text, report = await _say(store, cfg, cid, "noor")
     assert text == f"{recall.HEAD} not available now: No embedding model is set."
     assert report["error"] and len(report["candidates"]) == 3
+
+
+async def test_a_section_is_embedded_once_until_it_changes(store, tmp_path, model):
+    """Every message embedded every section again: twenty took longer than the 10 s a
+    message waits on a CPU embedder, so most messages had no memory."""
+    cfg = _cfg(tmp_path)
+    await write_notes(store, cfg, {"people/noor.md": NOOR})
+    cid = await conversations.create(store)
+    await _say(store, cfg, cid, "noor climbing")
+    assert len(model.calls) == 1 and len(model.calls[0]) == 4, "the talk and three sections"
+    await _answer(store, cid)
+    text, _ = await _say(store, cfg, cid, "climbing with noor again")
+    assert model.calls[1] == ["climbing with noor again\nok"], "the talk alone"
+    await _answer(store, cid)
+    await write_notes(store, cfg, {"people/noor.md": NOOR.replace("every weekend",
+                                                                  "on Sundays")})
+    await _say(store, cfg, cid, "noor climbing")
+    assert len(model.calls[2]) == 2 and "on Sundays" in model.calls[2][1], \
+        "the talk and the section that changed"
+
+
+async def test_a_message_that_stops_waiting_leaves_the_vectors_to_the_next(
+        store, tmp_path, monkeypatch):
+    go = threading.Event()
+
+    def slow(cfg):
+        def embed(texts):
+            go.wait()
+            return [_vec(t) for t in texts]
+        return ("fake", 0), "", embed
+    monkeypatch.setattr(recall, "_model", slow)
+    monkeypatch.setattr(recall, "EMBED_SECONDS", 0.05)
+    cfg = _cfg(tmp_path)
+    await write_notes(store, cfg, {"people/noor.md": NOOR})
+    cid = await conversations.create(store)
+    text, report = await _say(store, cfg, cid, "noor climbing")
+    assert text == f"{recall.HEAD} not available now: {recall.LATE}"
+    assert recall._late, "the call goes on"
+    go.set()
+    await until(lambda: not recall._late)
+    assert len(recall._kept) == 3
+    await _answer(store, cid)
+    text, _ = await _say(store, cfg, cid, "noor climbing")
+    assert "### people/noor.md#Climbing" in text
 
 
 async def test_one_long_note_leaves_room_for_every_other(store, tmp_path):

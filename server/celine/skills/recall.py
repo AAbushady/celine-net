@@ -5,8 +5,12 @@ turns/loads.KEY_REPLY characters of its last reply before it; loads.key_in: a wh
 word or phrase, any case), cut into sections at their `## ` headings (the lines before
 the first heading are a section too), at most NOTE_SECTIONS of one note and CANDIDATES in
 all, taken from every note alike. Each section is graded by the cosine similarity of
-its embedding to the talk's (the Embeddings task, kb/semantic.query_embedder, one call
-for the talk and every section). A section comes back only at or over `memory_floor`,
+its embedding to the talk's (the Embeddings task, kb/semantic.query_embedder). A
+section's vector is kept in memory by its text and the model that made it (KEPT of
+them, the least recently used go first), so a message embeds the talk and only the
+sections no earlier message embedded, in one call. The message waits EMBED_SECONDS for
+it; a call still running then goes on, and the next message finds what it made (on a CPU
+embedder a section takes about a second). A section comes back only at or over `memory_floor`,
 the best first, at most `memory_sections` of them in at most `memory_tokens` tokens
 (var/settings/context.toml, turns/loads.read_shares).
 
@@ -30,13 +34,21 @@ import hashlib
 import json
 import re
 import sqlite3
+import threading
+from array import array
+from collections import OrderedDict
 from datetime import datetime
+from typing import Callable
 
 HEAD = "[your memory]"
 SECTION_CHARS = 2000     # a longer section is cut there, with where the rest is
 CANDIDATES = 40          # the most sections graded for one message
 NOTE_SECTIONS = 8        # the most of them from one note, so every note gets a chance
-EMBED_SECONDS = 10.0
+EMBED_SECONDS = 10.0     # a message waits this long for its vectors
+CALL_SECONDS = 300.0     # one embedding call may take this long, after the message stopped waiting
+KEPT = 4000              # section vectors kept in memory (about 4 KB each)
+LATE = (f"the embedding model took more than {EMBED_SECONDS:g} s; what it makes is kept "
+        "for the next message")
 SHOWN = "shown"
 BELOW = "below the floor"
 BEFORE = "shown before"
@@ -94,13 +106,48 @@ def _facts(c: sqlite3.Connection, cid: str, tid: str, mid: str, limit: int | Non
 }
 
 
-def _embed(cfg, query: str, texts: list[str]) -> tuple[list[float], list[list[float]]]:
-    """(the query's vector, each text's) in one call to the first model of the
-    Embeddings task that answers; raises SemanticError when none does."""
+_kept: OrderedDict[tuple, array] = OrderedDict()     # (model, text hash) -> vector
+_kept_lock = threading.Lock()
+_late: set[asyncio.Future] = set()      # calls no message waits for any more, held to their end
+
+
+def _model(cfg) -> tuple[tuple, str, Callable[[list[str]], list[list[float]]]]:
+    """(which vectors it makes: its name and fingerprint, its query prefix, a call that
+    embeds texts) of the first model of the Embeddings task that answers; raises
+    SemanticError when none does."""
     from ..kb import semantic
     e = semantic.query_embedder(cfg)
-    vecs = e.embed([e.s["query_prefix"] + query, *texts], timeout=EMBED_SECONDS)
-    return vecs[0], vecs[1:]
+    return (e.ref, hash(e.fp)), e.s["query_prefix"], \
+        lambda texts: e.embed(texts, timeout=CALL_SECONDS)
+
+
+def _vectors(cfg, query: str, texts: list[str]) -> tuple[list[float], list[array]]:
+    """(the query's vector, each text's), in a thread: the texts' from `_kept`, the query
+    and every text not there in one call, which then keeps theirs."""
+    key, prefix, embed = _model(cfg)
+    hashes = [hashlib.sha1(t.encode()).digest() for t in texts]
+    with _kept_lock:
+        have = {}
+        for h in hashes:
+            if (v := _kept.get((key, h))) is not None:
+                _kept.move_to_end((key, h))
+                have[h] = v
+    todo = {h: t for h, t in zip(hashes, texts) if h not in have}
+    vecs = embed([prefix + query, *todo.values()])
+    with _kept_lock:
+        for h, v in zip(todo, vecs[1:]):
+            have[h] = _kept[(key, h)] = array("f", v)
+        while len(_kept) > KEPT:
+            _kept.popitem(last=False)
+    return vecs[0], [have[h] for h in hashes]
+
+
+def _settled(work: asyncio.Future) -> None:
+    """A call the message stopped waiting for: its vectors are kept, its error is
+    nobody's to say."""
+    _late.discard(work)
+    if not work.cancelled():
+        work.exception()
 
 
 async def block(cfg, store, cid: str, tid: str, message: dict
@@ -145,9 +192,15 @@ async def block(cfg, store, cid: str, tid: str, message: dict
     found = sorted(found, key=lambda x: x["nth"])[:CANDIDATES]
     report: dict = {"query": talk, "floor": s["memory_floor"],
                     "candidates": [], "shown": []}
+    work = asyncio.ensure_future(asyncio.to_thread(
+        _vectors, cfg, talk, [f"{x['id']}\n{x['text']}" for x in found]))
     try:
-        q, vecs = await asyncio.to_thread(
-            _embed, cfg, talk, [f"{x['id']}\n{x['text']}" for x in found])
+        try:
+            q, vecs = await asyncio.wait_for(asyncio.shield(work), EMBED_SECONDS)
+        except TimeoutError:
+            _late.add(work)
+            work.add_done_callback(_settled)
+            raise SemanticError(LATE) from None
     except SemanticError as e:
         report["error"] = str(e)
         report["candidates"] = [{"id": x["id"], "key": x["key"]} for x in found]

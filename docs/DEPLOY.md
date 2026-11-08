@@ -378,7 +378,10 @@ profile `embedder` (`COMPOSE_PROFILES=embedder` in `.env`).
   tokens a second, and a search takes about 0.1 s. Memory grows with the square of an input's
   tokens: 4000 tokens took about 5 GB, and 8900 filled a 12 GB limit. So it has one slot of
   4096 tokens, and the app cuts an input the server refuses as too long until it fits. A CPU
-  does one input at a time anyway, so more slots buy nothing.
+  does one input at a time anyway, so more slots buy nothing. For the same reason an index
+  build sends 16 passages in one request at a time (`batch`, `workers` in `config/kb.toml`):
+  a memory lookup waits behind a few seconds of it, not minutes. A lookup embeds only the
+  note sections no earlier one did (`skills/recall.py`).
 - **Another model.** Set `EMBEDDER_MODEL` in `.env` and check `query_prefix` in
   `config/kb.toml`, which fits Qwen3-Embedding. The larger 4B took 148 s for one batch of 128
   passages on 4 cores, and four at once ran past the app's 300 s limit. A larger model needs
