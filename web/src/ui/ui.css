@@ -1155,6 +1155,21 @@ a.list-row, button.list-row, .list-row[role='button'] { cursor: pointer; }
 .composer-box__text::placeholder { color: var(--text-muted); }
 .composer-box__bar { display: flex; align-items: center; gap: var(--s-1); margin-left: calc(-1 * var(--s-1)); }
 .composer-box__gap { flex: 1; }
+.composer-box__start, .composer-box__end { display: contents; }
+/* a phone's box is one row: its buttons beside the text, which grows between them; the
+   files on their way in take a row above */
+@media (max-width: 767px) {
+  .composer-box { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "start text end";
+    align-items: end; column-gap: var(--s-1); padding: var(--s-2); }
+  .composer-box:has(> .composer-box__files) { grid-template-areas: "files files files" "start text end"; }
+  .composer-box__files { grid-area: files; }
+  .composer-box__text { grid-area: text; align-self: center; }
+  .composer-box__bar { display: contents; }
+  .composer-box__gap { display: none; }
+  .composer-box__start, .composer-box__end { display: flex; align-items: center; gap: var(--s-1); }
+  .composer-box__start { grid-area: start; }
+  .composer-box__end { grid-area: end; }
+}
 
 /* ── Picture: a click opens the Viewer ── */
 .picture { position: relative; min-width: 0; border-radius: var(--r-lg); overflow: hidden; background: var(--surface-2); aspect-ratio: var(--pic-ratio); }

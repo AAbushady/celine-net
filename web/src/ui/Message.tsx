@@ -126,10 +126,12 @@ export function ComposerBox({ value, onChange, onSend, onStop, running = false, 
                   if (isSendKey(e)) { e.preventDefault(); if (can && !running) onSend() }
                 }} />
       <div className="composer-box__bar">
-        {start}
+        <span className="composer-box__start">{start}</span>
         <span className="composer-box__gap" />
-        {tools}
-        <SendButton ready={can} running={running} onSend={onSend} onStop={onStop} title={disabled} />
+        <span className="composer-box__end">
+          {tools}
+          <SendButton ready={can} running={running} onSend={onSend} onStop={onStop} title={disabled} />
+        </span>
       </div>
     </div>
   )
