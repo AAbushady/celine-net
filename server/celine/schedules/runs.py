@@ -51,7 +51,9 @@ step limit) and without the note's write: the run is done with the lead-in
 as its result, the note is not written, and the run's `error` says so. A note it wrote
 and then went on past (ok tool calls after its last write of it, the note older than the
 last of them) is the result still, and the run's `error` says how many calls came after
-it. The run is over
+it. A later run of the same night reads that error under the result (`results`), and its
+prompt ends with the night's notes that are not in the notebook, each with why (`unwritten`,
+missing.md), so it does not read a path that is empty as if it held something. The run is over
 when its conversation and its sub-agents are quiet and every sub-agent has reported
 (looked at after every turn or job end, the dispatcher's `on_end`). Every run first keeps the
 night's backups (schedules/backups.py: once a night, the later runs find them made).
@@ -220,14 +222,39 @@ def _insert(c: sqlite3.Connection, store, cfg, name: str, slot: datetime,
 
 def results(c: sqlite3.Connection, night: str) -> dict[str, str]:
     """{{result:<schedule>}} of every schedule with a finished run that night: its
-    answer, or "(no result: <why>)"; the latest run of a schedule counts."""
+    answer, with the run's error under it when it has one (its note not written, or
+    written before its last calls), or "(no result: <why>)"; the latest run of a
+    schedule counts."""
     out: dict[str, str] = {}
     for r in c.execute("SELECT schedule, state, result, error, reason FROM runs WHERE "
                        "night = ? AND state IN ('done', 'failed', 'skipped', 'stopped') "
                        "ORDER BY slot",
                        (night,)):
-        out[r["schedule"]] = r["result"] if r["state"] == "done" and r["result"] else \
-            f"(no result: {r['error'] or r['reason'] or 'no answer'})"
+        if r["state"] == "done" and r["result"]:
+            out[r["schedule"]] = r["result"] + (f"\n\n({r['error']})" if r["error"] else "")
+        else:
+            out[r["schedule"]] = f"(no result: {r['error'] or r['reason'] or 'no answer'})"
+    return out
+
+
+def unwritten(c: sqlite3.Connection, cfg, night: str, day: date, own: str, root) -> list[str]:
+    """The notes of that night's finished runs (done, failed or stopped; the latest run
+    of a schedule counts) that are not in the notebook at `root`, but `own`'s: one line
+    each, the note, its routine and why, from the run's error or reason."""
+    res = results(c, night)
+    last: dict[str, sqlite3.Row] = {}
+    for r in c.execute("SELECT schedule, state, error, reason FROM runs WHERE night = ? AND "
+                       "state IN ('done', 'failed', 'stopped') ORDER BY slot", (night,)):
+        last[r["schedule"]] = r
+    out = []
+    for name, r in last.items():
+        s = (getattr(cfg, "schedules", None) or {}).get(name)
+        if name == own or s is None or not s.note:
+            continue
+        path = fill(cfg, s.note, day, res)
+        if root is not None and (root / path).is_file():
+            continue
+        out.append(f"- {path} ({shown(s)}): {r['error'] or r['reason'] or 'the run left no note'}")
     return out
 
 
@@ -650,13 +677,18 @@ class Scheduler:
             start = self._note_text(note)
             if not fresh and start is not None and self._note_touched(note, started):
                 start = None
+            if fresh:
+                prompt = fill(cfg, s.prompt, day, res, await extras(self.app, s.prompt, night))
+                # tonight's notes that earlier runs left out: nothing there to read
+                root = cfg.her.notebook if getattr(cfg, "her", None) else None
+                gone = await store.read(lambda c: unwritten(c, cfg, r["night"], day, s.name, root))
+                if gone:
+                    prompt += "\n\n" + prompts.fill(cfg, __file__, "missing.md", lines="\n".join(gone))
             if not fresh:
                 answer, final = await self._resume(cid)
             elif s.partner:
-                prompt = fill(cfg, s.prompt, day, res, await extras(self.app, s.prompt, night))
                 answer, final = await self._dialogue(rid, s, cid, prompt, day, res, where)
             else:
-                prompt = fill(cfg, s.prompt, day, res, await extras(self.app, s.prompt, night))
                 answer, final = await self._turn(cid, "system:schedules", "\n\n".join(
                     [prompt, cfg.substitute(RULE.replace("{final}", where))]), "trigger",
                     {"run": rid})

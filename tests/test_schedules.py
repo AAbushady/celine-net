@@ -901,3 +901,32 @@ async def test_routines_list_and_read_tell_a_run_in_the_app_zone(store, cfg):
     listed = (await skill.list(ctx)).content
     assert listed.endswith(", last run Fri 30 Oct 02:00 waiting"), listed
     assert "- run:r Fri 30 Oct 02:00 waiting" in (await skill.read(ctx, "world")).content
+
+
+async def test_a_later_run_hears_which_of_tonights_notes_are_not_there(store, cfg, tmp_path):
+    """A run done without its note: its result carries the error, and a later run of the
+    night is told which notes are missing, with why, so it does not read an empty path as
+    if it held something. A note that is there, a skipped run and its own are not listed."""
+    cfg.schedules = {"review": _s("review", note="diary/{{date}}-review.md"),
+                     "world": _s("world", note="diary/{{date}}-world.md"),
+                     "dream": _s("dream", note="dream/{{date}}.md"),
+                     "merge": _s("merge", note="diary/{{date}}-merge.md")}
+    root = tmp_path / "nb"
+    (root / "diary").mkdir(parents=True)
+    (root / "diary" / "2026-10-10-world.md").write_text("news")
+    lost = ("The note diary/2026-10-10-review.md was not written: the run ended with a tool call "
+            "and no answer after it.")
+    await store.write(lambda c: c.executemany(
+        "INSERT INTO runs(id, schedule, label, slot, night, state, result, error, created_at) "
+        "VALUES(?,?,?,?,?,?,?,?,'x')",
+        [("r1", "review", "Review", "1", "2026-10-10", "done", "Reviewing the night.", lost),
+         ("r2", "world", "World", "2", "2026-10-10", "done", "The news.", None),
+         ("r3", "dream", "Dream", "3", "2026-10-10", "skipped", None, None)]))
+    res = await store.read(lambda c: runs_mod.results(c, "2026-10-10"))
+    assert res["review"] == f"Reviewing the night.\n\n({lost})"
+    assert res["world"] == "The news."
+    gone = await store.read(lambda c: runs_mod.unwritten(
+        c, cfg, "2026-10-10", date(2026, 10, 10), "merge", root))
+    assert gone == [f"- diary/2026-10-10-review.md (Review): {lost}"]
+    assert await store.read(lambda c: runs_mod.unwritten(
+        c, cfg, "2026-10-10", date(2026, 10, 10), "review", root)) == [], "its own is not listed"
