@@ -78,11 +78,14 @@ export function reportApi(status: number) {
   else if (status === 404) void healthy()
 }
 
-/** The build this page was loaded with; a reconnect to another one reloads the page. */
+/** The build this page was loaded with; a reconnect to another one reloads the page. A build
+    is its commit and when it was built: a local image build has no commit of its own ("dev")
+    but the time of its web build (config.py `build`) */
 let loaded: string | null = null
-export function knowBuild(commit: string) { loaded ??= commit }
-export function reloadIfUpdated(commit: string) {
-  if (loaded && commit !== loaded && !leaving) { leaving = true; location.reload() }
+const keyOf = (b: { commit: string; built: string | null }) => `${b.commit} ${b.built ?? ''}`
+export function knowBuild(build: { commit: string; built: string | null }) { loaded ??= keyOf(build) }
+export function reloadIfUpdated(build: { commit: string; built: string | null }) {
+  if (loaded && keyOf(build) !== loaded && !leaving) { leaving = true; location.reload() }
 }
 
 /** A socket closed: the session may have ended (the gate refuses the handshake). */

@@ -235,7 +235,7 @@ function useSocket(): Connection {
         sendFocus()
         if (opened) {
           // back after a while: an update in between reloads the page instead of a stale app
-          void api.configStatus().then(st => reloadIfUpdated(st.build.commit), () => undefined)
+          void api.configStatus().then(st => reloadIfUpdated(st.build), () => undefined)
           void catchUp(s, true); return
         }
         opened = true

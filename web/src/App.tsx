@@ -98,7 +98,7 @@ function Shell() {
   // leaves it out instead of showing an error
   const loadStatus = useCallback(async () => {
     const s = await api.configStatus()
-    knowBuild(s.build.commit)
+    knowBuild(s.build)
     setStatus(s)
   }, [])
   useEffect(() => { void loadStatus().catch(() => undefined).finally(() => setStatusIn(true)) }, [loadStatus])
