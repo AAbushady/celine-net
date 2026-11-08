@@ -28,7 +28,9 @@ VERBS = {"search", "read", "list", "get", "count", "look_up", "scroll", "write",
          # where it is (skills/me.py)
          "whoami",
          # a change of settings that waits for the user (skills/settings.py)
-         "propose"}
+         "propose",
+         # a video it watches, and the Plex account it watches from (skills/video.py)
+         "watch", "link"}
 PAGING = {"part", "from", "count", "offset", "page", "from_line", "before", "after",
           "limit"}
 

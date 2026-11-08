@@ -449,9 +449,11 @@ function GuardForm({ value, onChange, saveRef, reprobe }: FormProps<Guard>) {
    file must hold, read-only with Copy), SearXNG (the address alone): Check saves (PUT
    /services) and asks the probe; Next saves the same way. The address starts as the saved
    one, else the one the probe found the service at (`feature.url`) ── */
-const SERVICE: Record<string, string> = { shellbox: 'shellbox', browser: 'browser', web: 'searxng' }
-/** an example address per service, on its own port (docker-compose.yml) */
-const EXAMPLE: Record<string, string> = { shellbox: 'http://192.168.1.20:8770', browser: 'http://192.168.1.20:8771', searxng: 'http://192.168.1.20:8888' }
+const SERVICE: Record<string, string> = { shellbox: 'shellbox', browser: 'browser', web: 'searxng', video: 'video' }
+/** an example address per service, on its own port (docker-compose.yml; the watch helper runs on the Docker host) */
+const EXAMPLE: Record<string, string> = { shellbox: 'http://192.168.1.20:8770', browser: 'http://192.168.1.20:8771', searxng: 'http://192.168.1.20:8888', video: 'http://host.docker.internal:8790' }
+/** where a service keeps the hash of the app's key */
+const KEY_TIP: Record<string, string> = { video: "Copy this into key_hash in the watch helper's state/config.json, then restart it." }
 type Service = { url: string }
 
 function ServiceForm(p: FormProps<Service>) { return <ServiceFields {...p} withKey /> }
@@ -462,7 +464,7 @@ function ServiceFields({ feature, value, onChange, saveRef, reprobe, withKey }: 
   const res = useResource(() => settingsApi.services(), [])
   const saved = res.data?.services[id]
   const hash = res.data?.keys[id]?.hash ?? ''
-  const keyTip = `Copy this into /etc/${id}/key.hash on the ${id}, then restart it.`
+  const keyTip = KEY_TIP[id] ?? `Copy this into /etc/${id}/key.hash on the ${id}, then restart it.`
   const d = value ?? (res.data !== undefined ? { url: saved?.url || feature.url || '' } : null)
   const save = async () => {
     if (!d) return

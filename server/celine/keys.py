@@ -19,7 +19,7 @@ from pathlib import Path
 
 from .config import CONFIG_DIR
 
-NAMES = ("shell", "browser", "connector", "shellbox-llm", "searxng")
+NAMES = ("shell", "browser", "connector", "shellbox-llm", "searxng", "video")
 SEARXNG_SETTINGS = CONFIG_DIR / "searxng" / "settings.yml"
 
 
@@ -78,6 +78,8 @@ def ensure(data_dir: Path) -> list[str]:
     derived = {
         "shell.hash": (sha256(keys["shell"]) + "\n", 0o644),
         "browser.hash": (sha256(keys["browser"]) + "\n", 0o644),
+        # the watch helper runs on the GPU machine, outside the stack: Setup shows this hash for its config
+        "video.hash": (sha256(keys["video"]) + "\n", 0o644),
         "connector-clients": (f"live:{keys['connector']}:owner\n", 0o600),
         # searxng runs as its own user, so it must be readable by it
         "searxng-settings.yml": (_searxng_settings(keys["searxng"]), 0o644),

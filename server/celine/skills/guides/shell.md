@@ -169,6 +169,10 @@ for their answer; denied, nothing is shared and the result says so. A share runs
 
 ## Watching a video
 
+With the video tools on (the video guide), watch with those: the helper sees and hears the
+video for you, and while the GPU is busy it makes stills and subtitles itself. What follows is
+the way in your box, for a video the helper cannot fetch.
+
 ffmpeg and a font are in the box; yt-dlp lives in your home: `pipx install yt-dlp` once
 (`pipx upgrade yt-dlp` when YouTube breaks it).
 

@@ -45,7 +45,7 @@ async def test_defaults_then_put_then_get(api):
     # nothing that needs a service runs before Setup saved it: no connector starts at boot
     off = {i for i, on in r["features"].items() if not on}
     assert off == {"shellbox", "shares", "browser", "images", "music", "web", "discord",
-                   "whatsapp", "email", "vault", "speech_input", "speech_output", "mac"}
+                   "whatsapp", "email", "vault", "speech_input", "speech_output", "mac", "video"}
     assert "shell" not in _skills(api) and "discord" not in _skills(api)
     assert not features.allows_connector(api.cfg, "discord")
     assert api.cfg.settings.features == features.seed()
@@ -97,7 +97,7 @@ async def test_the_catalog_has_every_field_and_the_plain_ones_have_no_probe(api)
     # the onboarding's setup steps: a form, or a connection
     assert {f["id"] for f in catalog if f["step"]} == {
         "shellbox", "browser", "images", "music", "speech_input", "speech_output", "web", "discord",
-        "whatsapp", "email", "vault", "guard", "messages", "routines", "mac"}
+        "whatsapp", "email", "vault", "guard", "messages", "routines", "mac", "video"}
 
 
 async def test_the_tiers_come_in_order_with_the_core_and_a_group_together(api, _test_skills_core):
@@ -509,7 +509,7 @@ async def test_services_hold_the_addresses_and_show_the_key_hashes(api, monkeypa
     r = (await api.get("/api/services")).json()
     assert r["saved"] is False and r["services"]["shellbox"] == {"url": ""}
     assert r["services"]["searxng"] == {"url": "http://127.0.0.1:8888"}, "the default"
-    assert set(r["keys"]) == {"shellbox", "browser"}
+    assert set(r["keys"]) == {"shellbox", "browser", "video"}
     assert r["keys"]["shellbox"] == {"hash": keys.sha256("s3cret")}, "the hash, never the key"
     assert "s3cret" not in (await api.get("/api/services")).text
     assert [f["key"] for f in r["fields"]["shellbox"]] == ["url"]

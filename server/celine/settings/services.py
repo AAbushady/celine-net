@@ -1,10 +1,10 @@
 """The services the app reaches over the network, as Settings (var/settings/services.toml,
-Settings, Features: the setup forms of shellbox, browser and web search): one `url` per
-service. The boxes' keys are the stack's own (<data>/keys, celine/keys.py): the form
+Settings, Features: the setup forms of shellbox, browser, web search and the watch helper): one
+`url` per service. The boxes' keys are the stack's own (<data>/keys, celine/keys.py): the form
 shows each box's key hash (`keys.key_hash`), for a box that runs elsewhere.
 
 The environment (CELINE_SHELL_URL, CELINE_BROWSER_URL, CELINE_SEARXNG_URL: compose sets
-them) is read by `default`: the urls while the section is unsaved (`seed`), and the
+them; CELINE_VIDEO_URL) is read by `default`: the urls while the section is unsaved (`seed`), and the
 address a probe tries while no url is saved (else the dev compose's loopback port), so a
 box started by hand gets its card in Setup with that address prefilled. Everything that
 calls a box asks `url(cfg, id)` here, which answers from `cfg.settings.services`, so a
@@ -22,14 +22,15 @@ from . import form
 from .files import Invalid
 from .kinds import valid_url
 
-IDS = ("shellbox", "browser", "searxng")
+IDS = ("shellbox", "browser", "searxng", "video")
 # the feature's key in <data>/keys (celine/keys.py NAMES); web search has none
-KEYS = {"shellbox": "shell", "browser": "browser"}
+KEYS = {"shellbox": "shell", "browser": "browser", "video": "video"}
 ENV = {"shellbox": "CELINE_SHELL_URL", "browser": "CELINE_BROWSER_URL",
-       "searxng": "CELINE_SEARXNG_URL"}
-# where the dev compose publishes each service (docker-compose.dev.yml)
+       "searxng": "CELINE_SEARXNG_URL", "video": "CELINE_VIDEO_URL"}
+# where the dev compose publishes each service (docker-compose.dev.yml); the watch helper
+# runs on the Docker host itself, outside compose
 DEFAULTS = {"shellbox": "http://127.0.0.1:8770", "browser": "http://127.0.0.1:8771",
-            "searxng": "http://127.0.0.1:8888"}
+            "searxng": "http://127.0.0.1:8888", "video": "http://host.docker.internal:8790"}
 
 FIELDS: dict[str, list[dict[str, Any]]] = {
     "shellbox": [{"key": "url", "label": "Address", "type": "text",
@@ -41,6 +42,9 @@ FIELDS: dict[str, list[dict[str, Any]]] = {
     "searxng": [{"key": "url", "label": "Address", "type": "text",
                  "help": "SearXNG's address, such as http://searxng:8080.",
                  "default": DEFAULTS["searxng"], "word": True}],
+    "video": [{"key": "url", "label": "Address", "type": "text",
+               "help": "The watch helper's address, such as http://host.docker.internal:8790.",
+               "default": "", "word": True}],
 }
 
 def url(cfg, sid: str) -> str:

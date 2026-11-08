@@ -140,6 +140,11 @@ BASE: tuple[Feature, ...] = (
             "Replies read out loud, in a voice you pick.",
             "Turn it off if replies should stay text.",
             probe="celine.speech:probe_output", setup="speech", start_on=False),
+    Feature("video", "Watching", "Turns on once the watch helper answers.",
+            "{{name}} watches YouTube videos and films from your Plex with their picture and sound, through a "
+            "helper on your GPU machine.",
+            "Turn it off if you run no watch helper.",
+            skills=("video",), probe="celine.skills.video:probe", setup="service"),
     Feature("web", "Web search", "Turns on once SearXNG answers.",
             "Web search through your own SearXNG, with the pages found read as text or in the browser.",
             "Turn it off if nothing should be looked up on the internet.",

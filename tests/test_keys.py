@@ -17,7 +17,7 @@ def test_generation_is_idempotent_and_the_derived_files_follow_the_keys(tmp_path
     d = tmp_path / "data"
     made = keys.ensure(d)
     assert set(made) == {f"{n}.key" for n in keys.NAMES} | {
-        "shell.hash", "browser.hash", "connector-clients", "searxng-settings.yml"}
+        "shell.hash", "browser.hash", "video.hash", "connector-clients", "searxng-settings.yml"}
     first = {p.name: p.read_text() for p in (d / "keys").iterdir()}
     assert keys.ensure(d) == []
     assert {p.name: p.read_text() for p in (d / "keys").iterdir()} == first

@@ -540,6 +540,7 @@ BUILTIN = (
     ("artifacts", "artifacts", "Artifacts"),
     ("image_generator", "images", "ImageGenerator"),
     ("music_generator", "music", "MusicGenerator"),
+    ("video", "video", "Video"),
     ("writer", "writer", "Writer"),
     ("models", "models", "Models"),
     ("appearance", "appearance", "Appearance"),

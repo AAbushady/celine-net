@@ -184,6 +184,7 @@ turn that starts before then sees it.
 | `CELINE_METRICS_PORT=8772` (in the image) | Prometheus numbers at `GET /metrics` on their own port, loopback only. See Monitoring. |
 | `TZ` | The containers' time zone, default UTC: log lines, the Discord connector's dates and the app's day and hour counts. Set it to the zone chosen in Settings, General. |
 | `CELINE_SHELL_URL`, `CELINE_BROWSER_URL`, `CELINE_SEARXNG_URL` | Where the app reaches the shellbox, the browser and SearXNG, the first time: they seed Settings, Features (`var/settings/services.toml`), which wins once saved. It calls the boxes with `keys/shell.key` and `keys/browser.key`. |
+| `CELINE_VIDEO_URL` | Where the app reaches the watch helper (Settings, Features, Watching), the first time; without it, `http://host.docker.internal:8790`, the Docker host. It calls the helper with `keys/video.key`; the helper checks its hash, `keys/video.hash`. |
 | `/etc/shellbox/llm.key` (the shellbox, from `app/keys/shellbox-llm.key`) | The model proxy's key, the app's and the shellbox's (with `SHELLBOX_LLM_URL`, `http://celine:8766/llm`): its agent CLIs call its models with it. Not a provider key. |
 
 ## Shellbox
