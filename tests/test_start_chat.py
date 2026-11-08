@@ -7,6 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from chat_fixtures import user_says
+
 from celine import boot
 from fake_backend import FakeBackend
 from celine.bugreports import store as bugs
@@ -43,29 +45,35 @@ async def test_her_text_is_her_first_message_and_the_chat_knows_where_it_came_fr
         "SELECT role, content, intercom_id FROM messages WHERE conversation_id=?",
         (new,)).fetchall())
     assert [tuple(m) for m in msgs] == [("assistant", "It is due tomorrow.", None)]
-    sent = await store.read(lambda c: c.execute(
-        "SELECT from_addr, to_addr, subject FROM intercom").fetchall())
-    assert [tuple(r) for r in sent] == [(f"agent:{new}", "user", "Invoice due")]
+    assert await store.read(lambda c: c.execute("SELECT count(*) FROM intercom").fetchone()[0]) \
+        == 0, "the chat holds it; an Intercom thread beside it showed it twice"
+    row = {"id": new, "active_state": None}         # as the chat list's row has it
+    assert await store.read(lambda c: conversations.state_of(c, row)) == {
+        "tone": "warn", "words": "Waiting for you"}
     built = await context.build(store, cfg, FakeBackend(), new, system="", tools=[])
     first, hers = [m for m in built.messages if m["role"] != "system"][:2]
     assert first["role"] == "user" and "You started this chat from" in first["content"]
     assert "email__read" in first["content"] and hers["content"] == "It is due tomorrow."
+    await user_says(store, new, "paid it")
+    assert not await store.read(lambda c: conversations.opened_for_you(c, new)), "you wrote"
 
 
-async def test_a_second_chat_from_the_same_place_starts_and_lists_the_thread(store):
+async def test_a_second_chat_from_the_same_place_starts_and_lists_the_first(store):
     _, skill, bg, ctx = await _setup(store)
     out = await skill.start_chat(ctx, title="Invoice due", text="It is due tomorrow.")
-    thread = out.display["id"]
+    chat = out.display["chat"]
     again = await skill.start_chat(ctx, title="Invoice again", text="Still due.")
     assert not again.is_error and again.content.startswith('Started the chat "Invoice again"')
-    assert f'thread #{thread} "Invoice due"' in again.content
+    assert f'chat "Invoice due" (/chat/{chat}, ' in again.content
     assert "not answered yet): It is due tomorrow." in again.content
     out = await skill.start_chat(ctx, title="Two gates that stop  costing me missions",
                                  text=" x ")
     assert not out.is_error
-    sent = await store.read(lambda c: c.execute(
-        "SELECT subject, text FROM intercom WHERE id=?", (out.display["id"],)).fetchone())
-    assert tuple(sent) == ("Two gates that stop  costing me missions", " x "), "as she wrote it"
+    got = await store.read(lambda c: (
+        c.execute("SELECT title FROM conversations WHERE id=?", (out.display["chat"],)).fetchone()[0],
+        c.execute("SELECT content FROM messages WHERE conversation_id=?",
+                  (out.display["chat"],)).fetchone()[0]))
+    assert got == ("Two gates that stop  costing me missions", " x "), "as she wrote it"
 
 
 async def test_an_open_bug_report_of_the_last_day_is_listed_for_her_to_judge(store):

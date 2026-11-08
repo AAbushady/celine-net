@@ -65,8 +65,8 @@ intercom__cancel(id) cancels a scheduled message that has not landed; it stays l
 cancelled.
 
 In a background task or a mission, intercom__start_chat(title, text) starts a chat for
-{{username}}: the text is your first message there and waits for them on the intercom;
+{{username}}: the text is your first message there and waits for them in their chat list;
 when they answer, you go on there with them. Check intercom__read first: when they have
 it already, add to that thread. The result lists what they got from the same place in
-the last 24 h (a bug report still open, a thread), with what it says and whether they
-answered. The title is the topic in 2 to 4 plain words.
+the last 24 h (a bug report still open, a thread, a chat you started), with what it
+says and whether they answered. The title is the topic in 2 to 4 plain words.

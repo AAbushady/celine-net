@@ -1374,10 +1374,12 @@ kind `background`, never in the chat list) and sends it an intercom `trigger` me
 turn with one line for its log; something actionable becomes a chat for you with
 `intercom__start_chat(title, text)`. That tool, offered only in kinds background and
 mission, first looks for what you already have from the same source in the last 24 h (a
-bug report still open, or a thread to you); when there is one it lists each and it
-decides whether its own is another matter (`different=true`). Else it creates a chat whose
-first message is its own, keeps in kv (`chat_opening:<id>`) where it came from, and sends
-the text to `user` from that chat. The title is 2 to 4 words.
+bug report still open, a thread to you, or a chat it started); when there is one it lists
+each, and it decides whether its own is another matter. It creates a chat whose first
+message is its own and keeps in kv where it came from (`chat_opening:<id>`, the opening it
+reads; `chat_from:<id>`, the source). No Intercom thread: the chat list shows the chat
+Waiting for you until you write in it (`conversations/store.opened_for_you`), and the
+text comes as a notice like her reply in a chat. The title is 2 to 4 words.
 
 ## Schedules
 

@@ -567,11 +567,23 @@ def group_of(rank: int, updated_at: str, tz, now_: datetime) -> str:
     return d.strftime("%B") if d.year == today.year else str(d.year)
 
 
+def opened_for_you(c: sqlite3.Connection, cid: str) -> bool:
+    """A chat she started for the user (intercom__start_chat: its opening is in kv) that
+    they have not written in yet."""
+    from ..intercom.store import OPENING
+    return c.execute(
+        "SELECT 1 FROM kv WHERE k = ? AND NOT EXISTS (SELECT 1 FROM messages m WHERE "
+        "m.conversation_id = ? AND m.role = 'user' AND (m.author = 'user' OR m.intercom_id "
+        "IN (SELECT id FROM intercom WHERE from_addr = 'user')))",
+        (OPENING + cid, cid)).fetchone() is not None
+
+
 def state_of(c: sqlite3.Connection, row: dict, asked: frozenset[str] = frozenset()
              ) -> dict | None:
     """How its turn in it stands, in the server's words: waiting for you (a request in
-    it, `asked`: approvals.py; a mission), running with its step (not while frozen), or
-    how the last turn ended when it failed or paused."""
+    it, `asked`: approvals.py; a mission; a chat she started for you that you have not
+    written in), running with its step (not while frozen), or how the last turn ended
+    when it failed or paused."""
     from ..settings.tools_meta import TOOLS, humanize
     if row["id"] in asked:
         return {"tone": "warn", "words": "Waiting for you"}
@@ -587,6 +599,8 @@ def state_of(c: sqlite3.Connection, row: dict, asked: frozenset[str] = frozenset
             words = (TOOLS.get(r[0], {}).get("label") or humanize(r[0])) if r else "Thinking"
         return {"tone": "running", "words": words}
     if row.get("mission_status") == "needs_you":
+        return {"tone": "warn", "words": "Waiting for you"}
+    if opened_for_you(c, row["id"]):
         return {"tone": "warn", "words": "Waiting for you"}
     last = c.execute("SELECT state FROM turns WHERE conversation_id = ? "
                      "ORDER BY created_at DESC, rowid DESC LIMIT 1", (row["id"],)).fetchone()

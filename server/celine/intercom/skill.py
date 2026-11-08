@@ -353,8 +353,9 @@ class IntercomSkill:
         """Start a chat for {{username}} about something they need to act on or know now.
         Check intercom__read first: when they have it already (a thread, an open bug
         report), add to that thread instead. Your text is your first message in the new
-        chat and waits for them on the intercom; when they answer, you go on there."""
+        chat, which waits for them in their chat list; when they answer, you go on there."""
         from ..conversations import store as conversations, tree
+        from ..events import notice
         if not title.strip() or not text.strip():
             return ToolResult(content="title and text are both needed.", is_error=True)
         src = ctx.conversation_id
@@ -363,19 +364,21 @@ class IntercomSkill:
         new = await conversations.create(ctx.store, title=title)
 
         def first(c):
-            # where it came from, for it in the new chat (turns/context.py opening)
-            c.execute("INSERT INTO kv(k, v) VALUES(?, ?)",
-                      (rows.OPENING + new, opening(c, src, ctx.tool_call_id, has, self.cfg.user)))
+            # where it came from, for it in the new chat (turns/context.py opening); the
+            # chat list says it waits for them while they have not written in it
+            # (conversations/store.opened_for_you), and they are told as of her reply in a chat
+            c.executemany("INSERT INTO kv(k, v) VALUES(?, ?)", [
+                (rows.OPENING + new, opening(c, src, ctx.tool_call_id, has, self.cfg.user)),
+                (rows.STARTED + new, src)])
             tree.append(c, ctx.store, new, None, "assistant", text, "model")
+            notice(ctx.store, c, "reply", rows.NAMES["her"], text, homes.of(c, new)["link"],
+                   f"reply:{new}")
         await ctx.store.write(first)
-        # from the new chat, so the user's answer lands there
-        out = await self.app.intercom.send(f"agent:{new}", "user", text, subject=title,
-                                           data={"chat": new, "from": src})
         listed = (f"\nIn the last 24 h {self.cfg.user} also got this from here:\n- "
                   + "\n- ".join(has)) if has else ""
         return ToolResult(content=f"Started the chat \"{title}\" (/chat/{new}); it waits "
-                                  f"for {self.cfg.user} as #{out['intercom_id']}.{listed}",
-                          display={"chat": new, "id": out["intercom_id"]})
+                                  f"there for {self.cfg.user}.{listed}",
+                          display={"chat": new})
 
     @tool(read_only=False, destructive=True)
     async def cancel(
@@ -428,9 +431,10 @@ def _sources(c, cid: str) -> set[str]:
 
 def covered(c, cid: str, since: str, tz) -> list[str]:
     """What the user got from the source of `cid` since `since`, for it to judge: its bug
-    reports still open, and its threads to them (sent from there, or a chat start_chat
-    made there), each with what it says and whether they answered. -> one line each,
-    like 'bug #2 "Shell wedge" (open, Fri 23 Oct 09:00): The shell hangs.'"""
+    reports still open, its threads to them, and the chats start_chat made there, each
+    with what it says and whether they answered. -> one line each, like
+    'bug #2 "Shell wedge" (open, Fri 23 Oct 09:00): The shell hangs.'"""
+    from ..conversations.store import opened_for_you
     mine = _sources(c, cid)
 
     def ours(addr_or_cid: str | None) -> bool:
@@ -445,13 +449,23 @@ def covered(c, cid: str, since: str, tz) -> list[str]:
             out.append(f'bug #{r["id"]} "{r["title"]}" (open, '
                        f'{when(r["created_at"], tz)}): {_short(r["what"])}')
             bug_threads.add(r["thread"])
+    for r in c.execute(
+            "SELECT k.v AS src, c.id, c.title, c.created_at, (SELECT m.content FROM messages m "
+            "WHERE m.conversation_id = c.id AND m.role = 'assistant' ORDER BY m.created_at "
+            "LIMIT 1) AS text FROM kv k JOIN conversations c ON k.k = ? || c.id "
+            "WHERE c.created_at >= ? ORDER BY c.created_at DESC",
+            (rows.STARTED, since)).fetchall():
+        if ours(r["src"]):
+            answered = "not answered yet" if opened_for_you(c, r["id"]) else "answered"
+            out.append(f'chat "{r["title"]}" (/chat/{r["id"]}, {when(r["created_at"], tz)}, '
+                       f'{answered}): {_short(r["text"] or "")}')
     seen = set()
-    for r in c.execute("SELECT thread, subject, text, from_addr, json_extract(data, '$.from') "
-                       "AS src, created_at FROM intercom WHERE to_addr='user' AND "
-                       "created_at >= ? ORDER BY id DESC", (since,)).fetchall():
+    for r in c.execute("SELECT thread, subject, text, from_addr, created_at FROM intercom "
+                       "WHERE to_addr='user' AND created_at >= ? ORDER BY id DESC",
+                       (since,)).fetchall():
         if r["thread"] in seen or r["thread"] in bug_threads:
             continue
-        if ours(r["src"]) or (r["from_addr"].startswith("agent:") and ours(r["from_addr"])):
+        if r["from_addr"].startswith("agent:") and ours(r["from_addr"]):
             seen.add(r["thread"])
             subject = f' "{r["subject"]}"' if r["subject"] else ""
             answered = c.execute("SELECT 1 FROM intercom WHERE thread=? AND from_addr='user'",
@@ -469,7 +483,7 @@ def opening(c, src: str, call_id: str, has: list[str], user: str) -> str:
     s = rows.source_of(c, f"agent:{src}") or {}
     lines = [f"You started this chat from a {s.get('kind', 'conversation')} "
              f"\"{s.get('title') or 'Untitled'}\" ({s.get('link') or src}); your first "
-             f"message below is what {user} read on the intercom."]
+             f"message below is what {user} reads first."]
     calls = c.execute(
         "SELECT tc.name, tc.arguments FROM tool_calls tc JOIN messages m ON m.id = "
         "tc.message_id WHERE m.conversation_id=? AND tc.id <> ? ORDER BY tc.rowid DESC "

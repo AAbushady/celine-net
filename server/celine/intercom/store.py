@@ -12,6 +12,7 @@ from .addresses import resolve
 # kv: what it reads before its first message in a chat start_chat made, by its id
 # (intercom/skill.py opening, turns/context.py)
 OPENING = "chat_opening:"
+STARTED = "chat_from:"      # kv: a chat intercom__start_chat made -> the conversation it came from
 
 
 def insert(c: sqlite3.Connection, from_addr: str, to: str, kind: str, text: str, *,
