@@ -37,6 +37,25 @@ async def c(db_path):
         await store.aclose()
 
 
+async def test_the_user_reads_the_intercom_and_talks_in_chats(c):
+    """The Intercom took the user's replies and new messages, so one exchange lived in a
+    thread and in a chat. It takes a reply to Bastet and a reminder, nothing else."""
+    from celine.intercom import store as rows
+    from celine.intercom.api import READ_ONLY
+    cid = await conversations.create(c.store, "Shell work")
+    ic = Intercom(c.store)
+    hers = (await ic.send(f"agent:{cid}", "user", "the disk is full"))["intercom_id"]
+    asks = await c.store.write(lambda db: rows.insert(db, rows.GUARD, "user", "message",
+                                                      "May she run rm?", store=c.store))
+    for body in ({"to": "", "text": "why?", "reply_to": hers},
+                 {"to": f"agent:{cid}", "text": "hello"},
+                 {"to": "all", "text": "stand by", "until": "2 h"}):
+        r = await c.post("/api/intercom", json=body)
+        assert r.status_code == 400 and READ_ONLY in r.text, body
+    r = await c.post("/api/intercom", json={"to": "", "text": "no", "reply_to": asks})
+    assert r.status_code == 200, r.text
+
+
 async def test_set_list_cancel_and_refuse(c):
     cid = await conversations.create(c.store, "Shell work")
     to = f"agent:{cid}"

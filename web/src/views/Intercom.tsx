@@ -1,18 +1,18 @@
-/* The Intercom: messages between you, its conversations and the app, in threads. The list:
-   Waiting for you, All and Guard (Bastet's threads, the server's) with their counts, Type
-   and From to narrow it, Sort, Group by whom it is with (Show more for the rest), job results as one line, Search, Select to dismiss many, Dismiss all in More.
-   Each row says where it came from (the server's source). A thread is a chat history,
-   oldest first, your lines on the right, where each came from under it, the reply pinned
-   at its foot; replying marks it read, Dismiss does too. Continue in a chat takes any thread
-   into a new chat with it (the server carries its messages); a bug report's thread shows
-   Open or Closed and its Close. New message: To (its conversation
-   as a second step), Subject, the text and When. Reminders are messages here too.
+/* The Intercom: what she and the app tell you, in threads; you read it here and talk in
+   chats. The list: Waiting for you, All and Guard (Bastet's threads, the server's) with
+   their counts, Type and From to narrow it, Sort, Group by whom it is with (Show more for
+   the rest), Search, Select to dismiss many, Dismiss all in More. Each row says where it
+   came from (the server's source). A thread is its history, oldest first, where each
+   message came from under it; Dismiss marks it read. Continue in a chat takes a thread
+   into a new chat (the server carries its messages and archives it): that is where you
+   answer. Bastet's threads keep a reply box, your answer to her decisions. A bug report's
+   thread shows Open or Closed and its Close, with an optional reason.
    Archive, a shelf: threads out of the lists until something newer lands in them. Archive read
    takes what the server finds done.
    URL: /intercom, /intercom/<thread id>. */
 import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Archive, ArchiveRestore, ArrowUpRight, Bot, CheckCheck, CircleCheck, CornerUpLeft, Flag, Info, Link, Mail, MessageCircle, MessageSquarePlus, MoreHorizontal, PackageCheck, SearchX, Shapes, Terminal, User,
+  Archive, ArchiveRestore, ArrowUpRight, Bot, CheckCheck, CircleCheck, Flag, Info, Link, Mail, MessageCircle, MessageSquarePlus, MoreHorizontal, PackageCheck, SearchX, Shapes, Terminal, User,
   type LucideIcon,
 } from 'lucide-react'
 import { Portrait } from '../components/Portrait'
@@ -29,13 +29,15 @@ import { OFFLINE_TITLE, useOnline } from '../lib/socket'
 import { useAction } from '../lib/useAction'
 import { useResource } from '../lib/useResource'
 import {
-  Avatar, Button, Choice, ComposerBox, copied, cx, Dialog, Divider, Dot, EventLine, Field, GroupHead, ICON, InlineError, Input,
-  ListRow, Loaded, LoadingRow, MenuButton, Message, PlaceHead, Segmented, SelectBar, TextArea, Toolbar, useContextMenu, usePicker,
+  Avatar, Button, ComposerBox, copied, cx, Dialog, Divider, Dot, EventLine, Field, GroupHead, ICON, InlineError,
+  ListRow, Loaded, LoadingRow, MenuButton, Message, PlaceHead, SelectBar, TextArea, Toolbar, useContextMenu, usePicker,
   coarse, toast, VirtualList, type BulkResult, type MenuItem, type PickProps, type Shelf,
 } from '../ui'
 import './Intercom.css'
 
 type Show = 'waiting' | 'all' | 'guard'
+/* Bastet's address (intercom/store.py GUARD) */
+const GUARD = 'system:guard'
 type Who = { address: string; name: string }
 
 /* pages 1 to `pages`, each after the cursor of the one before */
@@ -93,9 +95,6 @@ const copyLink = (thread: number) => {
   copied(`${location.origin}/intercom/${thread}`)
 }
 
-/* set by a row's Reply: the thread page puts the cursor in its reply box once */
-let replyTo: number | null = null
-
 type Row =
   | { type: 'group'; key: string; name: string; icon: LucideIcon; n: number; who: Who }
   | { type: 'thread'; key: string; t: Thread; waiting: boolean; under?: string }
@@ -107,17 +106,10 @@ export function Intercom({ active }: { active: boolean }) {
   const last = useRef<number | undefined>(undefined)
   if (nav.route.section === 'intercom') last.current = nav.route.thread
   const threadId = last.current
-  const [writing, setWriting] = useState(false)
-  return (
-    <>
-      {threadId ? <ThreadPage key={threadId} id={threadId} /> : <List active={active} onNew={() => setWriting(true)} />}
-      {writing && <NewMessage onClose={() => setWriting(false)}
-                              onSent={id => { setWriting(false); nav.go({ section: 'intercom', thread: id }) }} />}
-    </>
-  )
+  return threadId ? <ThreadPage key={threadId} id={threadId} /> : <List active={active} />
 }
 
-function List({ active, onNew }: { active: boolean; onNew: () => void }) {
+function List({ active }: { active: boolean }) {
   const nav = useNav()
   const ctx = useContextMenu()
   const [picked, setShow] = useState<Show | null>(null)
@@ -228,7 +220,6 @@ function List({ active, onNew }: { active: boolean; onNew: () => void }) {
   const open = (t: Thread) => nav.go({ section: 'intercom', thread: t.thread })
   const menu = (t: Thread, isWaiting: boolean): MenuItem[] => [
     { label: 'Open', icon: ArrowUpRight, onSelect: () => open(t) },
-    { label: 'Reply', icon: CornerUpLeft, onSelect: () => { replyTo = t.thread; open(t) } },
     { label: 'Continue in a chat', icon: MessageSquarePlus, onSelect: () => void toChat.run(t.thread) },
     ...(isWaiting ? [{ label: 'Dismiss', icon: CheckCheck, onSelect: () => void dismiss.run(t.thread) }] : []),
     onShelf ? { label: 'Restore', icon: ArchiveRestore, onSelect: () => void restore.run(t.thread) }
@@ -256,7 +247,7 @@ function List({ active, onNew }: { active: boolean; onNew: () => void }) {
                    <Button icon={CheckCheck} disabled={!waitN} loading={dismissAll.busy} onClick={() => void dismissAll.run()}>Dismiss all</Button>
                    <Button icon={PackageCheck} loading={archiveRead.busy} onClick={() => void archiveRead.run()}>Archive read</Button>
                  </>}
-                 newLabel="New message" onNew={onNew} />
+                 />
       {!failed && <div className="list-page__top">
         {picker.on
           ? <SelectBar picker={picker} noun={n => count(n, 'thread')}
@@ -330,14 +321,18 @@ function ThreadPage({ id }: { id: number }) {
   const end = useRef<HTMLDivElement>(null)
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }) }, [msgs.length])
   const [text, setText] = useState('')
-  const [focus] = useState(() => { const f = replyTo === id; replyTo = null; return f && !coarse() })
+  const [closing, setClosing] = useState(false)
+  const [why, setWhy] = useState('')
   const unread = msgs.filter(m => m.unread).map(m => m.id)
   const dismiss = useAction(async () => { await intercomApi.read(unread); thread.reload() })
   const cancel = useAction(async (mid: number) => { await intercomApi.cancel(mid); thread.reload() })
   const report = useResource(signal => intercomApi.bugOf(id, signal), [id], { events: isIntercomEvent })
   const bug = report.data
-  // Close with text in the reply box: the text is why, posted in the thread as the app's line
-  const close = useAction(async () => { if (bug) await intercomApi.closeBug(bug.id, text.trim()); setText(''); thread.reload(); report.reload() })
+  // Close asks why, optional: posted in the thread as the app's line, for her to read
+  const close = useAction(async () => {
+    if (bug) await intercomApi.closeBug(bug.id, why.trim())
+    setClosing(false); setWhy(''); thread.reload(); report.reload()
+  })
   const toChat = useAction(async () => nav.go({ section: 'celine', conversation: await intercomApi.toChat(id) }))
   const archived = !!thread.data?.archived
   const shelve = useAction(async () => {
@@ -345,15 +340,13 @@ function ThreadPage({ id }: { id: number }) {
     archivedNote(await intercomApi.archive([id]))
     nav.go({ section: 'intercom' })
   })
-  // a reply goes to whoever wrote the newest message that is not yours; in a thread only
-  // you wrote in, to whom you wrote
   const theirs = [...msgs].reverse().find(m => m.from !== 'user' && !m.from.startsWith('system:'))
+  // Bastet's thread: your reply is your answer to her decision (the server takes no other)
+  const guard = msgs.some(m => m.from === GUARD || m.to.split(', ').includes(GUARD))
   const send = useAction(async () => {
     const body = text.trim()
     if (!body) return
-    const lastMsg = msgs[msgs.length - 1]!
-    await intercomApi.send(theirs ? { to: '', text: body, reply_to: theirs.id }
-      : { to: msgs[0]!.to.split(', ').filter(a => a !== 'user').join(', '), text: body, reply_to: lastMsg.id })
+    await intercomApi.send({ to: '', text: body, reply_to: msgs[msgs.length - 1]!.id })
     setText('')
     thread.reload()
   })
@@ -372,7 +365,7 @@ function ThreadPage({ id }: { id: number }) {
                  detail={bug ? (bug.state === 'open' ? 'Open' : 'Closed') : undefined}
                  actions={<>
                    {unread.length > 0 && <Button variant="ghost" icon={CheckCheck} loading={dismiss.busy} onClick={() => void dismiss.run()}>Dismiss</Button>}
-                   {bug?.state === 'open' && <Button variant="ghost" icon={CircleCheck} loading={close.busy} onClick={() => void close.run()}>Close</Button>}
+                   {bug?.state === 'open' && <Button variant="ghost" icon={CircleCheck} onClick={() => setClosing(true)}>Close</Button>}
                    {msgs.length > 0 && <Button variant="ghost" icon={archived ? ArchiveRestore : Archive} loading={shelve.busy} onClick={() => void shelve.run()}>{archived ? 'Restore' : 'Archive'}</Button>}
                    {msgs.length > 0 && <Button variant="ghost" icon={MessageSquarePlus} loading={toChat.busy} onClick={() => void toChat.run()}>Continue in a chat</Button>}
                  </>}
@@ -399,13 +392,23 @@ function ThreadPage({ id }: { id: number }) {
           <div ref={end} />
         </div>
       </div>
-      {thread.data && msgs.length > 0 && (
+      {thread.data && guard && (
         <div className="intercom-reply">
           {send.error && <InlineError compact message={send.error} />}
-          <ComposerBox value={text} onChange={setText} onSend={() => void send.run()} autoFocus={focus}
-                       placeholder={theirs ? `Reply to ${senderName(theirs)}` : 'Reply'}
+          <ComposerBox value={text} onChange={setText} onSend={() => void send.run()}
+                       placeholder="Reply to Bastet"
                        ready={!!text.trim() && !send.busy} disabled={online ? undefined : OFFLINE_TITLE} />
         </div>
+      )}
+      {closing && bug && (
+        <Dialog title={`Close bug #${bug.id}?`} size="sm" onClose={() => setClosing(false)} dismissable={!close.busy}
+                actions={<>
+                  <Button onClick={() => setClosing(false)}>Cancel</Button>
+                  <Button variant="primary" loading={close.busy} onClick={() => void close.run()}>Close</Button>
+                </>}>
+          <Field label="Why"><TextArea rows={3} max={8} value={why} autoFocus={!coarse()} onChange={e => setWhy(e.target.value)} /></Field>
+          {close.error && <InlineError compact message={close.error} />}
+        </Dialog>
       )}
     </div>
   )
@@ -444,70 +447,5 @@ function ThreadMessage({ m, onCancel }: { m: IntercomMessage; onCancel: () => vo
       <span className="intercom-text">{m.text}</span>
       <Attached list={m.attachments} />
     </Message>
-  )
-}
-
-/* ── New message ── */
-
-type When = 'now' | 'in' | 'at' | 'until'
-/* the To that stands for all its conversations */
-const HER = 'her'
-
-function NewMessage({ onClose, onSent }: { onClose: () => void; onSent: (thread: number) => void }) {
-  const online = useOnline()
-  const her = useName()
-  const recipients = useResource(() => intercomApi.recipients(), [])
-  const [to, setTo] = useState('all')
-  const [subject, setSubject] = useState('')
-  const [text, setText] = useState('')
-  const [when, setWhen] = useState<When>('now')
-  const [whenText, setWhenText] = useState('')
-  const all = recipients.data ?? [{ to: 'all', name: 'Everyone', line: null }]
-  // its own: its chats and tasks and their sub-agents, newest first, picked in a second step
-  const hers = all.filter(r => r.line)
-  const options = [...all.filter(r => !r.line).map(r => ({ value: r.to, label: r.name })), ...(hers.length ? [{ value: HER, label: her || 'Celine' }] : [])]
-  const inHers = hers.some(r => r.to === to)
-  const whens: { value: When; label: string }[] = [
-    { value: 'now', label: 'Now' }, { value: 'in', label: 'In' }, { value: 'at', label: 'At' },
-    ...(to === 'all' ? [{ value: 'until' as const, label: 'Until' }] : []),
-  ]
-  useEffect(() => { if (to !== 'all' && when === 'until') setWhen('now') }, [to, when])
-  const ready = online && !!text.trim() && (when === 'now' || !!whenText.trim())
-  const send = useAction(async () => {
-    if (!ready) return
-    const r = await intercomApi.send({ to, text: text.trim(), subject: subject.trim() || undefined, ...(when === 'now' ? {} : { [when]: whenText.trim() }) })
-    onSent(r.intercom_id)
-  })
-  return (
-    <Dialog title="New message" size="md" onClose={onClose} dismissable={!send.busy}
-            actions={<>
-              <Button onClick={onClose}>Cancel</Button>
-              <Button variant="primary" loading={send.busy} disabled={!ready}
-                      title={!online ? OFFLINE_TITLE : ready ? undefined : 'Write a message first'} onClick={() => void send.run()}>Send</Button>
-            </>}>
-      <div className="intercom-form">
-        <Field label="To" group>
-          <Choice list label="To" value={inHers ? HER : to} onChange={v => setTo(v === HER ? hers[0]!.to : v)} options={options} />
-        </Field>
-        {inHers && (
-          <Field label="Chat" group>
-            <Choice list label="Chat" value={to} onChange={setTo} options={hers.map(r => ({ value: r.to, label: r.line! }))} />
-          </Field>
-        )}
-        <Field label="Subject"><Input value={subject} onChange={e => setSubject(e.target.value)} /></Field>
-        <Field label="Message"><TextArea rows={4} max={12} value={text} autoFocus={!coarse()} onChange={e => setText(e.target.value)} /></Field>
-        <Field label="When" group>
-          <div className="intercom-when">
-            <Segmented label="When" value={when} onChange={v => { setWhen(v); setWhenText('') }} options={whens} />
-            {when !== 'now' && (
-              <Input className="intercom-when__value" aria-label={when === 'in' ? 'In' : when === 'at' ? 'At' : 'Until'}
-                     type={when === 'at' ? 'time' : 'text'} placeholder={when === 'in' ? '30 min' : when === 'until' ? '05:00' : undefined}
-                     value={whenText} onChange={e => setWhenText(e.target.value)} />
-            )}
-          </div>
-        </Field>
-      </div>
-      {send.error && <InlineError compact message={send.error} />}
-    </Dialog>
   )
 }

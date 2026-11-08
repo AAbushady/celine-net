@@ -1053,10 +1053,12 @@ not built (the catalog's `tools`) and `/share/` and the open route answer 404 fo
 share, even one that still runs, which shows as not running.
 
 `intercom` (`intercom/skill.py`, guide `guides/intercom.md`, always loaded): its side of the
-intercom (see Intercom). `send(text, to, subject, reply_to, in, at, until, wait)`
+intercom (see Intercom). `send(text, to, subject, reply_to, in, at, until)`
 writes to `user`, `me`, `parent`, `team`, `all`, a sub-agent's or mission's name or a
 conversation id; `in` or `at` make it land later (to `me`, a reminder that starts its turn);
-`until` on a message to `all` makes it an announcement. `read(thread, unread)` lists its
+`until` on a message to `all` makes it an announcement. To `user` it tells you something,
+from a background task or a mission (from a chat with you it is refused: `IN_CHAT`); when
+it needs you it starts a chat (`start_chat`). `read(thread, unread)` lists its
 threads or reads
 one; `cancel(id)` cancels a message it scheduled. Sub-agents in read mode have these tools
 too.
@@ -1486,7 +1488,10 @@ them came to you, or you wrote in them), Bastet's in their own tab: a brief, a r
 a notice or a reminder between her conversations stays in them. From a chat with you her
 `intercom__send` to you is refused (`skill.IN_CHAT`): her reply there is the message, and its
 notice reaches you (`turns/store.py` `_reply_notice`). The Intercom carries what comes from
-where you are not: a Routine's run, a mission, a bug report.
+where you are not: a Routine's run, a mission, a bug report. You read it there and talk in
+chats: from your session `POST /intercom` takes only a reply in a thread with Bastet and a
+reminder into a conversation (`api.READ_ONLY`), and Continue in a chat takes a thread into
+a new chat, where you answer.
 
 **The delivery rule** (`deliver.py`), one rule for every kind. A delivery to a conversation
 waits until it is due. Then: when the conversation is idle, `deliver_idle` appends every due
@@ -1497,7 +1502,7 @@ send itself, at every turn end and when a due time passes. While a turn is live 
 outside the runner touches the tree: the runner's `take` appends the due deliveries under
 its own tail before each model request. The delivery row records what happened in the same
 write that appends the message, so nothing lands twice. Deliveries to `user` stay `pending`
-until you reply in the thread or dismiss them (`POST /intercom/read`).
+until you dismiss them (`POST /intercom/read`) or continue the thread in a chat.
 
 **The service** (`service.py`): `Intercom(store, notify)`, in `Services.intercom`.
 `send(from, to, text, kind=, subject=, data=, wake=, due_at=, until_at=, reply_to=,
@@ -1551,7 +1556,7 @@ It files a problem with the app with `bugreport__file(title, severity, what, whe
 wish)` (`skill.py`, guide `guides/bugreport.md`). The rows are `bugreports` (`store.py`),
 open until you close one. Each report is an Intercom thread: filing it sends a message to
 you from the conversation that filed it (subject `Bug #<id>: <title>`), its id in
-`bugreports.thread`, and your reply wakes it in that conversation. `GET
+`bugreports.thread`; to talk about it you continue it in a chat. `GET
 /api/bugreports?thread=` and `?state=open|closed` list them; `POST
 /api/bugreports/{id}/close` `{why?}` closes one, and `why` goes into its thread as the
 app's line `Report #<id> closed: <why>`, delivered to the conversation that filed it, so
@@ -1673,7 +1678,7 @@ is in docs/DEPLOY.md.
 | `POST /conversations/{cid}/sub-agents` | `{brief, name, access?, folder?, model?, cli?}` (any other key is a 400): a sub-agent of the conversation, exactly as `sub_agents__start` makes one (`skill.begin`); `{conversation_id}` |
 | `POST /sub-agents/{id}/stop` | its turn, its jobs and what it scheduled, as `sub_agents__stop` (`skill.stop_agent`); `{stopped}` |
 | `PATCH /missions/{cid}` | `{name?, brief?, report_to?, time_limit?, check_in?, steps?}`, the given fields only (any other key is a 400); the time limit's notice cancelled and scheduled again or removed |
-| `POST /intercom` | `{to, text, subject?, reply_to?, in?, at?, until?}` (`intercom/api.py`): from `user` with the app session, from `system:<name>` with a named token |
+| `POST /intercom` | `{to, text, subject?, reply_to?, in?, at?, until?}` (`intercom/api.py`): from `system:<name>` with a named token; from `user` with the app session only a reply in a thread with Bastet or a reminder into a conversation (`in`/`at` to `agent:<id>`), else 400 (`READ_ONLY`): the Intercom is for reading |
 | `GET /intercom?to=&from=&thread=&scheduled=&after=&limit=` | messages to and from stored addresses, in a thread, above id `after`, oldest first, each with its `state` (pending, sent, cancelled) and `unread`; `scheduled=true` |
 | `POST /intercom/threads/archive` | `{threads}`: out of the lists until something newer lands in them, what waits in them read; `?read=1`: every thread All lists where nothing waits and no bug report stands open (Archive read); `{archived}` |
 | `POST /intercom/threads/restore` | `{threads}`: back in the lists; `{restored}` |

@@ -1,5 +1,5 @@
-/* The Intercom (views/Intercom.tsx): the list of threads, one thread as a chat history with
-   the reply pinned at its foot, New message. Tokens only. */
+/* The Intercom (views/Intercom.tsx): the list of threads, one thread as its history with,
+   in Bastet's, the reply pinned at its foot. Tokens only. */
 
 .intercom-thread { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .intercom-who { color: var(--text-secondary); }
@@ -19,11 +19,6 @@
 .intercom-msg--cancelled { opacity: 0.55; }
 .intercom-reply { flex: none; width: 100%; max-width: calc(var(--measure) + 2 * var(--s-5)); margin: 0 auto;
   padding: 0 var(--s-5) var(--s-4); display: grid; gap: var(--s-2); }
-
-/* New message */
-.intercom-form { display: grid; gap: var(--s-4); }
-.intercom-when { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
-.intercom-when__value { flex: 1; min-width: 8rem; }
 
 @media (max-width: 767px) {
   .intercom-thread__col { padding: var(--s-4) var(--s-4) var(--s-5); }

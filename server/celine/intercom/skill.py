@@ -22,7 +22,6 @@ PER_COUNTERPART = 3  # threads intercom__read lists per counterpart, the rest a 
 AWAY = ("background", "mission")     # kinds where start_chat is offered
 COVERS = timedelta(hours=24)    # a thread to the user from the same source this recent
 ACTIONS = 6         # the source's last tool calls the new chat's opening names
-WAIT_MAX = 600      # seconds send(wait=true) holds its turn for the user's answer at most
 IN_CHAT = ('This is a chat with {user}: your reply here is your message to them, and a '
            'message for later is a reminder to "me" at that time.')
 
@@ -126,19 +125,16 @@ class IntercomSkill:
         sender = who(here, self.cfg.user)
         line = (f"You are in thread #{here['thread']}{subject}: this turn answers "
                 f"#{here['id']} from {sender}.")
-        if here["from"] == "user" and not here["sub_agent"]:     # intercom/answer.py
-            line += f" Your answer goes into that thread for {self.cfg.user}."
-            if here["chat"]:
-                return line             # IN_CHAT: no intercom__send to them from a chat
+        if here["from"] == "user":
+            return line         # a reminder they set: the Intercom takes no talk with them
         if here["sub_agent"] and not here["from"].startswith("agent:"):
             return line         # it writes up its chain only (addresses._reach)
         if here["from"].startswith("system:"):       # schedules/runs.py reads the reply
             return line + " Your reply in this conversation is the answer."
-        to = "user" if here["from"] == "user" else here["from"]
-        return line + (f' intercom__send(to="{to}") answers there by itself; '
+        return line + (f' intercom__send(to="{here["from"]}") answers there by itself; '
                        "new_thread=true starts a new thread.")
 
-    @tool(read_only=False, destructive=False, timeout=WAIT_MAX + 30)
+    @tool(read_only=False, destructive=False)
     async def send(
         self,
         ctx: ToolContext,
@@ -163,9 +159,6 @@ class IntercomSkill:
         until: Annotated[str | None, 'To "all": an announcement that stands until then, '
                                      'like "05:00" or "2 h". Everyone who starts work '
                                      'before then sees it.'] = None,
-        wait: Annotated[bool, 'To "user": your turn holds here until {{username}} '
-                              'answers, up to 10 minutes; the answer comes in as their '
-                              'message. Not with in or at.'] = False,
         attachments: Annotated[list[str] | None, "Files it carries, by their short ids: "
                                                  "one on your own message (a voice note, a "
                                                  "file you sent) or one {{username}} "
@@ -233,31 +226,8 @@ class IntercomSkill:
         where = "a new thread" if tid == iid else f"thread #{tid}"
         said = f"Sent #{iid} in {where}." if due is None else \
             f"#{iid} lands {clock(due, self.tz, now_)}, in {where}."
-        if wait and due is None and "user" in [w.strip() for w in to.split(",")]:
-            said += await self._wait_for_user(ctx, iid)
         return ToolResult(content=said, display={
             "id": iid, "to": to, "text": text, "due_at": iso(due) if due else None})
-
-    async def _wait_for_user(self, ctx: ToolContext, iid: int) -> str:
-        """send(wait=true): the turn holds until the user writes to this conversation
-        after #iid (in the Intercom or the chat itself), or WAIT_MAX seconds pass. The
-        call's row says who it waits for; the runner takes the answer in before its
-        next step (deliver.take)."""
-        user = self.cfg.user
-        limit = WAIT_MAX if ctx.time_left is None else min(WAIT_MAX, max(int(ctx.time_left), 0))
-        if ctx.emit is not None:
-            await ctx.emit(f"Waiting for {user}")
-        cid = ctx.conversation_id
-
-        async def answer() -> int | None:
-            r = await ctx.store.read(lambda c: c.execute(
-                "SELECT i.id FROM intercom i JOIN intercom_deliveries d ON d.intercom_id = i.id "
-                "WHERE d.conversation_id=? AND i.from_addr='user' AND i.id>? AND "
-                "i.cancelled_at IS NULL ORDER BY i.id LIMIT 1", (cid, iid)).fetchone())
-            return r[0] if r else None
-        got = await self.app.intercom.wait_for(answer, limit)
-        return f" {user} answered (#{got})." if got else \
-            f" {user} did not answer within {limit} s; their answer comes in as a message."
 
     @tool()
     async def read(
@@ -400,8 +370,7 @@ def _here(c, cid: str, turn: str | None) -> dict | None:
     if r is None:
         return None
     sub = c.execute("SELECT agent_of FROM conversations WHERE id=?", (cid,)).fetchone()
-    return {**rows.view(c, r["id"], cid), "sub_agent": bool(sub and sub["agent_of"]),
-            "chat": _chat_with_user(c, cid)}
+    return {**rows.view(c, r["id"], cid), "sub_agent": bool(sub and sub["agent_of"])}
 
 
 def _team_of(c, cid: str) -> list[dict]:

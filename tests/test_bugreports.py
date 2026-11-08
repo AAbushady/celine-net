@@ -99,8 +99,9 @@ async def test_a_report_is_a_thread_he_closes_and_events_lists_it_once(store, cf
             "something newer brings it back"
 
 
-async def test_continue_in_a_chat_carries_the_thread_into_a_new_chat_with_her(
+async def test_continue_in_a_chat_moves_the_thread_into_a_new_chat_with_her(
         store, cfg, monkeypatch):
+    """The thread stayed in the lists beside the chat that carried it."""
     monkeypatch.setitem(rows.NAMES, "her", "Celine")
     cid = await conversations.create(store, "a chat")
     await _file(store, cfg, cid)
@@ -111,6 +112,8 @@ async def test_continue_in_a_chat_carries_the_thread_into_a_new_chat_with_her(
         assert (await h.post("/api/intercom/threads/99/conversations")).status_code == 404
         r = await h.post("/api/intercom/threads/1/conversations")
         assert r.status_code == 200, r.text
+        moved = (await h.get("/api/intercom", params={"thread": 1})).json()["archived"]
+    assert moved, "archived until something newer lands in it"
     new = r.json()["conversation_id"]
     assert new != cid
     conv, held, turns = await store.read(lambda c: (
@@ -120,7 +123,7 @@ async def test_continue_in_a_chat_carries_the_thread_into_a_new_chat_with_her(
         c.execute("SELECT count(*) FROM turns WHERE conversation_id = ?", (new,)).fetchone()[0]))
     assert tuple(conv) == ("chat", "Bug #1: read cuts results")
     assert held == [
-        "Joe continued an Intercom thread in this chat. The thread:\n\n"
+        "Joe continued Intercom thread #1 in this chat. The thread:\n\n"
         '[From you (#1, "Bug #1: read cuts results")]\n'
         "High: past_conversations__read cut a 9k result.\n\n"
         '[From Joe (#2, re #1, "Bug #1: read cuts results")]\nwhich chat was it?']

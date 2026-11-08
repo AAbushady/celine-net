@@ -118,30 +118,6 @@ def name_of(c: sqlite3.Connection, addr: str) -> str | None:
     return None if r is None else r["name"] or NAMES["her"]
 
 
-def recipients(c: sqlite3.Connection) -> list[dict]:
-    """Whom the user can write to, each once: everyone working, every mission that is
-    not stopped, then its chats and tasks newest first (nothing archived),
-    each followed by its sub-agents. Those after the missions carry `line`, how a
-    second step lists them: the conversation's title, a sub-agent as "<name>, in
-    <where>"."""
-    out: list[dict] = [{"to": "all", "name": "Everyone", "line": None}]
-    tops = c.execute(
-        "SELECT c.id, c.title, mi.name AS mission FROM conversations c "
-        "LEFT JOIN missions "
-        "mi ON mi.conversation_id = c.id WHERE c.agent_of IS NULL AND c.trashed_at IS NULL "
-        "AND c.archived_at IS NULL AND coalesce(mi.status, '') <> 'stopped' "
-        "ORDER BY mi.name IS NULL, c.updated_at DESC, c.id DESC").fetchall()
-    for t in tops:
-        where = t["mission"] or t["title"] or "Untitled"
-        out.append({"to": f"agent:{t['id']}", "name": t["mission"] or NAMES["her"],
-                    "line": None if t["mission"] else where})
-        out += [{"to": f"agent:{s['id']}", "name": s["agent_name"],
-                 "line": f"{s['agent_name']}, in {where}"}
-                for s in c.execute("SELECT id, agent_name FROM conversations WHERE "
-                                   "agent_of=? ORDER BY created_at", (t["id"],))]
-    return out
-
-
 def source_of(c: sqlite3.Connection, addr: str) -> dict | None:
     """Where a message from `addr` came from, as pages show it: {kind, title, link (a
     path in the app, homes.of for a conversation, or None)}. kind: chat, mission, run
@@ -294,14 +270,11 @@ BACKGROUND = ("EXISTS (SELECT 1 FROM intercom r JOIN intercom_deliveries d ON "
               "bg.kind = 'background')")
 
 
-# A thread the user is in: a message in it came to them, or they wrote one that is not a
-# plain chat message (PLAIN). The user's lists hold only these; what goes on between
-# conversations (a brief, a report, a job, a notice, a reminder) stays in them.
-WITH_USER = ("EXISTS (SELECT 1 FROM intercom t WHERE t.thread = i.thread AND (EXISTS ("
-             "SELECT 1 FROM intercom_deliveries u WHERE u.intercom_id = t.id AND "
-             "u.to_addr = 'user') OR (t.from_addr = 'user' AND NOT (t.to_addr <> 'user' AND "
-             "t.kind = 'message' AND t.due_at IS NULL AND t.until_at IS NULL AND "
-             "t.reply_to IS NULL))))")
+# A thread for the user: a message in it came to them. The Intercom tells them things; they
+# talk in chats. Their lists hold only these; what goes on between conversations (a brief,
+# a report, a job, a notice, a reminder, theirs too) stays in them.
+WITH_USER = ("EXISTS (SELECT 1 FROM intercom t JOIN intercom_deliveries u ON u.intercom_id = "
+             "t.id WHERE t.thread = i.thread AND u.to_addr = 'user')")
 
 
 def _mine(addr: str | None, received: bool) -> tuple[str, list]:

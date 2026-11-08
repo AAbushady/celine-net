@@ -48,15 +48,34 @@ async def _sender(request: Request) -> str:
     return f"system:{name}"
 
 
+READ_ONLY = ("The Intercom is for reading, but for your replies to Bastet and your "
+             "reminders: to talk about this, continue it in a chat.")
+
+
+def _user_may_send(c, body: MessageIn, later: bool) -> bool:
+    """What the user still sends here: a reply in a thread with Bastet (her decisions,
+    guard/consult.py) and a reminder into a conversation (lib/reminders.ts: `in` or `at`,
+    to `agent:<id>`). Everything else they say in a chat."""
+    if body.reply_to is not None:
+        return c.execute("SELECT 1 FROM intercom WHERE thread = (SELECT thread FROM intercom "
+                         "WHERE id=?) AND (from_addr = ? OR to_addr LIKE ?) LIMIT 1",
+                         (body.reply_to, rows.GUARD, f"%{rows.GUARD}%")).fetchone() is not None
+    words = [w.strip() for w in body.to.split(",") if w.strip()]
+    return later and bool(words) and all(w.startswith("agent:") for w in words)
+
+
 @router.post("/intercom")
 async def send(request: Request, body: MessageIn) -> dict:
-    """From the user, or from `system:<name>` with a named token. `in` ("30 min") or
-    `at` ("08:00") make it land later; `until` ("05:00", "2 h") to `all` is an
-    announcement that stands until then."""
+    """From `system:<name>` with a named token, or from the user what READ_ONLY names
+    (_user_may_send). `in` ("30 min") or `at` ("08:00") make it land later; `until`
+    ("05:00", "2 h") to `all` is an announcement that stands until then."""
     sender = await _sender(request)
     text = body.text.strip()
     if not text:
         raise CelineError("bad_request", "Text is required.", 400)
+    if sender == "user" and not await request.app.state.services.store.read(
+            lambda c: _user_may_send(c, body, bool(body.in_ or body.at))):
+        raise CelineError("bad_request", READ_ONLY, 400)
     tz, now_ = zone(request.app.state.services.cfg), datetime.now(timezone.utc)
     due = until_at = None
     if body.in_ or body.at:
@@ -161,28 +180,22 @@ async def threads(request: Request, with_: str = Query("user", alias="with"),
     return ThreadsPage(**await request.app.state.services.store.read(fn))
 
 
-@router.get("/intercom/recipients")
-async def recipients(request: Request) -> dict:
-    """Whom the user can write to, each once, by name: [{to, name, line}]; `line` set:
-    one of its conversations, listed in a second step by that line."""
-    return {"recipients": await request.app.state.services.store.read(rows.recipients)}
-
-
-CARRIED = "{user} continued an Intercom thread in this chat. The thread:"
+CARRIED = "{user} continued Intercom thread #{thread} in this chat. The thread:"
 
 
 @router.post("/intercom/threads/{tid}/conversations", dependencies=[Depends(person_only)])
 async def to_chat(request: Request, tid: int) -> dict:
     """Continue in a chat: a new chat with it that carries thread `tid`, its messages
     landing there as one notice from the app without waking it (CARRIED, each message
-    with the line it reads above it); what waits for you in the thread is read.
-    -> {conversation_id}; the chat's `conversation.created` is on the feed."""
+    with the line it reads above it). The thread moves: what waits for you in it is read
+    and it is archived, until something newer lands in it. -> {conversation_id}; the
+    chat's `conversation.created` is on the feed."""
     services = request.app.state.services
     store, cfg = services.store, services.cfg
     msgs = await store.read(lambda c: rows.thread(c, tid))
     if not msgs:
         raise NotFound("thread")
-    tz, lines = zone(cfg), [CARRIED.format(user=cfg.user)]
+    tz, lines = zone(cfg), [CARRIED.format(user=cfg.user, thread=tid)]
     for m in msgs:
         if not m["cancelled"]:
             # its own conversations' lines are its own: "From you"
@@ -194,6 +207,11 @@ async def to_chat(request: Request, tid: int) -> dict:
     await services.intercom.send("system:app", f"agent:{cid}", "\n\n".join(lines),
                                  kind="notice", wake=False)
     await _read(request, lambda c: [m["id"] for m in msgs])
+
+    def shelve(c):
+        if rows.archive(c, [tid]):
+            store.global_event(c, INTERCOM_STATE, {"intercom_id": tid, "conversation_id": None})
+    await store.write(shelve)
     return {"conversation_id": cid}
 
 

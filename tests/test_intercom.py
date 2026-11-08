@@ -504,33 +504,6 @@ async def test_in_a_chat_with_the_user_her_reply_is_the_message(store, cfg):
     assert (await store.read(lambda c: rows.view(c, out.display["id"])))["to"] == "user"
 
 
-async def test_wait_holds_until_the_user_answers(store, cfg):
-    ic = Intercom(store)
-    skill = IntercomSkill(cfg)
-    skill.app = SimpleNamespace(intercom=ic)
-    cid = await conversations.create(store, "m", kind="mission")
-    shown = anyio.Event()
-    notes = []
-
-    async def emit(note, **_):
-        notes.append(note)
-        shown.set()
-    ctx = ToolContext(cid, "t", "k", store, cfg, emit)
-    out = {}
-
-    async def ask():
-        out["r"] = await skill.send(ctx, "ready for the next step?", "user", wait=True)
-    async with anyio.create_task_group() as tg:
-        tg.start_soon(ask)
-        await shown.wait()
-        assert notes == [f"Waiting for {cfg.user}"]
-        assert "r" not in out, "its turn holds"
-        asked = await store.read(lambda c: c.execute(
-            "SELECT max(id) FROM intercom WHERE from_addr=?", (f"agent:{cid}",)).fetchone()[0])
-        reply = await ic.send("user", "", "yes, go", reply_to=asked)
-    assert out["r"].content.endswith(f"{cfg.user} answered (#{reply['intercom_id']}).")
-
-
 async def test_a_reply_wakes_a_conversation_whose_turn_was_stopped(store):
     ic = Intercom(store)
     cid = await conversations.create(store)
@@ -599,6 +572,7 @@ async def test_your_lists_hold_only_the_threads_you_are_in(store):
     asked = (await ic.send(me, "user", "which one?"))["intercom_id"]
     await ic.send("user", me, "the red one", reply_to=asked)
     await ic.send("user", me, "just chatting")                       # plain: never a thread
+    await ic.send("user", me, "water the plants", due_at="2999-01-01T00:00:00.000+00:00")
     async with await _archive_app(store) as http:
         page = (await http.get("/api/intercom/threads?with=all")).json()
         assert _listed(page) == {to_you, asked}

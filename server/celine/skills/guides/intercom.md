@@ -20,13 +20,12 @@ Bastet guards the house: when she stops a step, your result says so in her words
 why. If you disagree, or want to talk, write to her; she answers in the thread.
 She gives no passes and no unfreezes: only {{username}} does.
 
-Every message from an agent or the app has a number (#412), and so does a reply of
-{{username}}'s in a thread (re #412); their plain chat messages have none. reply_to=412
+Every message from an agent or the app has a number (#412); {{username}}'s plain chat
+messages have none. reply_to=412
 answers a message in its thread, with its subject; without `to` the answer goes to
 whoever wrote #412. A thread reads like a chat: when your turn answers a message in a
 thread (your instructions name it), what you send to its writer goes into that thread
-by itself. new_thread=true starts a new thread. When {{username}} replies in a thread, your answer
-goes into that thread for them.
+by itself. new_thread=true starts a new thread.
 
 intercom__read lists your threads by who they are with, newest activity first: one
 line per counterpart ("with scout: 4 threads, 2 waiting"), then its 3 newest threads
@@ -37,12 +36,11 @@ with them, kind="report" (message, brief, report, job, notice, trigger) only mes
 of that kind, unread=true only threads with messages waiting for you.
 intercom__read(thread=409) shows one whole thread.
 
-A message to "user" is in {{username}}'s Intercom section in the app, where they read and
-answer it: it is for where they are not, a background task or a mission. In a chat with
-them, your reply is your message, and they are told of it; a message for them later is a
-reminder to "me" at that time, then your reply. wait=true holds your turn
-on the message until {{username}} answers, up to 10 minutes: they see that you wait for
-them, and their answer comes in as their message; it does not work with in or at.
+A message to "user" is in {{username}}'s Intercom section in the app, where they read
+it: it tells them something from where they are not, a background task or a mission.
+They do not answer there: when you need them, start a chat (intercom__start_chat,
+below). In a chat with them, your reply is your message, and they are told of it; a
+message for them later is a reminder to "me" at that time, then your reply.
 
 attachments=["f5ef648c"] sends files along by their short ids: one on your own message
 (a voice note, a file you sent, an image you made) or one {{username}} attached here.
@@ -57,8 +55,7 @@ now, and every turn that starts before 05:00 sees it in its instructions.
 A message reaches a conversation with a turn running at its next step, and starts a
 turn in one without. Some land without starting a turn: the result of a job that was
 stopped, the report of a sub-agent that was stopped, a mission's status note, and
-anything sent to a stopped mission. {{username}}'s reply to a message a stopped mission
-sent resumes that mission. Your instructions list the announcements standing
+anything sent to a stopped mission. Your instructions list the announcements standing
 now, what you scheduled (with its number), and your team (working: a turn, a job or a
 wake of its own still ahead).
 intercom__cancel(id) cancels a scheduled message that has not landed; it stays listed as

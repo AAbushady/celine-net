@@ -304,11 +304,9 @@ def build_app(cfg: config_mod.Config, dev: bool) -> FastAPI:
             intercom = services.intercom = Intercom(store, dispatcher.notify, dispatcher.user_wrote)
             dispatcher.intercom = intercom       # a Stop's cascade cancels schedules
             # every on_end before the workers start: a turn resumed at start that ends
-            # while the awaits below run still reports and answers its pair
+            # while the awaits below run still reports
             from .sub_agents import report       # a sub-agent that is done reports
             dispatcher.on_end(lambda cid, _turn: report.on_end(services, cid))
-            from .intercom import answer         # its answer to the user's reply, in its thread
-            dispatcher.on_end(lambda cid, turn: answer.on_end(services, cid, turn))
             from . import leftovers              # a done mission's terminals and tabs close
             dispatcher.on_end(lambda cid, _turn: leftovers.on_end(services, cid))
             from .missions import watch as mission_watch    # a mission keeps going

@@ -89,8 +89,6 @@ type ThreadsWith = string
 /** a bug report it filed: each one is its own thread (bugreports/store.py) */
 type BugReport = { id: number; title: string; severity: 'high' | 'medium' | 'low'; state: 'open' | 'closed'; thread: number }
 
-type Recipient = { to: string; name: string; line: string | null }
-
 export const KINDS = ['message', 'brief', 'report', 'job', 'notice', 'trigger'] as const
 export type Kind = typeof KINDS[number]
 /** the kinds a thread you are in holds: jobs and triggers go between her own conversations */
@@ -110,12 +108,10 @@ export const intercomApi = {
     post<{ conversation_id: string }>(`/intercom/threads/${thread}/conversations`).then(r => r.conversation_id),
   /** a bug report's Close, on its thread: what waits in it is read too */
   closeBug: (id: number, why = '') => why ? request<BugReport>(`/bugreports/${id}/close`, json('POST', { why })) : post<BugReport>(`/bugreports/${id}/close`),
-  /** `in` ("30 min"), `at` ("19:00") land it later; `until` (to `all`) makes it an announcement that stands until then */
+  /** from you the server takes a reply in a thread with Bastet and a reminder into a conversation
+      (`in` "30 min" or `at` "19:00", to `agent:<id>`): you talk in chats */
   send: (body: { to: string; text: string; subject?: string; reply_to?: number; in?: string; at?: string; until?: string }) =>
     request<{ intercom_id: number }>('/intercom', json('POST', body)),
-  /** whom you can write to, each once, by name; `line` set: one of its conversations, picked in a second step */
-  recipients: () =>
-    request<{ recipients: Recipient[] }>('/intercom/recipients').then(r => r.recipients),
   read: (ids: number[]) =>
     request<{ read: number[] }>('/intercom/read', json('POST', { ids })),
   /** everything that waits for you, read: Dismiss all */
