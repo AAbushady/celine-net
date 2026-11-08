@@ -649,6 +649,9 @@ a.list-row, button.list-row, .list-row[role='button'] { cursor: pointer; }
 .place-head__detail { display: inline-flex; align-items: center; gap: var(--s-2); flex-shrink: 1000; min-width: 0; overflow: hidden; white-space: nowrap; }
 .place-head__detail:has(> .dot-word:first-child, > .dot:first-child) { min-width: var(--dot); }
 .place-head__title--clip > .place-head__name { min-width: min(6rem, 100%); }
+/* a narrow head keeps fewer letters, so its buttons stay on the row */
+.place-head--narrow .place-head__title--clip { min-width: min(5rem, 30%); }
+.place-head--narrow .place-head__title--clip > .place-head__name { min-width: min(4rem, 100%); }
 .place-head__row > .place-head__search { flex: 0 1 460px; min-width: 200px; }
 .place-head__acts { flex: none; display: flex; align-items: center; gap: var(--s-2); margin-left: auto; }
 .place-head__slot { display: contents; }

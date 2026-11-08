@@ -5,8 +5,9 @@
    Archive, Trash, the caller's own actions, More, then New at the far right. It measures
    itself: when the row does not fit, it steps down, one step at a time, until it does:
    the buttons lose their words, then Select, Archive and Trash move into More, then New
-   becomes a round "+", then the title ends in an ellipsis, and last the caller's own
-   actions take their own line under the row. In a narrow head (a list column, a phone)
+   becomes a round "+", then the title ends in an ellipsis (shorter in a narrow head), then
+   the lead (a face) goes, and last the caller's own actions take their own line under the
+   row, which a phone's head never needs. In a narrow head (a list column, a phone)
    Search takes its own row under it, and the buttons have no words. A touch screen has no
    hover to show a tip, so there the words stay one step longer: Select, Archive and Trash
    move into More first, then the words go, at every width. On a shelf New keeps its place, unseen, so nothing
@@ -58,7 +59,7 @@ type PlaceShelf = {
 const SHELF = { archive: { label: 'Archive', icon: Archive }, trash: { label: 'Trash', icon: Trash2 } } as const
 
 /** the steps a head takes when it does not fit (see the top of this file) */
-const STEPS = 5
+const STEPS = 6
 /** below this width Search takes its own row */
 const NARROW = 640
 
@@ -156,7 +157,8 @@ export function PlaceHead({
   const open = shelf && shelf.value !== 'list' ? shelf.value : null
   const roundNew = step >= 3 || narrow
   const clip = step >= 4
-  const actsBelow = step >= 5 && !!actions
+  const leadless = step >= 5
+  const actsBelow = step >= 6 && !!actions
 
   const toggle = (s: 'archive' | 'trash') => shelf!.onChange(shelf!.value === s ? 'list' : s)
   const selectItem: MenuItem | null = picker ? { label: picker.on ? 'Done' : 'Select', icon: ListChecks, onSelect: () => (picker.on ? picker.stop() : picker.start()) } : null
@@ -204,7 +206,7 @@ export function PlaceHead({
             ))}
           </nav>
         )}
-        {lead}
+        {!leadless && lead}
         {(title != null || open) && (
           <H className={cx('place-head__title', clip && 'place-head__title--clip')} title={titleAttr}>
             {open && <IconButton icon={ChevronLeft} label="Back to the list" size="sm" iconSize="md" onClick={() => shelf!.onChange('list')} />}
