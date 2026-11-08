@@ -433,6 +433,27 @@ async def test_confirm_asks_the_owner_and_his_answer_decides(store):
         ["denied", "approved"]
 
 
+async def test_a_confirm_out_of_time_in_a_run_says_to_ask_in_a_chat(store, monkeypatch):
+    """A routine's change asked while the owner sleeps: in a chat their own turn waits."""
+    from celine import approvals as ap
+    from celine.guard.calls import gated as _gated
+    monkeypatch.setattr(ap, "ASK_FOR", 0)
+    cfg = _cfg(confirm={"tools": ["notebook"]})
+    app = Services(cfg=cfg, store=store, approvals=Approvals(cfg, store=store))
+    run = await conversations.for_trigger(store, "run:r1", "Growth check")
+    turn = {**TURN, "conversation_id": run}
+    call = {"id": "k1", "name": "notebook__write", "message_id": None, "read_only": False,
+            "args": {"path": "a.md", "text": "x"}}
+    v = await guard.check(turn, call, [], mode="on", judge=_never, store=store,
+                          ask=FakeAsk(0.0), cfg=cfg)
+    assert v.decision == "asked"
+    got = await _gated(v, turn, call, store, cfg, app)
+    assert got[1].content == (
+        "Not run: Bastet asked User first, and User did not answer in time about this "
+        "notebook__write call. Ask them in a chat (intercom__start_chat): there a call "
+        "waits until they answer.")
+
+
 async def test_a_fresh_install_confirms_the_steps_that_reach_out_or_change_her(store):
     """The seed of the confirm list: a public share and an edit of herself wait for the
     owner; a private share, a sub-agent and the coding agent on her own machines do

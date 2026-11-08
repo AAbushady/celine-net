@@ -176,6 +176,8 @@ async def gated(v, turn, call, store, cfg, app):
         text = bastet.fill(cfg, bastet.DENIED if denied else bastet.UNANSWERED,
                            tool=call["name"]) if denied or late else \
             bastet.fill(cfg, bastet.NOT_ASKED, said=no)
+        if late and no.endswith(bastet.IN_A_CHAT):
+            text += f" {bastet.IN_A_CHAT}"
         return _gated(text, call["name"], rule="confirm")
     if v.freeze and app is not None:
         # the freeze stops this turn too: it finishes (the owner hears it) all the same

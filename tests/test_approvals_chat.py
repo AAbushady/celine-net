@@ -135,6 +135,20 @@ async def test_a_background_turn_keeps_its_time(store, monkeypatch):
     assert await _open(store, cid) == []
 
 
+async def test_out_of_time_where_she_starts_chats_the_result_says_to_ask_in_one(
+        store, monkeypatch):
+    """A run, a task or a mission: nobody answered in time, and in a chat the user's own
+    turn waits for them. A sub-agent starts no chat, so its result does not say it."""
+    a = _approvals(store, monkeypatch, ask_for=0)
+    run = await conversations.for_trigger(store, "run:r1", "Growth check")
+    sub = await conversations.create(store, agent_of=run, kind="agent")
+    assert await a.ask("change the Persona", [], run, kind="her") == (
+        "sam did not answer in 1 minute; nothing was done. Ask them in a chat "
+        "(intercom__start_chat): there a call waits until they answer.")
+    assert await a.ask("change the Persona", [], sub, kind="her") == \
+        "sam did not answer in 1 minute; nothing was done."
+
+
 async def test_a_gate_is_asked_on_bastets_banner_not_twice(store, monkeypatch):
     a = _approvals(store, monkeypatch)
     cid, _ = await _chat(store)

@@ -752,7 +752,9 @@ only write rows; a closed gate still holds), `on`.
 - `GET /api/approvals`, `POST /api/approvals/{id}/answer` `{ok}` (`api/approvals.py`); every request but a
   gate also waits in its chat, after the message that made the call, with Approve and Deny
   (snapshot `approvals`, events `approval.asked`, `approval.closed`); in your own turn it
-  waits for your answer or Stop and holds the turn's clock, elsewhere `ASK_FOR` seconds
+  waits for your answer or Stop and holds the turn's clock, elsewhere `ASK_FOR` seconds;
+  out of time in a background task, a run or a mission, the result tells her to ask you in
+  a chat (`intercom__start_chat`), where your own turn waits for you
 
 **What code enforces** (`tests/test_gates_hold.py`): the floor under Bastet's judgement.
 - A closed gate never opens.

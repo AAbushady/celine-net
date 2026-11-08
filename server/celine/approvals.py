@@ -36,7 +36,9 @@ such a read stands out: that is where someone else's words get in.
 
 In the user's own turn (turns/waiting.py) the tool call waits for their answer or their
 Stop, and the turn's wall clock and the tool's time do not run meanwhile; in any other
-turn (a routine, a mission, a sub-agent) it waits ASK_FOR seconds. The user answers from
+turn (a routine, a mission, a sub-agent) it waits ASK_FOR seconds, and out of time where
+she can start a chat with them (a background task, a run, a mission) the result says to
+ask them in one (IN_A_CHAT). The user answers from
 a logged-in session (a named token is refused). One request waits at a time in a
 conversation. Each carries where its conversation lives (`home`, `link`; homes.py), so
 the rail marks that place, the window's title counts them and the rows of the
@@ -56,6 +58,7 @@ from dataclasses import dataclass, field
 import anyio
 
 from .core.event_types import APPROVAL_ASKED, APPROVAL_CLOSED, APPROVALS_CHANGED
+from .guard.bastet import IN_A_CHAT
 from .guard.sources import OUTSIDE   # skills whose results others wrote: one list
 
 log = logging.getLogger("celine.approvals")
@@ -175,10 +178,14 @@ def asked(services) -> frozenset[str]:
 
 
 def _where(c, cid: str) -> dict:
-    """{home, link, root} of conversation `cid` (homes.py); all None when it is gone."""
+    """{home, link, root, away} of conversation `cid` (homes.py); `away`: she can start a
+    chat with the user from it (intercom/skill.py AWAY); all None when it is gone."""
     from . import homes
+    from .intercom.skill import AWAY
     top = homes.root(c, cid)
-    return {**homes.of(c, cid), "root": top["id"] if top is not None else None}
+    kind = c.execute("SELECT kind FROM conversations WHERE id=?", (cid,)).fetchone()
+    return {**homes.of(c, cid), "root": top["id"] if top is not None else None,
+            "away": kind is not None and kind[0] in AWAY}
 
 
 class Approvals:
@@ -260,7 +267,8 @@ class Approvals:
                     del self.approved[next(iter(self.approved))]
             return None
         if ok is None:
-            return f"{user} did not answer in {_minutes()}; nothing was done."
+            return f"{user} did not answer in {_minutes()}; nothing was done." + \
+                (f" {IN_A_CHAT}" if where.get("away") else "")
         return f"{user} denied it; nothing was done."
 
     # ---- what the user answers ----------------------------------------------------------

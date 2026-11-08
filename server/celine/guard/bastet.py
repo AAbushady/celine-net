@@ -48,6 +48,9 @@ DENIED = "Not run: Bastet asked {{user}} first, and {{user}} said no to this {to
 UNANSWERED = ("Not run: Bastet asked {{user}} first, and {{user}} did not answer in time "
               "about this {tool} call.")
 NOT_ASKED = "Not run. Bastet: {said}"      # the approvals' own sentence (another ask waits)
+# a request out of time in a background task, a run or a mission (approvals.py), a gate's
+# too: in a chat with her the user's own turn waits for their answer
+IN_A_CHAT = "Ask them in a chat (intercom__start_chat): there a call waits until they answer."
 UNFROZEN = "Bastet froze you at {at}: {what}. {{user}} unfroze you at {back}."
 # guard/chain.py: the second look said no to what froze it
 SECOND_LOOK = ("I lifted the freeze on {{name}} myself: a second look says it was not a "
