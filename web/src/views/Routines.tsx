@@ -35,6 +35,7 @@ import { useResource } from '../lib/useResource'
 import { Markdown } from '../components/Markdown'
 import { Portrait } from '../components/Portrait'
 import { PlanButton } from '../components/Plan'
+import { ApprovalAsk } from '../components/ApprovalAsk'
 import { Elapsed } from '../components/ToolRow'
 import { LongEditor, TextHistory, textHistory } from '../components/editor'
 import {
@@ -593,13 +594,15 @@ function RunPage({ id, night, go, active, schedules }: {
 
 /* The run's conversation as turns: the reviewer's lines and its own, what it was asked left
    out (it is the Prompt section), and its last line when that is the run's result (it is
-   the Result section) */
+   the Result section); under them what waits for your answer (ApprovalAsk), the one place
+   a notice about it opens */
 function Talk({ cid, active, result }: { cid: string; active: boolean; result: string | null }) {
   const her = useName()
   const convo = useConversation(active ? cid : null)
   const lines = (convo.messages as ChatMessage[]).filter(m => (m.role === 'user' || m.role === 'assistant') && m.intercom?.from !== 'system:schedules'
     && m.content.trim())
-  if (!lines.length) return convo.conversation ? <p className="routines-prose routines-prose--quiet">{convo.running ? STATE_WORD.running : 'No turns'}</p> : <LoadingRow />
+  const asks = convo.approvals.map(a => <ApprovalAsk key={a.id} ask={a} />)
+  if (!lines.length) return convo.conversation ? <>{asks}<p className="routines-prose routines-prose--quiet">{convo.running ? STATE_WORD.running : 'No turns'}</p></> : <LoadingRow />
   const end = lines[lines.length - 1]!
   const items = end.role === 'assistant' && result != null && end.content.trim() === result.trim() ? lines.slice(0, -1) : lines
   return (
@@ -612,6 +615,7 @@ function Talk({ cid, active, result }: { cid: string; active: boolean; result: s
           </Message>
         )
       })}
+      {asks}
       {convo.running && <p className="routines-prose routines-prose--quiet">{convo.waiting?.noModel ?? STATE_WORD.running}</p>}
     </div>
   )
