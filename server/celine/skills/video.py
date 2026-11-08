@@ -24,8 +24,10 @@ SERVICE = "video"
 POLL = 15.0                 # seconds between two looks at a running watch
 READ_SPAN = 180             # seconds of film one read gives
 WAIT_MARGIN = 120           # a wait in a job returns this long before the job's own limit
-DETACHED = ("Watching in the background as job {job}; you get the log's first stretch when it is done. "
-            "video__list shows how far it is.")
+DETACHED = ("Watching {source} in the background as job {job}; you get the log's first stretch when it is "
+            "done. video__list shows how far it is, by its source until the helper has its title.")
+WAIT_DETACHED = ("Waiting for watch {id} in the background as job {job}; you get the log's first stretch "
+                 "when it is done.")
 CLOCK = re.compile(r"^(?:(\d+):)?(\d{1,3}):(\d{2})$")
 
 
@@ -96,9 +98,17 @@ class Video:
     # ---- words ---------------------------------------------------------------------------------------------------
 
     @staticmethod
-    def _line(j: dict) -> str:
-        """One watch in a line: id, title, where it stands."""
-        title = j.get("title") or (j.get("source") or {}).get("url") or "a Plex item"
+    def _source(j: dict) -> str:
+        """What a watch was given, as video__watch took it: its link, or the plex: id from video__search_plex."""
+        s = j.get("source") or {}
+        if s.get("kind") == "plex":
+            return f"plex:{s.get('server')}:{s.get('item')}"
+        return s.get("url") or "?"
+
+    @classmethod
+    def _line(cls, j: dict) -> str:
+        """One watch in a line: id, title (its source until the helper knows the title), where it stands."""
+        title = j.get("title") or cls._source(j)
         span = ""
         if j.get("stretch"):
             a, b = j["stretch"]
@@ -148,7 +158,7 @@ class Video:
         return await self._until_done(ctx, j["id"], in_job=True)
 
     @tool(mode="detach", read_only=True, open_world=True, background="background", timeout=600,
-          detached=DETACHED)
+          detached=WAIT_DETACHED)
     async def wait(
         self,
         ctx: ToolContext,

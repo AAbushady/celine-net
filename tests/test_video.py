@@ -109,6 +109,25 @@ async def test_a_watch_starts_and_its_first_stretch_comes_back_in_order(store, c
     assert "at=180" in h.seen[-1]
 
 
+def test_a_queued_watch_reads_by_its_source_and_a_background_one_names_it(cfg):
+    """Two Plex watches in the queue both read "a Plex item", and a watch sent to the background named only its
+    job: the wrong ones were stopped twice."""
+    from celine.skills import Registry
+    plex = {"id": "86144e7180b8", "source": {"kind": "plex", "server": "a" * 40, "item": "254348"},
+            "title": None, "state": "queued"}
+    assert Video._line(plex) == f"#86144e7180b8 plex:{'a' * 40}:254348: queued", "the id video__watch took"
+    assert Video._line({**plex, "title": "In the Mouth of Madness (1994)"}).startswith(
+        "#86144e7180b8 In the Mouth of Madness (1994): ")
+    reg = Registry()
+    reg.add(Video(cfg))
+    said = reg.tools["video__watch"].detached.format_map(
+        {"source": "plex:x:1", "background": True, "job": "406381a2"})
+    assert said.startswith("Watching plex:x:1 in the background as job 406381a2;")
+    said = reg.tools["video__wait"].detached.format_map(
+        {"id": "86144e7180b8", "background": True, "job": "dbcbe63e"})
+    assert said.startswith("Waiting for watch 86144e7180b8 in the background as job dbcbe63e;")
+
+
 async def test_the_stills_way_brings_subtitles_and_a_sheet_a_minute_as_images(store, cfg, monkeypatch):
     saved: list[str] = []
 
