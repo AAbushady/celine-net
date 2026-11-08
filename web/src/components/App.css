@@ -150,6 +150,12 @@ input[type='file']::file-selector-button:hover { background: var(--surface-4); }
 .prose h2 { font-size: var(--t-xl); padding-bottom: var(--s-2); border-bottom: 1px solid var(--border); }
 .prose h3 { font-size: var(--t-lg); }
 .prose h4 { font-size: var(--t-md); color: var(--text-secondary); }
+/* a phone: a heading a step smaller, so one does not take the screen */
+@media (max-width: 767px) {
+  .prose h1 { font-size: var(--t-xl); }
+  .prose h2 { font-size: var(--t-lg); }
+  .prose :is(h1, h2, h3, h4) { margin-top: var(--s-5); }
+}
 .prose strong { font-weight: var(--fw-bold); }
 .prose a { color: var(--accent); text-underline-offset: 2px; }
 .prose pre { background: var(--surface-sunk); border-radius: var(--r-md); padding: var(--s-3) var(--s-4); overflow-x: auto;
