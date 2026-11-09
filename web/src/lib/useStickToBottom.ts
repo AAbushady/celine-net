@@ -25,7 +25,8 @@ export const KeepPlace = createContext<(id: string) => void>(() => {})
 /** A transcript pinned to its bottom while it grows: each growth, of the text or of the box
     (the composer, a keyboard), is followed at once, so the motion is the text's own. Only you
     unpin it: a scroll up with the wheel, a finger, the keys or the scrollbar, selecting
-    text; a click that opens a fold pauses following until your next scroll. A scroll down
+    text; a scroll the layout makes by itself never does. A click that opens a fold pauses
+    following until your next scroll. A scroll down
     to within REPIN px pins it again. Not following and more than REPIN px above the bottom,
     `below` holds (the jump shows), and `unseen` says a new message came meanwhile. `fresh`:
     what makes a message new (their count, the live one). `reset`: another conversation,
@@ -40,7 +41,10 @@ export function useStickToBottom(ref: RefObject<HTMLElement | null>, fresh: unkn
   const paused = useRef(false)
   const [unseen, setUnseen] = useState(false)
   const [below, setBelow] = useState(false)
-  const programmatic = useRef(false)
+  // the top a set of ours left, until a scroll event shows it
+  const ours = useRef<number | null>(null)
+  // a finger or a pointer is down in the transcript (a drag, the scrollbar, a selection)
+  const held = useRef(false)
   const lastTop = useRef(0)
   const raf = useRef<number | null>(null)
   // the element above the kept message and its offset in the scroller
@@ -53,11 +57,8 @@ export function useStickToBottom(ref: RefObject<HTMLElement | null>, fresh: unkn
   }, [ref])
 
   const set = (el: HTMLElement, top: number) => {
-    const was = el.scrollTop
     el.scrollTop = top
-    // a top that did not move sends no scroll event, which would then swallow your next one
-    if (el.scrollTop !== was) programmatic.current = true
-    lastTop.current = el.scrollTop
+    lastTop.current = ours.current = el.scrollTop
   }
 
   const pin = useCallback((on: boolean) => {
@@ -97,11 +98,18 @@ export function useStickToBottom(ref: RefObject<HTMLElement | null>, fresh: unkn
     const top = el.scrollTop
     const before = lastTop.current
     lastTop.current = top
-    if (programmatic.current) { programmatic.current = false; return }
+    // where a set of ours left it (one event may stand for several): nothing of yours. By the
+    // place, not a flag, so a scroll of yours in the same event still counts
+    const mine = ours.current
+    ours.current = null
+    if (mine != null && Math.abs(top - mine) < 1) return
     const gap = gapOf(el)
-    // while your jump glides only a gesture lets go (the touch, wheel and key handlers): a
-    // scroll up then is a flick from before it, still coasting
-    if (scrolledUp(before, top, gap) && raf.current == null) {
+    // a scroll up lets go only while you hold the transcript (a finger, the scrollbar); the
+    // wheel, a drag and the keys let go by themselves (below). Without you it is the layout's
+    // own: a box that grows under it (the keyboard going down, the composer emptied after a
+    // send) clamps its top lower while text comes. While your jump glides, a scroll up is a
+    // flick from before it, still coasting.
+    if (scrolledUp(before, top, gap) && held.current && raf.current == null) {
       if (pinned.current) release()
       setBelow(gap > REPIN)
       return
@@ -120,19 +128,19 @@ export function useStickToBottom(ref: RefObject<HTMLElement | null>, fresh: unkn
     }
     const onWheel = (e: WheelEvent) => { gesture(); if (e.deltaY < 0) release() }
     let touchY = 0
-    const onTouchStart = (e: TouchEvent) => { gesture(); touchY = e.touches[0]?.clientY ?? 0 }
+    const onTouchStart = (e: TouchEvent) => { held.current = true; gesture(); touchY = e.touches[0]?.clientY ?? 0 }
     const onTouchMove = (e: TouchEvent) => { if ((e.touches[0]?.clientY ?? 0) > touchY + 5) release() }
     const onKeyDown = (e: KeyboardEvent) => {
       gesture()
       if (e.key === 'PageUp' || e.key === 'ArrowUp' || e.key === 'Home') release()
     }
+    // a pan ends a touch's pointer early (pointercancel): the touch itself says when it ends
+    const onPointerDown = () => { held.current = true }
+    const onLetGo = () => { held.current = false }
     // selecting text inside: following would move it under the pointer
-    let down = false
-    const onPointerDown = () => { down = true }
-    const onPointerUp = () => { down = false }
     const onSelection = () => {
       const s = document.getSelection()
-      if (down && s && !s.isCollapsed && s.anchorNode && el.contains(s.anchorNode)) release()
+      if (held.current && s && !s.isCollapsed && s.anchorNode && el.contains(s.anchorNode)) release()
     }
     // a click that opens a fold: its growth does not move the view
     const onClick = (e: MouseEvent) => {
@@ -145,7 +153,9 @@ export function useStickToBottom(ref: RefObject<HTMLElement | null>, fresh: unkn
     el.addEventListener('keydown', onKeyDown, { passive: true })
     el.addEventListener('pointerdown', onPointerDown, { passive: true })
     el.addEventListener('click', onClick, { capture: true })
-    window.addEventListener('pointerup', onPointerUp, { passive: true })
+    window.addEventListener('pointerup', onLetGo, { passive: true })
+    window.addEventListener('touchend', onLetGo, { passive: true })
+    window.addEventListener('touchcancel', onLetGo, { passive: true })
     document.addEventListener('selectionchange', onSelection)
     return () => {
       el.removeEventListener('wheel', onWheel)
@@ -154,7 +164,9 @@ export function useStickToBottom(ref: RefObject<HTMLElement | null>, fresh: unkn
       el.removeEventListener('keydown', onKeyDown)
       el.removeEventListener('pointerdown', onPointerDown)
       el.removeEventListener('click', onClick, { capture: true })
-      window.removeEventListener('pointerup', onPointerUp)
+      window.removeEventListener('pointerup', onLetGo)
+      window.removeEventListener('touchend', onLetGo)
+      window.removeEventListener('touchcancel', onLetGo)
       document.removeEventListener('selectionchange', onSelection)
       stop()
     }
