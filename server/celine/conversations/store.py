@@ -567,15 +567,32 @@ def group_of(rank: int, updated_at: str, tz, now_: datetime) -> str:
     return d.strftime("%B") if d.year == today.year else str(d.year)
 
 
+# No message of the user's in conversation {cid}: typed there, or sent from the Intercom.
+_UNANSWERED = ("NOT EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = {cid} AND "
+               "m.role = 'user' AND (m.author = 'user' OR m.intercom_id IN "
+               "(SELECT id FROM intercom WHERE from_addr = 'user')))")
+
+
 def opened_for_you(c: sqlite3.Connection, cid: str) -> bool:
     """A chat the agent started for the user (intercom__start_chat: its opening is in kv)
     that they have not written in yet."""
     from ..intercom.store import OPENING
+    return c.execute(f"SELECT 1 FROM kv WHERE k = ? AND {_UNANSWERED.format(cid='?')}",
+                     (OPENING + cid, cid)).fetchone() is not None
+
+
+def opened(c: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Every chat the agent started for the user that they have not written in yet
+    (opened_for_you) and did not archive or delete, newest first: {id, title, text (the
+    agent's first message there)}. Waiting for you lists them (waits.py)."""
+    from ..intercom.store import OPENING
     return c.execute(
-        "SELECT 1 FROM kv WHERE k = ? AND NOT EXISTS (SELECT 1 FROM messages m WHERE "
-        "m.conversation_id = ? AND m.role = 'user' AND (m.author = 'user' OR m.intercom_id "
-        "IN (SELECT id FROM intercom WHERE from_addr = 'user')))",
-        (OPENING + cid, cid)).fetchone() is not None
+        "SELECT cv.id, cv.title, (SELECT m.content FROM messages m WHERE "
+        "m.conversation_id = cv.id AND m.role = 'assistant' ORDER BY m.created_at, m.rowid "
+        "LIMIT 1) AS text FROM kv JOIN conversations cv ON cv.id = substr(kv.k, ?) "
+        "WHERE kv.k LIKE ? AND cv.trashed_at IS NULL AND cv.archived_at IS NULL AND "
+        f"{_UNANSWERED.format(cid='cv.id')} ORDER BY cv.created_at DESC, cv.id",
+        (len(OPENING) + 1, OPENING + "%")).fetchall()
 
 
 def _loading(c: sqlite3.Connection, cid: str) -> str | None:

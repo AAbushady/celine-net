@@ -47,11 +47,10 @@ async def test_a_missions_message_waits_on_the_mission_once(store):
     services = SimpleNamespace(store=store, approvals=None, connectors=None)
 
     got = await waits.items(services)
-    assert [(i["kind"], i["line"]) for i in got] == [
-        ("mission", "Which hotel, the cheap one?"), ("thread", "I found three flats.")]
+    assert [(i["kind"], i["line"]) for i in got] == [("mission", "Which hotel, the cheap one?")]
     assert (got[0]["title"], got[0]["link"]) == ("Night", f"/mission/{night}")
     await store.write(lambda c: missions.set_status_sync(c, store, night, "needs_you", "Pick one."))
-    assert [i["kind"] for i in await waits.items(services)] == ["mission", "thread"], "still once"
+    assert [i["kind"] for i in await waits.items(services)] == ["mission"], "still once"
     [m] = await store.read(lambda c: rows.listed(c, from_addr=f"agent:{night}", waiting=True))
     assert m["id"] == asked["intercom_id"], "the mission's page reads what waits"
     assert [t["thread"] for t in await store.read(lambda c: rows.threads(

@@ -865,8 +865,8 @@ background and only write rows; a closed gate still holds) or `on` (Enforce).
   not run meanwhile: a chat or a mission waits until you answer (a mission's time limit
   counts the wait off), a routine's run ends at its own time limit (reason
   `ASK_LAPSED`). Only a request outside a turn waits `ASK_FOR` seconds (120).
-- `GET /api/waits` `{items, count}` (`api/waits.py`, `waits.py`): everything that waits
-  for you (Waiting for you)
+- `GET /api/waits` `{items, count, unread}` (`api/waits.py`, `waits.py`): everything that
+  needs you (Waiting for you), and how many Intercom threads hold something unread
 
 **What code enforces** (`tests/test_gates_hold.py`): the floor under Bastet's judgement.
 - A closed gate never opens.
@@ -1776,14 +1776,18 @@ sources call it themselves.
 
 ## Waiting for you
 
-One list of everything that waits on the user (`server/celine/waits.py`, `GET /api/waits`
-`{items, count}`): every request it makes, as its card (`approvals.py`), every mission in
-`needs_you` or with a message of its own that waits for them, once (that message, else its
-note), every chat source whose login was lost, every other Intercom thread with a message
-that waits for them. A freeze and a pause have their own rail items; runs belong
-to Routines. `waits.run` turns each `approvals.changed`, `mission.state`, `source.state`,
-`intercom.state`, `conversation.deleted` and `conversation.restored` into one
-`waits.changed`, and the client asks the list again; it counts nothing itself.
+One list of everything that needs the user (`server/celine/waits.py`, `GET /api/waits`
+`{items, count, unread}`): every request it makes, as its card (`approvals.py`), every chat
+it started for them that they have not written in yet (`conversations/store.opened`), every
+mission in `needs_you` or with a message of its own that waits for them, once (that message,
+else its note), every chat source whose login was lost. An Intercom thread is news and no
+item of it: `unread` counts the threads with something unread (`waits.unread`), for the
+Intercom's rail item and its Waiting for you. A freeze and a pause have their own rail
+items; runs belong to Routines. `waits.run` turns each `approvals.changed`, `mission.state`,
+`source.state`, `intercom.state`, `conversation.deleted`, `conversation.restored`,
+`conversation.archived` and `conversation.unarchived`, and each turn queued in a chat started
+for the user, into one `waits.changed` (`intercom__start_chat` sends its own), and the client
+asks the list again; it counts nothing itself.
 
 ## Bug reports
 

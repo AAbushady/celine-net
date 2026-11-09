@@ -1,5 +1,5 @@
 import { Fragment, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { DoorOpen, Ellipsis, Flag, Hand, Mail, PauseCircle, Plug, Rat, Settings as SettingsIcon, Snowflake } from 'lucide-react'
+import { DoorOpen, Ellipsis, Flag, Hand, MessageCircle, PauseCircle, Plug, Rat, Settings as SettingsIcon, Snowflake } from 'lucide-react'
 import './components/Shell.css'
 import './components/App.css'
 import { api, authApi, type ConfigStatus } from './lib/api'
@@ -41,7 +41,7 @@ export function App() {
 }
 
 /** a row of Waiting for you, by what waits */
-const WAIT_ICON = { mission: Flag, login: Plug, thread: Mail } as const
+const WAIT_ICON = { chat: MessageCircle, mission: Flag, login: Plug } as const
 
 function Shell() {
   const nav = useNav()
@@ -116,11 +116,12 @@ function Shell() {
     securityApi.logout().catch(() => location.replace('/'))
   }
 
-  // everything that waits for you, the server's (lib/waits.ts): the rail's Waiting, its
-  // sheet, the window's title; the Intercom's Waiting for you counts its threads
+  // everything that needs you, the server's (lib/waits.ts): the rail's Waiting, its sheet,
+  // the window's title. `unread`: the Intercom's threads with something unread, the count
+  // on its rail item and on its Waiting for you; they are news and no item of the sheet
   const waits = useWaits()
   const waiting = waits.data?.count ?? 0
-  const threads = waits.data ? waits.data.items.filter(i => i.kind === 'thread').length : null
+  const unread = waits.data?.unread ?? null
 
   // the window's title, on every page: the waiting count first (not in Setup, which has no
   // rail), then the page's own name (a terminal, an artifact: lib/title; Celine's place: its
@@ -186,11 +187,15 @@ function Shell() {
   const openWait = (link: string) => { if (link === at) setSheet(null); else nav.goPath(link) }
   const railItem = (s: RailEntry, cls?: string) => (
     <a key={s.id} className={cx('rail__item', cls)} href={sectionHref(s.id)}
+       aria-label={s.id === 'intercom' && unread ? `${labelOf(s.id)}, ${unread} unread` : undefined}
        aria-current={section === s.id ? 'page' : undefined} onClick={go(s.id)}>
       <s.icon size={ICON.lg} aria-hidden />
       <span className="rail__label">{labelOf(s.id) || (!statusIn && <span className="rail__wait" />)}</span>
+      {s.id === 'intercom' && !!unread && count(unread)}
     </a>
   )
+  // a phone: the Intercom's unread count shows on More while the Intercom is behind it
+  const behind = bar.includes('intercom') ? 0 : unread ?? 0
   const moreHere = !bar.includes(section) && section !== 'artifact'
   const shown = {
     status, name, terminal: shownTerminal.current, reply, artifact,
@@ -202,7 +207,7 @@ function Shell() {
     <AgentContext.Provider value={status?.owner ?? null}>
     <NameContext.Provider value={name}>
     <AppearanceContext.Provider value={appearance}>
-    <WaitingCount.Provider value={threads}>
+    <WaitingCount.Provider value={unread}>
     <SpeechProvider features={status?.features}>
     <div className="app">
       {section === 'welcome' ? (
@@ -251,7 +256,7 @@ function Shell() {
                   aria-haspopup="dialog" onClick={() => setSheet('more')}>
             <Ellipsis size={ICON.lg} aria-hidden />
             <span className="rail__label">More</span>
-            {waiting > 0 && count(waiting)}
+            {waiting + behind > 0 && count(waiting + behind)}
           </Button>
         </nav>
 
@@ -286,6 +291,7 @@ function Shell() {
             {[...places.filter(p => !bar.includes(p.id)), { id: 'settings' as const, icon: SettingsIcon }].map(p => (
               <ListRow key={p.id} href={sectionHref(p.id)} selected={section === p.id}
                        leading={<p.icon size={ICON.lg} aria-hidden />} title={labelOf(p.id)}
+                       meta={p.id === 'intercom' && unread ? count(unread) : undefined}
                        // the place changing closes the sheet (the effect above): closing it first
                        // would take its history step back after the new place's step
                        onClick={e => { if (p.id !== section) go(p.id)(e); else { e.preventDefault(); setSheet(null) } }} />

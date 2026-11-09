@@ -255,7 +255,7 @@ block at the end of this file lists the words no UI string uses.
 | Extract text | read a document's text again | |
 | Running, Queued, Waiting for you, Failed, Done, Scheduled, Not set up | states; Queued for a run or a work item that has not started; Scheduled for a Routine that runs later; Not set up for a tool group or a feature that lacks its setup | GitHub Actions, everyone |
 | Invalid | a citation in its reply that failed the check, shown with its id | everyone |
-| Waiting, Waiting for you; Approvals, Missions, Sources, Intercom | the rail item while something waits for you, and its sheet: the agent's requests, missions that ask you, chat sources whose login was lost and Intercom threads, each group under its head (waits.py GROUPS); a mission you stop leaves it | Slack "Activity", GitHub "Inbox" |
+| Waiting, Waiting for you; Approvals, Chats, Missions, Sources | the rail item while something needs you, and its sheet: the agent's requests, chats it started for you, missions that ask you and chat sources whose login was lost, each group under its head (waits.py GROUPS); an Intercom thread is read in the Intercom, whose rail item counts the unread; a mission you stop leaves it | Slack "Activity", GitHub "Inbox" |
 | Dismiss, Dismiss all | a message that waits for you leaves the waiting list: an Intercom thread, or a mission's messages on its page (Waiting for you) | Android notifications |
 | Close | the X that hides a notice, a toast or a row | everyone |
 | Continue in a chat | an Intercom thread goes on as a new chat with it, its messages carried over | plain |
@@ -353,7 +353,7 @@ The words of the Events place (`server/celine/events.py` gives them).
 | Approve, Deny | say yes or no to a request (its card in the chat, on the Vault page and in Waiting for you; Bastet's banner of an ask) | macOS, Android permissions |
 | Details | a request's long text, whole, in a sheet (Instructions, Arguments, the text of an edit) | macOS Finder, Windows "Details" |
 | Entry, Sites, File, Reason, Read right before | a request's facts: the vault entry, its sites, the file in the shellbox, the agent's reason in its words, the last tool that read text from outside before it asked | Bitwarden "Entry"; plain |
-| Waiting, Waiting for you | the rail item, shown with its count only while something waits on you, and its sheet: every request as its card, every mission in Waiting for you, every lost login and every Intercom thread that waits | GitHub "Waiting for your review" |
+| Waiting, Waiting for you | the rail item, shown with its count only while something waits on you, and its sheet: every request as its card, every chat it started for you that you have not answered, every mission in Waiting for you and every lost login | GitHub "Waiting for your review" |
 | Mission (name), Routine (name), Chat (title), Background task (title) | where a request's work lives, on its card in Waiting for you | the places' own words |
 | {n} waiting, Waiting for you | an Intercom thread row and a message in it that wait for you, in the warn tone | GitHub "Waiting for your review" |
 | Approved., Denied., No answer. | a request's notice once it closed, replacing the one that asked | Android permissions "Allowed", "Denied" |

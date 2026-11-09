@@ -10,6 +10,7 @@ from typing import Annotated, Literal
 
 from .. import homes
 from ..attachments import draft_of, agent_file
+from ..core.event_types import WAITS_CHANGED
 from ..core.ids import clock, iso, parse_when, when
 from ..skills import ToolContext, ToolResult, guide, tool, described, words
 from ..clock import zone
@@ -435,6 +436,7 @@ class IntercomSkill:
             tree.append(c, ctx.store, new, None, "assistant", text, "model")
             notice(ctx.store, c, "reply", rows.NAMES["agent"], text, homes.of(c, new)["link"],
                    f"reply:{new}")
+            ctx.store.global_event(c, WAITS_CHANGED, {})    # it waits for them (waits.py)
         await ctx.store.write(first)
         listed = (f"\nIn the last 24 h {self.cfg.user} also got this from here:\n- "
                   + "\n- ".join(has)) if has else ""

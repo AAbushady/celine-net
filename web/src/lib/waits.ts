@@ -1,16 +1,17 @@
-/* Waiting for you (server/celine/waits.py, GET /api/waits): everything that waits on you,
+/* Waiting for you (server/celine/waits.py, GET /api/waits): everything that needs you,
    the server's list and count, asked again on waits.changed. A request is its card; every
-   other item a row: a mission in Needs you, a lost login, an Intercom thread. */
+   other item a row: a chat it started for you, a mission in Needs you, a lost login.
+   `unread`: the Intercom threads with something you have not read, the Intercom's own count. */
 import { request } from './api'
 import type { Approval } from './settingsApi'
 import { useResource } from './useResource'
 
 export type Wait = { group: string } & (
   | { kind: 'approval'; approval: Approval }
-  | { kind: 'mission' | 'login' | 'thread'; id: string; title: string; line: string; link: string | null })
+  | { kind: 'chat' | 'mission' | 'login'; id: string; title: string; line: string; link: string | null })
 
 export const waitsApi = {
-  list: (signal?: AbortSignal) => request<{ items: Wait[]; count: number }>('/waits', { signal }),
+  list: (signal?: AbortSignal) => request<{ items: Wait[]; count: number; unread: number }>('/waits', { signal }),
 }
 
 export const isWaitsEvent = (ev: { type: string }) => ev.type === 'waits.changed'

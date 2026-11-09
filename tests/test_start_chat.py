@@ -47,6 +47,9 @@ async def test_the_agents_text_is_its_first_message_and_the_chat_knows_where_it_
     assert [tuple(m) for m in msgs] == [("assistant", "It is due tomorrow.", None)]
     assert await store.read(lambda c: c.execute("SELECT count(*) FROM intercom").fetchone()[0]) \
         == 0, "the chat holds it; an Intercom thread beside it showed it twice"
+    assert await store.read(lambda c: c.execute(
+        "SELECT count(*) FROM global_events WHERE type='waits.changed'").fetchone()[0]) == 1, \
+        "Waiting for you lists it at once"
     row = {"id": new, "active_state": None}         # as the chat list's row has it
     assert await store.read(lambda c: conversations.state_of(c, row)) == {
         "tone": "warn", "words": "Waiting for you"}
