@@ -17,7 +17,7 @@ import { backoffMs, keepAlive } from '../lib/socket'
 import { useAction } from '../lib/useAction'
 import { useResource } from '../lib/useResource'
 import {
-  Button, ConfirmDialog, Dialog, GroupHead, InlineError, ListRow, ListSection, Loaded, MenuButton, Notice, Place,
+  Button, ConfirmDialog, Dialog, GroupHead, InlineError, ListRow, Loaded, MenuButton, Notice, Place,
   PlaceHead, Screen, Section, Segmented, StateWord, TextArea, Toolbar, VirtualList, useContextMenu, type MenuItem, copied
 } from '../ui'
 import './Browser.css'
@@ -61,17 +61,11 @@ export function Browser({ active }: { active: boolean }) {
   const error = control.error ?? onTab.error
 
   return (
-    <Place title="Browser"
-           side={<>
-             {!boxless && <ListRow density="sm" icon={Globe} title="Tabs" meta={b ? tabs.length : undefined} selected={page.kind === 'tabs'}
-                                   onClick={() => setPage({ kind: 'tabs' })} />}
-             <ListRow density="sm" icon={History} title="History" meta={calls.data?.total} selected={page.kind === 'history'} onClick={() => setPage({ kind: 'history' })} />
-             {tabs.length > 0 && <ListSection label="Recent" />}
-             {tabs.map(t => (
-               <ListRow key={t.name} density="sm" running={t.busy} icon={Globe} title={tabTitle(t)}
-                        tooltip={t.url} selected={page.kind === 'tab' && page.name === t.name} onClick={() => openTab(t)} />
-             ))}
-           </>}>
+    <Place title="Browser" current={page.kind === 'tab' ? null : page.kind}
+           sections={[
+             ...(boxless ? [] : [{ id: 'tabs', label: 'Tabs', count: b ? tabs.length : undefined, onSelect: () => setPage({ kind: 'tabs' }) }]),
+             { id: 'history', label: 'History', count: calls.data?.total, onSelect: () => setPage({ kind: 'history' }) },
+           ]}>
       {error && <div className="list-page__note"><InlineError compact message={error} /></div>}
       {page.kind === 'history' ? <HistoryList />
         : page.kind === 'tab' && b && tab ? (

@@ -39,7 +39,7 @@ const RECENT = 3                // conversations offered beside its own
 
 
 export function Terminal({ id, reply }: { id: string; reply?: string }) {
-  return <TerminalsPlace open={id}><TerminalPage id={id} reply={reply} /></TerminalsPlace>
+  return <TerminalsPlace><TerminalPage id={id} reply={reply} /></TerminalsPlace>
 }
 
 function TerminalPage({ id, reply }: { id: string; reply?: string }) {

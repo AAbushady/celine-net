@@ -41,7 +41,7 @@ import { PlanButton } from '../components/Plan'
 import { LongEditor, TextHistory, textHistory } from '../components/editor'
 import {
   Avatar, Button, Checkbox, Choice, ConfirmDialog, copied, EmptyState, Facts, Field, GroupHead, ICON, IconButton, InlineError, Input,
-  ListRow, ListSection, Loaded, LoadingRow, MenuButton, Message, NumberField, PageIndex, Place, PlaceHead, Section, Segmented,
+  ListRow, Loaded, LoadingRow, MenuButton, Message, NumberField, PageIndex, Place, PlaceHead, Section, Segmented,
   StateWord, Switch, Toolbar, useContextMenu, VirtualList, type Crumb, type MenuItem,
 } from '../ui'
 import './Routines.css'
@@ -211,20 +211,12 @@ export function Routines({ active }: { active: boolean }) {
                onLater={() => { const to = shift(runs.data!.nights[0]!.night, 14); setUntil(today && to >= today ? undefined : to) }} />
     )
   return (
-    <Place title="Routines" action={<IconButton icon={Plus} label="New schedule" onClick={() => go({ schedule: 'new' })} />}
-           side={<>
-             <ListRow density="sm" icon={History} title="Runs" meta={done} selected={!detail && view === 'runs'} onClick={() => toList('runs')} />
-             <ListRow density="sm" icon={CalendarClock} title="Schedules" meta={schedules.data?.schedules.length}
-                      selected={!detail && view === 'schedules'} onClick={() => toList('schedules')} />
-             <ListRow density="sm" icon={Zap} title="Triggers" meta={triggers.data?.length} selected={!detail && view === 'triggers'}
-                      onClick={() => toList('triggers')} />
-             {nodes.some(n => n.run) && <ListSection label={night ? dayShort(night) : 'Recent'} />}
-             {nodes.filter(n => n.run).slice(0, 8).map(n => (
-               <ListRow key={n.key} density="sm" title={`${n.at} ${n.label}`} meta={<StateWord tone={RUN_TONE[n.state]}>{STATE_WORD[n.state]}</StateWord>}
-                        href={format({ section: 'routines', night, run: n.run!.id })} onClick={click(() => go({ run: n.run!.id }))}
-                        selected={route.run === n.run!.id} />
-             ))}
-           </>}>
+    <Place title="Routines" current={detail ? null : view}
+           sections={[
+             { id: 'runs', label: 'Runs', count: done, onSelect: () => toList('runs') },
+             { id: 'schedules', label: 'Schedules', count: schedules.data?.schedules.length, onSelect: () => toList('schedules') },
+             { id: 'triggers', label: 'Triggers', count: triggers.data?.length, onSelect: () => toList('triggers') },
+           ]}>
       {error && schedules.data && runs.data && <div className="list-page__note"><InlineError compact message={error} onRetry={reloadAll} /></div>}
       {page}
     </Place>

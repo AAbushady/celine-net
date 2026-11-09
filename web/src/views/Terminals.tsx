@@ -1,12 +1,12 @@
 /* Terminals: its terminals and yours, then the ended ones day by day; the log of every
    command (Commands); one terminal is views/Terminal.tsx in the same place. The place's
-   sidebar holds Terminals and Commands with their counts and its open terminals as Recent.
+   sections are Terminals and Commands, with their counts.
    A command opens its result with Open terminal, Reply (into the terminal page's message
    box) and Open conversation. With ?mission=<id> the place shows that mission's commands.
    URL: /terminals, /terminals?mission=<conversation id>. */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
-  ArrowUpRight, CircleStop, Copy, CornerUpLeft, Flag, History, ListChecks, MessageCircle, MoreHorizontal, Plus, RotateCcw, ScrollText, SearchX,
+  ArrowUpRight, CircleStop, Copy, CornerUpLeft, Flag, History, ListChecks, MessageCircle, MoreHorizontal, RotateCcw, ScrollText, SearchX,
   SquareTerminal, Trash2, User, X,
 } from 'lucide-react'
 import { useName } from '../lib/name'
@@ -20,7 +20,7 @@ import {
 import { useAction } from '../lib/useAction'
 import { useResource } from '../lib/useResource'
 import {
-  Button, ConfirmDialog, copied, Dialog, GroupHead, IconButton, InlineError, ListRow, ListSection, Loaded, MenuButton, Notice, Place,
+  Button, ConfirmDialog, copied, Dialog, GroupHead, InlineError, ListRow, Loaded, MenuButton, Notice, Place,
   PlaceHead, SelectBar, ShelfRow, StateWord, Toolbar, useContextMenu, usePicker, VirtualList, type BulkAction, type MenuItem, type Shelf,
 } from '../ui'
 import './Terminals.css'
@@ -33,16 +33,15 @@ const KIND: Record<string, Exclude<From, 'all'>> = { conversation: 'conversation
 const fromOf = (t: TerminalRow): Exclude<From, 'all'> | null => (isYours(t) ? 'you' : t.conversation ? KIND[t.conversation.kind] ?? 'conversations' : null)
 const PAGE = 100
 
-/** the page the place shows next time it mounts (the sidebar of a terminal's page asks for Commands) */
+/** the page the place shows next time it mounts */
 let startOn: 'terminals' | 'commands' = 'terminals'
 
-/* ── the place: its sidebar, the same on the list and on a terminal ── */
-export function TerminalsPlace({ page, onPage, open, children }: {
+/* ── the place: its sections, the same on the list and on a terminal ── */
+export function TerminalsPlace({ page, onPage, children }: {
+  /** the section on screen; none on a terminal's page */
   page?: 'terminals' | 'commands'
-  /** a sidebar link; left out, it goes to the list first */
+  /** a section picked; left out, it goes to the list first */
   onPage?: (page: 'terminals' | 'commands') => void
-  /** the terminal on screen */
-  open?: string
   children: ReactNode
 }) {
   const nav = useNav()
@@ -51,25 +50,16 @@ export function TerminalsPlace({ page, onPage, open, children }: {
   const rows = list.data?.terminals ?? []
   // no shellbox: the place is the commands of what is there (the Mac's)
   const boxless = list.data?.set_up === false
-  const create = useAction(async () => { const r = await terminalsApi.create(); nav.go({ section: 'terminals', terminal: r.id }) })
   const go = (p: 'terminals' | 'commands') => {
     if (onPage) onPage(p)
     else { startOn = p; nav.go({ section: 'terminals' }) }
   }
   return (
-    <Place title="Terminals"
-           action={!boxless && <IconButton icon={Plus} label="New terminal" disabled={!!list.data?.down || create.busy}
-                                           title={list.data?.down ?? create.error ?? undefined} onClick={() => void create.run()} />}
-           side={<>
-             {!boxless && <ListRow density="sm" icon={SquareTerminal} title="Terminals" meta={list.data && rows.length} selected={page === 'terminals'} onClick={() => go('terminals')} />}
-             <ListRow density="sm" icon={ScrollText} title="Commands" meta={log.data?.total} selected={page === 'commands'} onClick={() => go('commands')} />
-             {rows.some(t => !t.ended_at) && <ListSection label="Recent" />}
-             {rows.filter(t => !t.ended_at).map(t => (
-               <ListRow key={t.id} density="sm" icon={SquareTerminal} title={t.name} selected={t.id === open}
-                        meta={stateWord(t) === 'Idle' ? undefined : <StateWord tone={stateTone(stateWord(t))}>{stateWord(t)}</StateWord>}
-                        href={format({ section: 'terminals', terminal: t.id })} />
-             ))}
-           </>}>
+    <Place title="Terminals" current={page ?? null}
+           sections={[
+             ...(boxless ? [] : [{ id: 'terminals', label: 'Terminals', count: list.data ? rows.length : undefined, onSelect: () => go('terminals') }]),
+             { id: 'commands', label: 'Commands', count: log.data?.total, onSelect: () => go('commands') },
+           ]}>
       {children}
     </Place>
   )

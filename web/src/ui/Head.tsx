@@ -2,13 +2,17 @@
    it) and GroupHead (above each group of a grouped list).
 
    PlaceHead is ONE row at every width. Its order: the title and count, Search, Select,
-   Archive, Trash, the caller's own actions, More, then New at the far right. It measures
+   Archive, Trash, the caller's own actions, More, then New at the far right. The top page
+   of a place with sections (ui/Place.tsx) shows them as tabs where its title would be, the
+   title kept for screen readers; the tabs keep their words until the step at which a title
+   would end in an ellipsis, and scroll sideways from there. It measures
    itself: when the row does not fit, it steps down, one step at a time, until it does:
    the buttons lose their words, then Select, Archive and Trash move into More, then New
    becomes a round "+", then the title ends in an ellipsis (shorter in a narrow head), then
    the lead (a face) goes, and last the caller's own actions take their own line under the
    row, which a phone's head never needs. In a narrow head (a list column, a phone)
-   Search takes its own row under it, and the buttons have no words. A touch screen has no
+   Search takes its own row under it, the buttons have no words, and Select, Archive and
+   Trash are in More. A touch screen has no
    hover to show a tip, so there the words stay one step longer: Select, Archive and Trash
    move into More first, then the words go, at every width. On a shelf New keeps its place, unseen, so nothing
    the user just clicked moves. */
@@ -16,7 +20,7 @@ import { useLayoutEffect, useRef, useState, type ReactNode, type Ref } from 'rea
 import {
   Archive, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, Layers, ListChecks, MoreHorizontal, PanelLeft, Plus, Trash2, X, type LucideIcon,
 } from 'lucide-react'
-import { Segmented, useEdgeFade } from './Bits'
+import { Segmented, Tabs, useEdgeFade } from './Bits'
 import { Button, IconButton } from './Button'
 import { cx } from './cx'
 import { SearchField } from './Form'
@@ -145,7 +149,7 @@ export function PlaceHead({
   })
 
   const words = touch ? step < 2 : step < 1 && !narrow
-  const shelvesInMore = step >= (touch ? 1 : 2)
+  const shelvesInMore = narrow || step >= (touch ? 1 : 2)
 
   // a page's own buttons lose their words with the rest; the words become their tip
   useLayoutEffect(() => {
@@ -182,8 +186,11 @@ export function PlaceHead({
     : <IconButton icon={icon} label={label} pressed={on} onClick={onClick} {...extra} />
 
   const H = level === 1 ? 'h1' : 'h2'
-  const place = usePlace()
+  const where = usePlace()
+  const place = where?.panel
   const up = crumbs?.at(-1)
+  // the place's lists as tabs, on its top page: not under a back arrow, a breadcrumb or an open shelf
+  const sections = where?.sections && where.sections.length > 1 && !back && !up && !open ? where.sections : null
   // a phone: a deeper page pushes in, back reverses it
   const self = useRef<HTMLElement>(null)
   usePush(self, (crumbs?.length ?? 0) + (back ? 1 : 0))
@@ -211,7 +218,12 @@ export function PlaceHead({
           </nav>
         )}
         {!leadless && lead}
-        {(title != null || open) && (
+        {sections ? <>
+          <H className="sr-only">{sections.find(s => s.id === where!.current)?.label ?? title}</H>
+          <Tabs className={cx('place-head__sections', clip && 'place-head__sections--clip')} label={where!.title} value={where!.current ?? ''}
+                onChange={id => sections.find(s => s.id === id)?.onSelect()}
+                options={sections.map(s => ({ value: s.id, label: <>{s.label}{!!s.count && <span className="place-toolbar__n">{s.count}</span>}</> }))} />
+        </> : (title != null || open) && (
           <H className={cx('place-head__title', clip && 'place-head__title--clip')} title={titleAttr}>
             {open && <IconButton icon={ChevronLeft} label="Back to the list" size="sm" iconSize="md" onClick={() => shelf!.onChange('list')} />}
             <span className="place-head__name">{open ? SHELF[open].label : title}</span>

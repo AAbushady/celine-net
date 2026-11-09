@@ -23,7 +23,7 @@ export {
   Chip, Dots, StateWord, type WordTone, EventLine, Step, Divider, Quote, Snippet, Thoughts, Fold, Facts, SourceGlyph, sourceIcon, sourceLabel, Avatar, Segmented, Filters, Tabs, type Option, Progress, DisclosureArrow,
 } from './Bits'
 export { Message, ComposerBox, isSendKey } from './Message'
-export { Place, usePlace } from './Place'
+export { Place, usePlace, type PlaceSection } from './Place'
 export { usePhone, useCompact, isPhone, isNarrow, coarse } from './phone'
 export { Picture, Player, Screen } from './Picture'
 export { Tree, type TreeNode } from './Tree'

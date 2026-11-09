@@ -389,7 +389,7 @@ export function Celine({ active, status, sidebarOpen, onSidebar }: {
   const headActs = 1 + (current ? 1 : 0) + (runningJobs > 0 ? 1 : 0) + (isArchived && current ? 1 : 0) + (convo.plan?.steps.length ? 1 : 0)
 
   const listHead = <>
-    <PlaceHead search={{ value: query, onChange: setQuery, label: 'Search chats', loading: !!q && found.loading }}
+    <PlaceHead title="Chats" search={{ value: query, onChange: setQuery, label: 'Search chats', loading: !!q && found.loading }}
                picker={picker} shelf={{ archive: true, trash: true, value: shelf, onChange: setShelf }}
                more={[older.item, { label: 'Go to', icon: Compass, onSelect: () => emit({ type: 'ui.goto' }) }]}
                newLabel="New chat" onNew={newConversation} />

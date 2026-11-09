@@ -22,7 +22,7 @@ import { bytes, clock, count, dayLabel, errorText, fullDate, listTime, num, same
 import { bulkActions } from '../components/Bulk'
 import {
   Avatar, Button, ConfirmDialog, Dialog, Divider, EmptyState, EventLine, ICON, IconButton, InlineError, Input, ListRow, LoadingRow,
-  MenuButton, Message, Picture, Place, PlaceHead, Quote, SelectBar, ShelfRow, Toolbar, VirtualList, sourceIcon, toast, useContextMenu,
+  MenuButton, Message, Picture, Place, PlaceHead, Quote, SelectBar, ShelfRow, Toolbar, VirtualList, toast, useContextMenu,
   cx, usePicker, type MenuItem, type Shelf, type VirtualListHandle, copied
 } from '../ui'
 import './Search.css'
@@ -63,14 +63,11 @@ export function Chats({ active }: { active: boolean }) {
   const nothing = !!kbs && chatKbs.every(k => !k.messages)
 
   return (
-    <Place title="Messages"
-           side={[
-             <ListRow key="" density="sm" icon={MessagesSquare} title="All messages" meta={nothing || !kbs ? undefined : chatKbs.reduce((n, k) => n + (k.chats ?? 0), 0)}
-                      selected={!kbId && !chatId} href={format({ section: 'chats' })} />,
-             ...chatKbs.map(k => (
-             <ListRow key={k.id} density="sm" icon={sourceIcon(k.platform ?? k.id) ?? MessagesSquare} title={k.title} meta={nothing ? undefined : k.chats}
-                      selected={k.id === kbId && !chatId} href={format({ section: 'chats', kb: k.id })} />
-           ))]}>
+    <Place title="Messages" current={chatId ? null : kbId ?? ''}
+           sections={nothing || !kbs ? undefined : [
+             { id: '', label: 'All messages', count: chatKbs.reduce((n, k) => n + (k.chats ?? 0), 0), onSelect: () => nav.go({ section: 'chats' }) },
+             ...chatKbs.map(k => ({ id: k.id, label: k.title, count: k.chats ?? undefined, onSelect: () => nav.go({ section: 'chats', kb: k.id }) })),
+           ]}>
       {kbsError || nothing ? (
           <div className="list-page">
             <PlaceHead level={1} title="Messages" />

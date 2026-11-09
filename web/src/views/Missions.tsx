@@ -39,7 +39,7 @@ import { ModelChooser } from '../components/ModelChooser'
 import { LongEditor, TextHistory, textHistory } from '../components/editor'
 import {
   Button, ComposerBox, ConfirmDialog, Dialog, EmptyState, Facts, Field, GroupHead, ICON, IconButton, InlineError, Input, ListRow,
-  ListSection, Loaded, LoadingRow, MenuButton, PageIndex, Place, PlaceHead, Section, SelectBar, ShelfRow, Switch, TextArea, Toolbar,
+  Loaded, LoadingRow, MenuButton, PageIndex, Place, PlaceHead, Section, SelectBar, ShelfRow, Switch, TextArea, Toolbar,
   StateWord, Step, coarse, useContextMenu, usePicker, VirtualList, type MenuItem, type Shelf, type WordTone,
 } from '../ui'
 import './Missions.css'
@@ -109,23 +109,12 @@ export function Missions({ active }: { active: boolean }) {
   }, [active, agent, nav])
 
   const toList = (v: 'missions' | 'agents') => { setView(v); if (selected) nav.go({ section: 'missions' }) }
-  const recent = (missions.data?.missions ?? []).slice(0, 8)
   return (
-    <Place title="Missions" action={<IconButton icon={Plus} label="New mission" onClick={() => setStarting(true)} />}
-           side={<>
-             <ListRow density="sm" icon={Flag} title="Missions" meta={counts?.all} selected={!selected && view === 'missions'}
-                      onClick={() => toList('missions')} />
-             <ListRow density="sm" icon={Bot} title="Sub-agents" meta={loaded ? theirs.length : undefined} selected={!selected && view === 'agents'}
-                      onClick={() => toList('agents')} />
-             {recent.length > 0 && <ListSection label="Recent" />}
-             {recent.map(m => (
-               <ListRow key={m.conversation_id} density="sm" icon={Flag} title={m.name} tooltip={m.name}
-                        meta={<StateWord tone={m.asked ? 'warn' : MISSION_TONE[m.status]}>{m.asked ? STATE_WORD.needs_you : STATE_WORD[m.status]}</StateWord>}
-                        href={format({ section: 'missions', conversation: m.conversation_id })}
-                        onClick={click(() => nav.go({ section: 'missions', conversation: m.conversation_id }))}
-                        selected={m.conversation_id === selected} />
-             ))}
-           </>}>
+    <Place title="Missions" current={selected ? null : view}
+           sections={[
+             { id: 'missions', label: 'Missions', count: counts?.all, onSelect: () => toList('missions') },
+             { id: 'agents', label: 'Sub-agents', count: loaded ? theirs.length : undefined, onSelect: () => toList('agents') },
+           ]}>
       {selected ? (
         mission ? <MissionPage key={mission.conversation_id} m={mission} agents={agents.filter(a => a.parent === mission.conversation_id)}
                                active={active} onChange={reload} />

@@ -434,23 +434,29 @@ Don't: draw a form's fields by hand; show a stored secret or a part of one.
 ## Places and conversations
 
 ### Place
-**When:** a place with sections (Documents, Notebook, Missions, Routines): its
-sidebar beside the page.
-**Props:** `title` (the place's name), `action` (New as an icon), `head` (a sidebar that is
-the place's list, such as the agent's conversations: its own PlaceHead with Search, Select,
-Archive and Trash in place of the title and action), `side` (the sections with their counts
-as `sm` ListRows, a ListSection "Recent" and its rows, or the list), `foot` (the user's own
-row), `label`, `open` with `onOpen` (the phone's drawer, when the page decides), children
-(the page), `fold` (a key: on a wide screen the sidebar folds away to the left and back,
-this device keeps which). `usePlace()` gives a PlaceHead inside it the panel button.
-**Do:** `--sidebar-w` on `--surface-1`; below 1024 px (a tablet, a phone) a Drawer from the
-left, so the page keeps its width, opened by the panel button in the head, closed by a link
-in it, the scrim, Escape and its X.
-Folding, the column goes at once and the sidebar slides out over the page by transform on
-`--dur --ease-exit`; back, the column comes at once and the sidebar slides in on
+**When:** every place. A place is its page; a place with more than one list (Routines: Runs,
+Schedules, Triggers) names them as sections, and one place (the agent's chats) has its list
+beside its page.
+**Props:** `title` (the place's name), `sections` (its lists: `id`, `label`, `count`,
+`onSelect`) with `current` (the id on screen, none on a page under them: a run, a note),
+`head` and `side` (only the agent's chats: the list beside the page and that list's own
+PlaceHead with Search, New chat and More), `label`, `open` with `onOpen` (the phone's
+drawer, when the page decides), children (the page), `fold` (a key: on a wide screen the
+list folds away to the left and back, this device keeps which). `usePlace()` gives a
+PlaceHead inside it the sections and the panel button.
+**Do:** the sections are tabs in the head of the place's top page, where its title would be
+(PlaceHead draws them; the title stays for screen readers), so they are in view at every
+width and take no column; a page under a breadcrumb, a back arrow or an open shelf shows
+its own title. The chats' list is `--sidebar-w` on the canvas, split from the page by a
+hairline; below 1024 px (a tablet, a phone) a Drawer from the left, so the page keeps its
+width, opened by the panel button in the head, closed by a link in it, the scrim, Escape
+and its X.
+Folding, the column goes at once and the list slides out over the page by transform on
+`--dur --ease-exit`; back, the column comes at once and the list slides in on
 `--dur-slow --ease`. The page takes its new width at once and glides (translate) from where
-its middle was on the sidebar's curve; its heads' actions on the right edge hold still.
-**Don't:** make it a list pane (a place's list is its page); hand-build a sidebar.
+its middle was on the list's curve; its heads' actions on the right edge hold still.
+**Don't:** give a place a column of links to its own lists or a list of recent items beside
+the page (the page is that list); hand-build a sidebar.
 
 ### Message
 **When:** every message of a conversation: the agent's chat, an Intercom thread.

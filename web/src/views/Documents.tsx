@@ -16,13 +16,12 @@ import { documentsApi, type Folder, type Item, type ItemDetail, type Mode, type 
 import { bulkApi, type BulkDo } from '../lib/api'
 import { useServerEvents } from '../lib/bus'
 import { format, useNav, type Route } from '../lib/nav'
-import { bytes, count, errorText, listTime, num, stamp } from '../lib/format'
+import { bytes, count, errorText, listTime, stamp } from '../lib/format'
 import { useAction } from '../lib/useAction'
 import { useResource } from '../lib/useResource'
-import { usePref } from '../lib/prefs'
 import {
   Button, Card, CardGrid, Choice, ConfirmDialog, cx, Dialog, EmptyState, Facts, Field, GroupHead, IconButton, InlineError, Input, ListRow,
-  ListSection, Loaded, MenuButton, Notice, PageIndex, Place, PlaceHead, Section, Segmented, SelectBar, ShelfRow, StatusLine, TextArea,
+  Loaded, MenuButton, Notice, PageIndex, Place, PlaceHead, Section, Segmented, SelectBar, ShelfRow, StatusLine, TextArea,
   Toolbar, Tree, useContextMenu, usePicker, VirtualList, type BulkAction, type BulkResult, type MenuItem, type Shelf, type TreeNode,
 } from '../ui'
 import { Markdown } from '../components/Markdown'
@@ -132,11 +131,6 @@ export function Documents({ active }: { active: boolean }) {
   const bump = () => setVersion(v => v + 1)
   useServerEvents(ev => { if (ev.type === 'documents.changed' || ev.type === 'documents.deleted') bump() })
   const tree = useResource(() => loadTree(), [version])
-  const top = useResource(() => documentsApi.folder('', { limit: 1 }), [version])
-  const recent = useResource(() => documentsApi.items({ sort: 'changed', limit: 6 }), [version])
-  // the folders open in the sidebar, kept on this device
-  const [opened, setOpened] = usePref<string[]>('tree:documents', [])
-  const open = useMemo(() => new Set(opened), [opened])
   const [ask, setAsk] = useState<Ask | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [uploads, setUploads] = useState<Upload[]>([])
@@ -202,31 +196,8 @@ export function Documents({ active }: { active: boolean }) {
     { label: 'Move to Trash', icon: Trash2, danger: true, detail: it.title, onSelect: () => setAsk({ kind: 'trash', keys: [`i:${it.id}`], name: it.title }) },
   ]
 
-  const side = (
-    <>
-      <div className="doc-all" {...dropOn('')}>
-        <ListRow density="sm" icon={FileText} title="All documents" meta={top.data && num(top.data.folder.items)}
-                 selected={!itemId && !folder} href={format({ section: 'documents' })} />
-      </div>
-      {tree.data && tree.data.length > 0 && <>
-        <ListSection label="Folders" />
-        <Tree nodes={tree.data} open={open} label="Folders" selected={!itemId ? folder || undefined : undefined}
-              onOpen={(id, on) => setOpened(on ? [...open, id] : opened.filter(x => x !== id))}
-              onSelect={goFolder} onMove={(id, into) => moveKeys([id], into)}
-              menu={n => folderMenu({ path: n.id, name: n.label, items: n.count ?? 0, size: 0, updated_at: 0, added_at: 0, trashed_at: null })} />
-      </>}
-      {(recent.data?.items.length ?? 0) > 0 && <ListSection label="Recent" />}
-      {recent.data?.items.map(it => {
-        const I = TYPE_ICON[it.kind] ?? File
-        return <ListRow key={it.id} density="sm" leading={<I size={16} aria-hidden />} title={it.title} tooltip={it.path} selected={it.id === itemId}
-                        href={format({ section: 'documents', item: it.id, folder: it.folder || undefined })} />
-      })}
-    </>
-  )
-
   return (
-    <Place title="Documents" side={side}
-           action={<IconButton icon={Upload} label="Upload" onClick={() => pickFiles(false, (files, paths) => setPicked({ files, paths }))} />}>
+    <Place title="Documents">
       <div className="doc-main"
            onDragEnter={e => { if (e.dataTransfer.types.includes('Files')) setDrop(true) }}>
         {error && <div className="list-page__note"><InlineError compact message={error} /></div>}

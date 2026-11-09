@@ -1,14 +1,15 @@
-/* The notebook: its notes, every one shown to you. The place's sidebar holds Notes
-   and Guides with their counts, the folder tree (a folder shows its notes) and Recent; the
-   page is the list of notes (Group: Folder or None, Sort: Recent or Name, Trash, Select), a
+/* The notebook: its notes, every one shown to you. The place's sections are Notes and
+   Guides, with their counts; the
+   page is the list of notes (Group: Folder or None, Sort: Recent or Name, Trash, Select; a
+   folder's name over its group opens the folder, under a breadcrumb back to Notes), a
    note as it reads it, a note in the large editor (components/editor), or its History over
    the notebook's own versions. An open editor stays mounted until Save or Cancel, so an
    unsaved note survives a visit elsewhere. The agent's guides (tools/) and protected notes are
    read-only. */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ArrowUpRight, BookOpen, Copy, Download, FileText, Folder, FolderInput, FolderPlus, History, ListChecks, Lock, MoreHorizontal, NotebookPen,
-  Eye, Pencil, Plus, RotateCcw, SearchX, Trash2,
+  ArrowUpRight, Copy, Download, FileText, Folder, FolderInput, FolderPlus, History, ListChecks, Lock, MoreHorizontal, NotebookPen,
+  Eye, Pencil, RotateCcw, SearchX, Trash2,
 } from 'lucide-react'
 import { bulkApi, del, notebookApi, query, request, type NotebookNode } from '../lib/api'
 import { count, errorText, listTime, stamp } from '../lib/format'
@@ -17,11 +18,10 @@ import { useName } from '../lib/name'
 import { useResource, type Resource } from '../lib/useResource'
 import type { TextHistory as HistoryPage, TextVersion, TextVersionFull } from '../lib/texts'
 import {
-  Button, ConfirmDialog, Dialog, EmptyState, Field, GroupHead, IconButton, InlineError, Input, ListRow, ListSection, Loaded, LoadingRow,
+  Button, ConfirmDialog, Dialog, EmptyState, Field, GroupHead, InlineError, Input, ListRow, Loaded, LoadingRow,
   MenuButton, Place, PlaceHead, Section, Segmented, SelectBar, ShelfRow, Toolbar, Tree, useContextMenu, usePicker, VirtualList,
   type BulkAction, type MenuItem, type Shelf, type ToolChoice, type TreeNode,
 } from '../ui'
-import { usePref } from '../lib/prefs'
 import { LongEditor, TextHistory, type HistorySource } from './editor'
 import { Markdown } from './Markdown'
 import './Notebook.css'
@@ -91,9 +91,6 @@ export function Notebook({ active, note, edit, history }: { active: boolean; not
 
   const [view, setView] = useState<'notes' | 'guides'>('notes')
   const [folder, setFolder] = useState<string | null>(null)
-  // the folders open in the sidebar, kept on this device
-  const [openFolders, setOpenFolders] = usePref<string[]>('tree:notebook', [])
-  const open = useMemo(() => new Set(openFolders), [openFolders])
   const [ask, setAsk] = useState<Ask | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [editors, setEditors] = useState<Record<string, Editor>>({})
@@ -168,30 +165,6 @@ export function Notebook({ active, note, edit, history }: { active: boolean; not
                 }} />
   )
 
-  // the newest notes; two of one name (two README) show their folder
-  const recent = [...notes].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 8)
-  const twice = new Set(recent.map(n => leaf(n.path)).filter((x, i, all) => all.indexOf(x) !== i))
-  const side = (
-    <>
-      <ListRow density="sm" icon={NotebookPen} title="Notes" meta={tree.data && notes.length} selected={!note && view === 'notes' && folder === null}
-               onClick={() => goList(null)} />
-      <ListRow density="sm" icon={BookOpen} title="Guides" meta={tree.data && guides.length} selected={!note && view === 'guides'}
-               onClick={() => { setView('guides'); nav.go({ section: 'notebook' }) }} />
-      {folders.length > 0 && <>
-        <ListSection label="Folders" />
-        <Tree nodes={folders} open={open} label="Folders" selected={!note && view === 'notes' ? folder ?? undefined : undefined}
-              onOpen={(id, on) => setOpenFolders(on ? [...open, id] : openFolders.filter(x => x !== id))}
-              onSelect={id => goList(id)} menu={n => folderMenu(n.id)} onMove={(id, into) => void move([id], into)} />
-      </>}
-      {notes.length > 0 && <ListSection label="Recent" />}
-      {recent.map(n => (
-        <ListRow key={n.path} density="sm" leading={<FileText size={16} aria-hidden />} title={bare(leaf(n.path))} tooltip={n.path} selected={n.path === note}
-                 meta={twice.has(leaf(n.path)) ? parentOf(n.path) || undefined : undefined}
-                 href={format({ section: 'notebook', note: n.path })} />
-      ))}
-    </>
-  )
-
   let page: React.ReactNode
   const opened = note ? all.find(n => n.path === note) : undefined
   if (note && history && opened && !opened.locked) {
@@ -208,15 +181,18 @@ export function Notebook({ active, note, edit, history }: { active: boolean; not
   } else if (!note) {
     page = view === 'guides'
       ? <GuidesList guides={guides} tree={tree} onOpen={p => goNote(p)} />
-      : <NotesList notes={notes} folder={folder} shelf={shelf} onShelf={setShelf} picker={picker} tree={tree} menu={noteMenu} folderMenu={folderMenu}
+      : <NotesList notes={notes} folder={folder} onFolder={goList} shelf={shelf} onShelf={setShelf} picker={picker} tree={tree} menu={noteMenu} folderMenu={folderMenu}
                    onNew={() => setAsk({ kind: 'new-note', folder: folder ?? '' })}
                    onNewFolder={() => setAsk({ kind: 'new-folder', folder: folder ?? '' })}
                    onMove={move} onAsk={setAsk} onChanged={tree.reload} onError={e => setError(errorText(e))} />
   }
 
   return (
-    <Place title="Notebook" side={side}
-           action={<IconButton icon={Plus} label="New note" onClick={() => setAsk({ kind: 'new-note', folder: folder ?? '' })} />}>
+    <Place title="Notebook" current={note ? null : view}
+           sections={[
+             { id: 'notes', label: 'Notes', count: tree.data ? notes.length : undefined, onSelect: () => goList(null) },
+             { id: 'guides', label: 'Guides', count: tree.data ? guides.length : undefined, onSelect: () => { setView('guides'); nav.go({ section: 'notebook' }) } },
+           ]}>
       {error && <div className="list-page__note"><InlineError compact message={error} /></div>}
       {page}
       {Object.keys(editors).map(editor)}
@@ -249,9 +225,11 @@ export function Notebook({ active, note, edit, history }: { active: boolean; not
 }
 
 /* ── the list of notes: by folder or not, the Trash as a shelf of it ── */
-function NotesList({ notes, folder, shelf, onShelf, picker, tree, menu, folderMenu, onNew, onNewFolder, onMove, onAsk, onChanged, onError }: {
+function NotesList({ notes, folder, onFolder, shelf, onShelf, picker, tree, menu, folderMenu, onNew, onNewFolder, onMove, onAsk, onChanged, onError }: {
   notes: Note[]
+  /** the folder whose notes it shows; null: every note */
   folder: string | null
+  onFolder: (folder: string | null) => void
   shelf: Shelf
   onShelf: (s: Shelf) => void
   picker: ReturnType<typeof usePicker>
@@ -299,6 +277,7 @@ function NotesList({ notes, folder, shelf, onShelf, picker, tree, menu, folderMe
   const draw = (r: Row) => {
     if ('head' in r) {
       return <GroupHead icon={Folder} title={r.head || 'Notebook'} count={notesNoun(r.n)} menu={picker.on ? undefined : folderMenu(r.head)}
+                        onClick={r.head && r.head !== folder ? () => onFolder(r.head) : undefined}
                         onDrop={e => { const p = e.dataTransfer.getData(DRAG); if (p) void onMove([p], r.head) }} />
     }
     const n = r.note
@@ -315,10 +294,14 @@ function NotesList({ notes, folder, shelf, onShelf, picker, tree, menu, folderMe
   }
 
   const title = folder ? leaf(folder) : 'Notes'
+  // an open folder: the way back to Notes and to each folder above it
+  const above = folder ? folder.split('/').slice(0, -1) : []
+  const crumbs = folder ? [{ label: 'Notes', onClick: () => onFolder(null) },
+                           ...above.map((p, i) => ({ label: p, onClick: () => onFolder(above.slice(0, i + 1).join('/')) }))] : undefined
   const nothing = shelf === 'list' ? !!tree.data && notes.length === 0 : !!trash.data && trash.data.length === 0
   return (
     <div className="list-page">
-      <PlaceHead level={1} title={title} titleAttr={folder ?? undefined} count={shelf === 'list' ? shown.length : trash.data?.length}
+      <PlaceHead level={1} title={title} titleAttr={folder ?? undefined} crumbs={crumbs} count={shelf === 'list' ? shown.length : trash.data?.length}
                  search={{ value: q, onChange: setQ, placeholder: 'Search notes' }} picker={nothing ? undefined : picker}
                  shelf={{ trash: true, value: shelf, onChange: onShelf }}
                  more={[{ label: 'New folder', icon: FolderPlus, onSelect: onNewFolder }]}

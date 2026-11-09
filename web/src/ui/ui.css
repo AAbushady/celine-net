@@ -677,6 +677,11 @@ a.list-row, button.list-row, .list-row[role='button'] { cursor: pointer; }
 .place-head--narrow .place-head__title--clip { min-width: min(5rem, 30%); }
 .place-head--narrow .place-head__title--clip > .place-head__name { min-width: min(4rem, 100%); }
 .place-head__row > .place-head__search { flex: 0 1 460px; min-width: 200px; }
+/* the place's lists as tabs where the title would be: the head's height, their underline on
+   its hairline, the first word on the page's edge; with no room they scroll sideways */
+.place-head__row > .place-head__sections { flex: none; align-self: stretch; margin: 0 var(--s-2) -1px calc(-1 * var(--s-3)); }
+.place-head__row > .place-head__sections--clip { flex: 0 1 auto; min-width: 6rem; }
+.place-head__sections button { min-height: var(--header-line); }
 .place-head__acts { flex: none; display: flex; align-items: center; gap: var(--s-2); margin-left: auto; }
 .place-head__acts > .list-row { min-width: 0; max-width: var(--head-row); }
 /* no room for words: a row in the actions (the model) keeps only its button; its name is the row's tip */
@@ -811,7 +816,7 @@ a.list-row, button.list-row, .list-row[role='button'] { cursor: pointer; }
   transition: color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
 .segmented button:hover { color: var(--text-primary); }
-.segmented button[aria-checked='true'] { color: var(--text-primary); font-weight: var(--fw-medium); }
+.segmented button[aria-checked='true'] { color: var(--text-primary); }
 .segmented:not([data-slide]) button[aria-checked='true'] { background: var(--surface-3); }
 
 /* ── Filters: a flat row of words that wraps (a choice nobody can see is no choice);
@@ -841,11 +846,11 @@ a.list-row, button.list-row, .list-row[role='button'] { cursor: pointer; }
 :is(.tabs, .place-toolbar__row, .page-index__nav)[data-fade~='end'] { --fade-r: transparent; }
 .tabs button { position: relative;
   flex: none; display: inline-flex; align-items: center; gap: var(--s-1); white-space: nowrap;
-  min-height: var(--h-md); padding: 0 var(--s-3); font-size: var(--t-md); font-weight: var(--fw-regular); color: var(--text-secondary);
+  min-height: var(--h-md); padding: 0 var(--s-3); font-size: var(--t-md); font-weight: var(--fw-medium); color: var(--text-muted);
   transition: color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
 .tabs button:hover { color: var(--text-primary); }
-.tabs button[aria-selected='true'], .tabs button[aria-checked='true'] { color: var(--text-primary); font-weight: var(--fw-medium); }
+.tabs button[aria-selected='true'], .tabs button[aria-checked='true'] { color: var(--text-primary); }
 .tabs[data-slide]::after {
   content: ''; position: absolute; left: 0; top: 0; height: 2px; border-radius: var(--r-full); background: var(--text-primary);
   width: calc(var(--slide-w) - 2 * var(--s-2));
@@ -1046,8 +1051,9 @@ a.list-row, button.list-row, .list-row[role='button'] { cursor: pointer; }
     transition: opacity var(--dur) var(--ease), visibility 0s linear 0s; }
 }
 
-/* ── Place: the place sidebar beside the page ── */
+/* ── Place: the page, and for the agent's chats their list beside it ── */
 .place { flex: 1; min-height: 0; display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); overflow: clip; }
+.place--plain { grid-template-columns: minmax(0, 1fr); }
 .place__main { min-width: 0; min-height: 0; display: flex; flex-direction: column; position: relative; }
 /* over the page: the page glides under it as it slides (Place.tsx) */
 .place-side { position: relative; z-index: var(--z-sticky); min-height: 0; width: var(--sidebar-w); display: flex; flex-direction: column;
@@ -1058,14 +1064,9 @@ a.list-row, button.list-row, .list-row[role='button'] { cursor: pointer; }
 .place--folded > .place-side { transform: translateX(-100%); visibility: hidden;
   transition: transform var(--dur) var(--ease-exit), visibility 0s linear var(--dur); }
 .place-side--drawer { flex: 1; width: auto; background: none; border: 0; }
-.place-side__head { flex: none; display: flex; align-items: center; gap: var(--s-2); min-height: var(--header-line); padding: 0 var(--s-2) 0 var(--s-4);
-  border-bottom: 1px solid var(--border); margin-bottom: var(--s-2); }
-.place-side__title { flex: 1; min-width: 0; margin: 0; font-size: var(--t-lg); font-weight: var(--fw-bold);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .place-side__body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--s-0); padding: 0 var(--s-2) var(--s-3); }
 .place-side__body > .list-section { padding-top: var(--s-5); }
 .place-side__body > .vlist { flex: 1; }
-.place-side__foot { flex: none; padding: var(--s-2); border-top: 1px solid var(--border); }
 @media (max-width: 1023px) { .place { grid-template-columns: minmax(0, 1fr); } }
 
 /* ── PlaceHead: the place's panel button on a phone; the breadcrumb before the title ── */
