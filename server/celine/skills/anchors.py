@@ -3,6 +3,7 @@
 (notebook__edit) uses them."""
 from __future__ import annotations
 
+import json
 import re
 import zlib
 from typing import Annotated, Literal, Required, TypedDict
@@ -118,6 +119,11 @@ def plan(edits, lines: list[str], has_stamp: bool) -> list[tuple[int, int, list[
             new.pop()
         if op == "insert":
             after = e.get("after")
+            if after is None:
+                raise EditRefused(
+                    f"edit {i} (insert) needs `after`: the anchor of the line the text goes "
+                    f"under, or \"start\" for the top. `start` and `end` are for replace "
+                    f"and delete.")
             if str(after) in ("start", "0") or (has_stamp
                                                                 and _number(after) == 1):
                 a = 1 if has_stamp else 0
@@ -139,7 +145,10 @@ def plan(edits, lines: list[str], has_stamp: bool) -> list[tuple[int, int, list[
                 raise EditRefused(f"edit {i}: `end` ({end}) is above `start` ({s}).")
             planned.append((s, end, [] if op == "delete" else new))
         else:
-            raise EditRefused(f"edit {i}: `op` is \"replace\", \"insert\" or \"delete\".")
+            said = "has no `op`" if op is None else f"has the `op` {json.dumps(op)}"
+            raise EditRefused(
+                f"edit {i} {said}: `op` is \"replace\", \"insert\" or \"delete\". To add at "
+                f"the end, insert with `after` set to the last line's anchor.")
     if bad:
         raise EditRefused("\n\n".join(bad) + "\n\nUse these anchors and send all the "
                           "edits again.")

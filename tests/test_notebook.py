@@ -274,6 +274,36 @@ async def test_the_stamp_has_no_anchor_and_text_as_a_list_is_joined(store, cfg):
     assert "- apples\n- pears" in body and body.splitlines()[0] == STAMP
 
 
+async def test_an_edit_of_the_wrong_shape_is_told_the_right_one(store, cfg):
+    """A third of the failed edits in two days: an insert with `start` was told "None is
+    not an anchor", and an edit with no `op` or with "append" only the three names."""
+    nb = Notebook(cfg)
+    ctx = _ctx("c", store, cfg)
+    a = await _note(nb, ctx)
+    before = (cfg.agent.notebook / "opinions/food.md").read_text()
+    out = await nb.edit(ctx, "opinions/food.md", [{"op": "insert", "start": a[2], "text": "x"}])
+    assert out.is_error and "edit 1 (insert) needs `after`" in out.content
+    assert "None" not in out.content
+    out = await nb.edit(ctx, "opinions/food.md", [{"after": a[2], "text": "x"}])
+    assert out.is_error and "edit 1 has no `op`" in out.content
+    out = await nb.edit(ctx, "opinions/food.md", [{"op": "append", "text": "x"}])
+    assert out.is_error and 'edit 1 has the `op` "append"' in out.content
+    assert "insert with `after` set to the last line's anchor" in out.content
+    assert (cfg.agent.notebook / "opinions/food.md").read_text() == before
+
+
+async def test_a_read_stops_after_to_line(store, cfg):
+    """The agent asked for a stretch with end_line, to_line and end, and each failed."""
+    nb = Notebook(cfg)
+    ctx = _ctx("c", store, cfg)
+    await _note(nb, ctx)
+    whole = (await nb.read(ctx, "opinions/food.md")).content.splitlines()
+    part = (await nb.read(ctx, "opinions/food.md", from_line=2, to_line=3)).content.splitlines()
+    assert part == whole[1:3]
+    out = await nb.read(ctx, "opinions/food.md", from_line=3, to_line=2)
+    assert out.is_error and out.content == "to_line (2) is above from_line (3)."
+
+
 async def test_a_write_says_where_it_saved_and_the_list_has_dates(store, cfg):
     nb = Notebook(cfg)
     cid = await conversations.create(store)

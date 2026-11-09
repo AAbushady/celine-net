@@ -122,7 +122,7 @@ first blank line:
   keep finding only notes you have already seen, read them instead: after 8 such
   searches in a row, no search is run.
 - `notebook__list(folder)`: what is there, with summaries.
-- `notebook__read(path, from_line)`: one note, each line with its anchor `n:hash`.
+- `notebook__read(path, from_line, to_line)`: one note or a stretch of its lines, each line with its anchor `n:hash`.
 - `notebook__edit(path, edits, summary)`: replace, insert or delete lines by their
   anchors. All edits in one call refer to the note as you read it. A refused edit shows
   the current lines: try again with those anchors.

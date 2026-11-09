@@ -279,6 +279,7 @@ class Notebook:
         ctx: ToolContext,
         path: Annotated[str, "The path, from your index or notebook__list."],
         from_line: Annotated[int, "Start at this line, for the next part."] = 1,
+        to_line: Annotated[int | None, "Stop after this line. Default: the end."] = None,
     ) -> ToolResult:
         """Read one note. Each line comes as `<n>:<hash>| <text>`. `n:hash` is the anchor
         for notebook__edit. Line 1, Last changed, comes plain: the app keeps it. A long
@@ -309,14 +310,19 @@ class Notebook:
         first = max(1, from_line)
         if lines and first > len(lines):
             return ToolResult(content=f"{path} has {len(lines)} lines.", is_error=True)
-        body = "\n".join(numbered(lines, first, len(lines)))
+        if to_line is not None and to_line < first:
+            return ToolResult(content=f"to_line ({to_line}) is above from_line ({first}).",
+                              is_error=True)
+        end = len(lines) if to_line is None else min(len(lines), to_line)
+        body = "\n".join(numbered(lines, first, end))
         if ctx.max_output_tokens:
             from ..turns import tokens
             cut, shown, total = tokens.cut_to(body, max(500, int(ctx.max_output_tokens) - 200))
             if shown < total:
                 last = first + cut.count("\n")
+                rest = f", to_line={end}" if end < len(lines) else ""
                 body = (cut + f"\n\n[lines {first} to {last} of {len(lines)}. Next part: "
-                        f"notebook__read(path=\"{path}\", from_line={last + 1})]")
+                        f"notebook__read(path=\"{path}\", from_line={last + 1}{rest})]")
         if not lines:
             body = "(empty)"
         content = head + body
