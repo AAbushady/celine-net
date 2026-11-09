@@ -158,6 +158,16 @@ def test_the_doctors_connector_line_says_the_connections_words(monkeypatch):
                                         "(is its clients file the app's keys/connector-clients?)")
 
 
+def test_the_doctor_leaves_out_the_connector_of_a_feature_that_is_off():
+    """With Discord and WhatsApp off, their connectors are not started: the doctor asked
+    them anyway and ended "something needs a look" on every run."""
+    from celine import ops
+    from celine.boot import load
+    cfg = load()
+    cfg.settings.features = {"discord": False, "whatsapp": True}
+    assert "discord" in ops._unused(cfg) and "whatsapp" not in ops._unused(cfg)
+
+
 def test_a_qr_code_the_connection_cannot_give_says_its_words(world):
     client, link, kb = world
     kb.platform = "whatsapp"

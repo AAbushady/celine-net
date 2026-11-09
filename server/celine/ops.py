@@ -128,8 +128,9 @@ def doctor(cfg: config_mod.Config) -> int:
     print("mcp")
     if not cfg.mcp:
         _say(True, "no servers configured")
+    unused = _unused(cfg)
     for s in cfg.mcp.values():
-        if not s.enabled:
+        if not s.enabled or s.id in unused:
             _say(True, f"{s.id}: off")
         elif s.transport == "stdio":
             found = bool(s.command and shutil.which(s.command))
@@ -143,6 +144,13 @@ def doctor(cfg: config_mod.Config) -> int:
     _say(True, ", ".join(on) if on else "none on")
     print("\nall good" if good else "\nsomething needs a look")
     return 0 if good else 1
+
+
+def _unused(cfg) -> set[str]:
+    """The MCP servers of features that are off (Settings, Features): nothing starts or
+    asks them, so the doctor does not either."""
+    from .settings import features
+    return {m for f in features.catalog() if not features.on(cfg, f.id) for m in f.mcp}
 
 
 def _connector(s) -> tuple[bool, str]:
