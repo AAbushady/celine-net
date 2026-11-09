@@ -24,6 +24,6 @@ export {
 } from './Bits'
 export { Message, ComposerBox, isSendKey } from './Message'
 export { Place, usePlace, type PlaceSection } from './Place'
-export { usePhone, useCompact, isPhone, isNarrow, coarse } from './phone'
+export { usePhone, useNarrow, useCompact, isPhone, isNarrow, coarse } from './phone'
 export { Picture, Player, Screen } from './Picture'
 export { Tree, type TreeNode } from './Tree'

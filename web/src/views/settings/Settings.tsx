@@ -15,7 +15,7 @@ import { useResource } from '../../lib/useResource'
 import { format, useNav, type Route } from '../../lib/nav'
 import { useSources, type Source } from '../../lib/sources'
 import { LINK } from '../../lib/settingsApi'
-import { EmptyState, ICON, InlineError, PlaceHead, ListRow, ListSection, SearchField, SourceGlyph, StateWord, VirtualList } from '../../ui'
+import { EmptyState, ICON, InlineError, PlaceHead, ListRow, ListSection, SearchField, SourceGlyph, StateWord, VirtualList, useNarrow } from '../../ui'
 import { LevelWord, Page } from './parts'
 import { Advanced, General } from './General'
 import { Features } from './Features'
@@ -138,10 +138,12 @@ export function Settings({ active, status }: { active: boolean; status: ConfigSt
     it.type === 'page' ? (current === 'prompts' ? 'advanced' : current ?? FIRST) === it.id
       : it.type === 'source' ? current === 'sources' && openSource === it.source.id : false
 
+  const narrow = useNarrow()
   return (
     <div className="settings" data-pane={current ? 'page' : 'list'}>
       <aside className="settings__nav" aria-label="Settings">
-        <PlaceHead title="Settings" />
+        {/* below 1024 px the list is the whole screen until a page opens: its head is the screen's title */}
+        <PlaceHead level={narrow && !current ? 1 : 2} title="Settings" />
         {sources.error && !sources.data && (
           <div className="settings__nav-error"><InlineError compact message={sources.error} onRetry={sources.reload} /></div>
         )}

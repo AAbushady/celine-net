@@ -197,10 +197,10 @@
   --char-miku: #3FD1D9;
 
   /* state: never the only carrier of meaning. Danger is tonal: a wash with error text. */
-  --error:        #ED7665;  /* 6.3:1 on surface-2 */
-  --error-wash:   rgb(237 118 101 / 0.16);
-  --error-strong: #F58A7A;  /* danger hover text */
-  --error-wash-strong: rgb(237 118 101 / 0.22);   /* a danger button's hover */
+  --error:        #EF5F6B;  /* a plain red: 5.3:1 on surface-2, 4.6:1 on surface-3 */
+  --error-wash:   rgb(239 95 107 / 0.16);
+  --error-strong: #F47C86;  /* danger hover text */
+  --error-wash-strong: rgb(239 95 107 / 0.22);   /* a danger button's hover */
   --success:      #3FC07A;  --success-wash: rgb(63 192 122 / 0.14);
   --warn:         #E5A93B;  --warn-wash:    rgb(229 169 59 / 0.14);
   /* a sentence that changed (History): its own gold, apart from --warn */
@@ -209,7 +209,7 @@
 
   /* terminal: the 16 ansi colours (xterm reads them) */
   --ansi-black:   #1C1C1C;        --ansi-bright-black:   #8A8A8A;
-  --ansi-red:     var(--error);   --ansi-bright-red:     #F5A597;
+  --ansi-red:     var(--error);   --ansi-bright-red:     #F79AA2;
   --ansi-green:   #9BD4A8;        --ansi-bright-green:   #B6E3C0;
   --ansi-yellow:  #F5C076;        --ansi-bright-yellow:  #F8D7A6;
   --ansi-blue:    #93B4EC;        --ansi-bright-blue:    #B0C8F2;

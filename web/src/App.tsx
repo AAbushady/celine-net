@@ -261,7 +261,8 @@ function Shell() {
           )}
           {places.map((p, i) => (
             <Fragment key={p.id}>
-              {p.group && p.group !== places[i - 1]?.group && <div className="rail__group" aria-hidden>{p.group}</div>}
+              {/* the words over a group; with the names hidden, the hairline between two groups */}
+              {p.group && p.group !== places[i - 1]?.group && <div className="rail__group" aria-hidden>{folded ? null : p.group}</div>}
               {railItem(p, bar.includes(p.id) ? undefined : 'rail__item--more')}
             </Fragment>
           ))}

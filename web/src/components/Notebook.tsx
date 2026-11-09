@@ -300,7 +300,7 @@ function NotesList({ notes, folder, onFolder, shelf, onShelf, picker, tree, menu
                            ...above.map((p, i) => ({ label: p, onClick: () => onFolder(above.slice(0, i + 1).join('/')) }))] : undefined
   const nothing = shelf === 'list' ? !!tree.data && notes.length === 0 : !!trash.data && trash.data.length === 0
   return (
-    <div className="list-page">
+    <div className="list-page list-page--narrow">
       <PlaceHead level={1} title={title} titleAttr={folder ?? undefined} crumbs={crumbs} count={shelf === 'list' ? shown.length : trash.data?.length}
                  search={{ value: q, onChange: setQ, placeholder: 'Search notes' }} picker={nothing ? undefined : picker}
                  shelf={{ trash: true, value: shelf, onChange: onShelf }}
@@ -352,7 +352,7 @@ function GuidesList({ guides, tree, onOpen }: { guides: Note[]; tree: Resource<N
   const shown = guides.filter(g => g.name.toLowerCase().includes(q.trim().toLowerCase()))
   const menu = (g: Note): MenuItem[] => [{ label: 'Open', icon: ArrowUpRight, onSelect: () => onOpen(g.path) }]
   return (
-    <div className="list-page">
+    <div className="list-page list-page--narrow">
       <PlaceHead level={1} title="Guides" count={guides.length} search={{ value: q, onChange: setQ, placeholder: 'Search guides' }} />
       <Loaded page res={tree} icon={Lock} empty={shown.length === 0 && { icon: SearchX, title: 'No guides match', action: <Button onClick={() => setQ('')}>Clear search</Button> }}>
         {() => (

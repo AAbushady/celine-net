@@ -681,6 +681,8 @@ a.list-row, button.list-row, .list-row[role='button'] { cursor: pointer; }
    its hairline, the first word on the page's edge; with no room they scroll sideways */
 .place-head__row > .place-head__sections { flex: none; align-self: stretch; margin: 0 var(--s-2) -1px calc(-1 * var(--s-3)); }
 .place-head__row > .place-head__sections--clip { flex: 0 1 auto; min-width: 6rem; }
+/* the title the tabs stand in for, kept for screen readers: the head's own text size */
+.place-head__row > .sr-only { font: inherit; }
 .place-head__sections button { min-height: var(--header-line); }
 .place-head__acts { flex: none; display: flex; align-items: center; gap: var(--s-2); margin-left: auto; }
 .place-head__acts > .list-row { min-width: 0; max-width: var(--head-row); }
@@ -737,6 +739,8 @@ a.list-row, button.list-row, .list-row[role='button'] { cursor: pointer; }
    gutter, and on a wide screen the column of --page-max centred. A row's hover reaches
    --s-3 past the text. ── */
 .list-page { flex: 1; min-height: 0; display: flex; flex-direction: column; --page-max: var(--measure-wide); }
+/* a list whose rows are a name and a time (notes): a narrower column, so the two stay in one glance */
+.list-page--narrow { --page-max: 56rem; }
 :is(.place-head, .list-page__top, .list-page__note, .list-page .vlist__row, .list-page .vlist > :not(.vlist__spacer), .list-page .skeleton) {
   --edge: max(var(--gutter), (100% - var(--page-max, 100%)) / 2); }
 .list-page__top { flex: none; display: grid; gap: var(--s-2); padding: var(--s-3) var(--edge) var(--s-2); }

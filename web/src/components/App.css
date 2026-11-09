@@ -83,7 +83,7 @@
 .rail--folded .rail__item { justify-content: center; min-height: var(--h-md); padding: 0; }
 .rail--folded .rail__item.btn { justify-content: center; }
 .rail--folded .rail__item > svg, .rail--folded .rail__item > .btn__label > svg { width: var(--icon-lg); height: var(--icon-lg); }
-.rail--folded .rail__group { height: 1px; margin: var(--s-2) var(--s-4); padding: 0; background: var(--border); font-size: 0; line-height: 0; overflow: hidden; }
+.rail--folded .rail__group { height: 1px; margin: var(--s-2) var(--s-4); padding: 0; background: var(--border); }
 .rail--folded .rail__count { position: absolute; top: 0; right: 0; min-width: var(--s-4); padding: 0 var(--s-1); border-radius: var(--r-full);
   background: var(--surface-3); color: var(--text-primary); line-height: var(--s-4); }
 .rail--folded .rail__waiting .rail__count { background: var(--warn); color: var(--text-on-accent); }
