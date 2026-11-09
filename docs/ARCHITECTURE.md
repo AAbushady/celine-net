@@ -368,7 +368,7 @@ and the turn takes its last step (below; a Stop ends it `aborted`). Time spent w
 States: `queued`, `preparing`, `streaming`, `tools`, then `done`, `aborted`, `failed`,
 `interrupted`, `capped`. Every transition is a write, and every write re-reads
 `abort_requested`. A terminal state carries `reason` (words) and `reason_code`
-(`stopped`, `restart`, `crash`, `wall_clock`, `max_tool_iterations`, `backend`,
+(`stopped`, `restart`, `crash`, `wall_clock`, `max_tool_iterations`, `context_full`, `backend`,
 `backend_retryable`, `context_too_small`, `cut_length`); a `done` reply that
 hit the output limit has `cut = 'length'`. **Every transition into a terminal state
 settles the calls the turn left open** in the same write: each `pending`/`running` call
@@ -403,7 +403,9 @@ event. Calls record what the tool was (`tool_calls.mutating`, `mode`).
    what the intercom has due for the conversation (`intercom/deliver.take`), so a message
    sent while it works reaches it at its next step. Several tool calls in one reply run
    in order.
-5. At `max_tool_iterations` steps (when set) or the wall clock: one more step, with the
+5. At `max_tool_iterations` steps (when set), at the wall clock, or when the request
+   stays over 85 % of the model's context after the mid-turn build shortened everything
+   older (`context_full`: one long turn cannot be summarised while it goes on): one more step, with the
    app's line (`turns/limit.md`) last in its request, that one request only. No call
    made in it runs. Its words end the turn `done`, with `reason` "reached its limit of
    ..." and the limit as `reason_code`, so a routine has its answer and the user reads

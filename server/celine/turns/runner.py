@@ -31,10 +31,11 @@ WAIT = "missions__wait"     # ran ok: the turn ends with its step, whatever else
 async def run_turn(turn: dict, store: Store, cfg, backend, bus,
                    token=None, registry=None, jobs=None, clock=None) -> None:
     """`clock.deadline` (anyio time) is when the turn ends for good. The room of
-    `last_step_seconds` before it is the step under way's. Once the work time is up, or
-    `max_tool_iterations` steps ran, one more step says where the work stands (no call
-    runs in it): its words end the turn `done`, with the limit as its reason_code;
-    without words it ends `capped`."""
+    `last_step_seconds` before it is the step under way's. Once the work time is up,
+    `max_tool_iterations` steps ran, or the request stays over 85 % of the model's context
+    after everything older was shortened (`context_full`), one more step says where the
+    work stands (no call runs in it): its words end the turn `done`, with the limit as its
+    reason_code; without words it ends `capped`."""
     from .cancel import Token
     tid = turn["id"]
     token = token if token is not None else Token(tid)
@@ -228,6 +229,12 @@ async def _run_turn(turn: dict, store: Store, cfg, backend, bus,
                                       context.POLICY.turn_at):
             built = await build("turn")
             messages, hidden = built.messages, built.hidden
+            # still over it: this turn alone fills the context (one long run of steps
+            # cannot be summarised while it goes on), so it takes its last step here,
+            # before a request the model's server would refuse or cut
+            if wrap is None and not reopen and not context.fits(
+                    messages, wire_tools, backend, context.POLICY.turn_at):
+                wrap = ("context_full", f"{win:,} tokens of context")
         grown = False
 
         step_tools, step = wire_tools, messages + reopen_tail

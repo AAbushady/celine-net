@@ -59,6 +59,7 @@ const REASON: Record<string, string> = {
   restart: 'The server restarted during the reply.',
   wall_clock: 'The reply took too long and was stopped.',
   max_tool_iterations: 'Stopped at the tool round limit.',
+  context_full: "Stopped when the model's context was full.",
   cut_length: 'The reply reached the length limit.',
 }
 const ENDED: Record<string, string> = {

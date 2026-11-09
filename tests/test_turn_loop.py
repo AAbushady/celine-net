@@ -246,6 +246,39 @@ async def test_at_the_step_limit_her_last_step_says_where_the_work_stands(store,
     assert [s for _, s, _ in await _results(store)] == ["ok", "ok"]
 
 
+async def test_a_turn_that_fills_the_context_takes_its_last_step(store, cfg):
+    """A routine's run of 87 steps grew to 147,000 tokens on a window of 120,000: nothing
+    of one turn can be summarised while it goes on. Past 85 % of the window after the
+    build, the turn takes its last step, the limit its reason_code."""
+
+    class Writes(FakeBackend):
+        """A long note at every step, words once the app's line says it is the last."""
+
+        async def stream(self, messages, tools, body=None):
+            self.calls.append(messages)
+            if "reached its limit" in str(messages[-1].get("content")):
+                yield TextDelta("Wrote four parts; the fifth is left.")
+                yield Done(reason="stop")
+                return
+            n = len(self.calls)
+            for ev in _calls(("notebook__write", {"path": f"part{n}.md",
+                                                  "text": f"part {n} " + "word " * 5000})):
+                yield ev
+
+    reg = _registry(cfg, Notebook())
+    cid = await conversations.create(store)
+    b = Writes()
+    b.context_window = 40_000
+    turn = await _run(store, cfg, reg, cid, b)
+    state, code, reason = await store.read(lambda c: tuple(c.execute(
+        "SELECT state, reason_code, reason FROM turns WHERE id=?", (turn["id"],)).fetchone()))
+    assert (state, code, reason) == ("done", "context_full",
+                                     "reached its limit of 40,000 tokens of context")
+    assert 2 < len(b.calls) < 20, "after a few steps, long before the step limit"
+    assert "40,000 tokens of context" in b.calls[-1][-1]["content"]
+    assert all(s == "ok" for _, s, _ in await _results(store))
+
+
 async def test_an_empty_last_step_ends_the_turn_capped_with_no_empty_row(store, cfg):
     cfg.settings.general.update({"max_tool_iterations": 1})
     reg = _registry(cfg, Notebook())
