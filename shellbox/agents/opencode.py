@@ -27,9 +27,11 @@ opencode (the pinned release binary in the image) runs as it, `opencode serve` o
 127.0.0.1:PORT, HTTP basic auth with the password in ~/.config/opencode/server.password
 (made once, kept across resets with its home; only the box and it know it). Its config,
 ~/.config/opencode/opencode.json, is written at every boot: provider "celine" on the
-proxy with its models, every permission allowed, one instructions file about short
-final answers, and REA (`rea mcp`, the reverse-engineering MCP server in the image) as an
-MCP server. The agent's own settings go in ~/.config/opencode/opencode.jsonc (made empty
+proxy with its models, every permission allowed but REA's tools, one instructions file
+about short final answers, and REA (`rea mcp`, the reverse-engineering MCP server in the
+image) as an MCP server with its tools denied: a denied tool is left out of the request,
+and all 207 of REA's are more schema than any context holds; the agent allows the few it
+wants by name in its opencode.jsonc, and the `rea` CLI does the rest. The agent's own settings go in ~/.config/opencode/opencode.jsonc (made empty
 once, never written again): opencode reads it after opencode.json and its keys win
 (its config.ts loadGlobal), and opencode's own config changes land there too. Every
 file in its home is written as it (its browser shares ~/.config). The model list is
@@ -141,8 +143,12 @@ def _write_config(cfg: Path, llm_url: str, llm_key: str, models: dict | None) ->
             "npm": "@ai-sdk/openai-compatible", "name": "Celine",
             "options": {"baseURL": f"{llm_url}/v1", "apiKey": llm_key},
             "models": {m: {"name": m, "limit": limit} for m, limit in (models or {}).items()}}},
-        # websearch is Exa's hosted search (a third party), only when the app's setting is on
-        "permission": {"*": "allow", "websearch": "allow"} if _state["websearch"] else "allow",
+        # websearch is Exa's hosted search (a third party), only when the app's setting is on.
+        # REA's tools are denied, which keeps them out of the request: its 207 are about
+        # 800 KB of schema, more than any context; one allowed by name in the agent's
+        # opencode.jsonc goes in alone, about 1k tokens
+        "permission": {"*": "allow", "rea_*": "deny",
+                       **({"websearch": "allow"} if _state["websearch"] else {})},
         "instructions": [str(cfg / "celine.md")],
         "mcp": {"rea": {"type": "local", "command": ["rea", "mcp"], "enabled": True}},
         "autoupdate": False,

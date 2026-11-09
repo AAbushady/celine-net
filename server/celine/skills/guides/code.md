@@ -43,8 +43,8 @@ unknown ref is refused with the list.
 - Its config, ~/.config/opencode/opencode.json, is written by the box at every boot and
   whenever your models change: one provider, `celine`, with every model of yours and its
   real limits (the context and the most one answer may take, as the app knows them),
-  every permission allowed, and REA as an MCP server (the shell guide). Do not edit it:
-  the next write replaces it.
+  every permission allowed but REA's tools, and REA as an MCP server with its tools
+  denied (the shell guide). Do not edit it: the next write replaces it.
 - Your own settings go in ~/.config/opencode/opencode.jsonc, in opencode's format. They
   win over opencode.json and the box never writes that file. For example a model's
   limits as `provider.celine.models.<ref>.limit` (`context`, `output`), `permission`,

@@ -233,7 +233,8 @@ def test_the_config_allows_websearch_only_when_it_is_on(tmp_path, monkeypatch):
     monkeypatch.setattr(agent, "_put", lambda path, text, mode="644": written.append(text))
     written: list[str] = []
     agent._state["cfg"] = tmp_path
-    for on, want in ((False, "allow"), (True, {"*": "allow", "websearch": "allow"})):
+    for on, want in ((False, {"*": "allow", "rea_*": "deny"}),
+                     (True, {"*": "allow", "rea_*": "deny", "websearch": "allow"})):
         agent._state["websearch"] = on
         agent._write_config(tmp_path, "http://x", "k", {})
         assert json.loads(written[-1])["permission"] == want
@@ -383,7 +384,9 @@ def test_the_boot_writes_her_config_and_password_once(tmp_path, monkeypatch):
     assert conf["provider"]["celine"]["models"] == {
         "a/b": {"name": "a/b", "limit": {"context": 262144, "output": 65536}},
         "default": {"name": "default", "limit": {"context": 32768, "output": 8192}}}
-    assert conf["permission"] == "allow" and conf["instructions"] == [str(cfg / "celine.md")]
+    assert conf["permission"] == {"*": "allow", "rea_*": "deny"}, \
+        "REA's tools stay out of the request: all of them are more than any context"
+    assert conf["instructions"] == [str(cfg / "celine.md")]
     assert conf["mcp"] == {"rea": {"type": "local", "command": ["rea", "mcp"], "enabled": True}}
     assert "short" in (cfg / "celine.md").read_text()
     mine = '{\n  "provider": {"celine": {"models": {"a/b": {"limit": {"output": 1000}}}}}\n}\n'

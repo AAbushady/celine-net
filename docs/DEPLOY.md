@@ -213,7 +213,9 @@ provider, `celine`, on the app's model proxy with every model the proxy offers, 
 the context and output limit the proxy reports (`context_length`, `max_output_tokens`;
 the output a quarter of the context when it names none). The agent's own settings go in
 `~/.config/opencode/opencode.jsonc`, which opencode reads after it and the box never
-writes again. The config also names REA (`rea mcp`) as an MCP server. Every `/code/*`
+writes again. The config also names REA (`rea mcp`) as an MCP server with its tools
+denied (`"rea_*": "deny"`): opencode leaves a denied tool out of the request, and REA's
+207 are about 800 KB of schema; the agent allows a few by name in its opencode.jsonc. Every `/code/*`
 error carries opencode's own status and words, or what the box saw (no answer on the
 port, the server's exit code), with the log's path. The backend is one module in `shellbox/agents/`; `CODING_AGENT` names it (default `opencode`).
 

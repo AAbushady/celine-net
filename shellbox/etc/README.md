@@ -44,8 +44,9 @@ every boot as you, its output in /var/lib/shellbox/opencode.log. Its password is
 written at every boot and whenever your models change; your own settings go in
 ~/.config/opencode/opencode.jsonc, which wins and which the box never writes.
 
-REA (`rea --help`) takes apart apps and binaries you have no source for; opencode has it
-as a tool, and native binaries need an engine you install (Ghidra, JADX).
+REA (`rea --help`) takes apart apps and binaries you have no source for; opencode runs
+it through the CLI (its MCP tools are denied unless you allow some by name in
+opencode.jsonc), and native binaries need an engine you install (Ghidra, JADX).
 
 ## Skills
 

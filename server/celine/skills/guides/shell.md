@@ -240,9 +240,12 @@ what calls what. Analysis runs in the box.
   full, under your home), then read the JSON. `rea --help` lists the commands,
   `rea <command> --help` their flags, `rea capabilities` what works here now.
 - A longer job (trace a feature, rebuild it, follow it across many functions): hand it
-  to your coding agent (the code guide). opencode has REA as a tool through MCP, so a
-  code__start brief such as "with REA, find how search works in ~/uploads/app and write
-  it up in notes.md" works.
+  to your coding agent (the code guide) and name the CLI in the brief, such as "with the
+  `rea` CLI (`rea --help`, `--json`), find how search works in ~/uploads/app and write it
+  up in notes.md". opencode has REA as an MCP server too, with its tools denied: each
+  tool is about 1k tokens of every request and all of them are more than any context.
+  To give it a few, allow them by name under `permission` in your opencode.jsonc, such
+  as `"rea_analyze_function": "allow"`, a couple of dozen at most.
 - Native binaries (ELF, Mach-O, PE) and Android apps need an engine REA drives, and the
   box has none: install what the target needs first (Ghidra with a JDK, JADX, binwalk,
   tshark, adb; apt or their release downloads, ~/boot.sh to keep them across the
