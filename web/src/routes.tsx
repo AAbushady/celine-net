@@ -1,11 +1,11 @@
 /* The places: each section's view (its own chunk, loaded on the first visit: one terminal's
-   page brings xterm with it, the browser's noVNC), its rail icon, its title and its link. The
-   lib/nav.tsx says what a URL means; App.tsx draws the rail
+   page brings xterm with it, the browser's noVNC), its rail icon, its group in the rail, its
+   title and its link. The lib/nav.tsx says what a URL means; App.tsx draws the rail
    and mounts the views from here. On a phone the BAR places and More are the bottom bar, the
    rest is in the More sheet. */
 import { lazy, type ComponentProps, type ReactNode } from 'react'
 import {
-  Activity, CalendarClock, FileText, Flag, Globe, Heart, Mail, MessagesSquare, NotebookPen, Search, Terminal,
+  Activity, CalendarClock, FileText, Flag, Globe, Mail, MessageCircle, MessagesSquare, NotebookPen, Search, Terminal,
   type LucideIcon,
 } from 'lucide-react'
 import type { ConfigStatus } from './lib/api'
@@ -27,15 +27,17 @@ export const Events = lazy(() => import('./views/Events').then(m => ({ default: 
 export const Welcome = lazy(() => import('./views/Welcome').then(m => ({ default: m.Welcome })))
 export const ArtifactPage = lazy(() => import('./views/Artifact').then(m => ({ default: m.ArtifactPage })))
 
-export type RailEntry = { id: Section; icon: LucideIcon }
+/** a place in the rail; `group`: the words over it and the places after it that share them */
+export type RailEntry = { id: Section; icon: LucideIcon; group?: string }
 
-/** the rail, in this order; its place carries its name */
+/** the rail, in this order, in its groups; the first group has no words over it */
 export const PLACES: RailEntry[] = [
-  { id: 'celine', icon: Heart }, { id: 'missions', icon: Flag },
-  { id: 'routines', icon: CalendarClock },
-  { id: 'notebook', icon: NotebookPen }, { id: 'documents', icon: FileText }, { id: 'chats', icon: MessagesSquare },
-  { id: 'intercom', icon: Mail }, { id: 'terminals', icon: Terminal }, { id: 'browser', icon: Globe }, { id: 'events', icon: Activity },
-  { id: 'search', icon: Search },
+  { id: 'celine', icon: MessageCircle }, { id: 'search', icon: Search },
+  { id: 'missions', icon: Flag }, { id: 'routines', icon: CalendarClock },
+  { id: 'notebook', icon: NotebookPen, group: 'Knowledge' }, { id: 'documents', icon: FileText, group: 'Knowledge' },
+  { id: 'chats', icon: MessagesSquare, group: 'Knowledge' },
+  { id: 'intercom', icon: Mail, group: 'Activity' }, { id: 'events', icon: Activity, group: 'Activity' },
+  { id: 'terminals', icon: Terminal, group: 'Computer' }, { id: 'browser', icon: Globe, group: 'Computer' },
 ]
 /** the places on now: the server's `places_off` (GET /status) leave the rail, the bar and More; no status yet: all */
 export function shownPlaces(off: string[] | undefined): RailEntry[] {

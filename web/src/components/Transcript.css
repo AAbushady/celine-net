@@ -51,7 +51,7 @@
 .msg__audio audio { width: 100%; height: var(--h-md); }
 
 /* its prose: markdown with real type */
-.msg__prose { font-size: var(--t-lg); line-height: var(--lh-body); color: var(--text-primary); overflow-wrap: anywhere; }
+.msg__prose { font-size: var(--t-lg); line-height: var(--lh-read); color: var(--text-primary); overflow-wrap: anywhere; }
 .msg__prose > :first-child { margin-top: 0; }
 .msg__prose > :last-child { margin-bottom: 0; }
 .msg__prose p, .msg__prose ul, .msg__prose ol, .msg__prose pre, .msg__prose blockquote, .msg__prose table { margin: 0 0 var(--s-3); }
@@ -67,18 +67,18 @@
 .msg__prose h3 { font-size: var(--t-lg); }
 .msg__prose h4 { font-size: var(--t-lg); font-weight: var(--fw-medium); color: var(--text-secondary); }
 .msg__prose strong { font-weight: var(--fw-bold); }
+.msg__prose :is(h1, h2, h3) { font-weight: var(--fw-bold); }
 .msg__prose a { color: var(--accent); text-decoration: underline; text-decoration-color: var(--accent-dim);
   text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .msg__prose a:hover { text-decoration-color: var(--accent); }
-.msg__prose code { padding: 1px var(--s-1); border-radius: var(--r-sm); background: var(--surface-3); font-family: var(--font-mono); }
+.msg__prose code { padding: 1px var(--s-1); border-radius: var(--r-sm); background: var(--surface-2); font-family: var(--font-mono); }
 /* code wraps: a long line is never cut at the edge */
 .msg__prose pre {
-  padding: var(--s-3) var(--s-4); border-radius: var(--r-md); background: var(--surface-sunk);
-  box-shadow: inset 0 0 0 1px var(--border);
+  padding: var(--s-3) var(--s-4); border-radius: var(--r-md); background: var(--surface-1);
   font-size: var(--t-md); line-height: var(--lh-body); white-space: pre-wrap; overflow-wrap: anywhere;
 }
 .msg__prose pre code { padding: 0; background: none; font-size: inherit; color: var(--text-secondary); }
-.msg__prose blockquote { margin-left: 0; margin-right: 0; padding: 0 0 0 var(--s-4); border-left: 2px solid var(--accent); color: var(--text-secondary); }
+.msg__prose blockquote { margin-left: 0; margin-right: 0; padding: 0 0 0 var(--s-4); border-left: 2px solid var(--border-strong); color: var(--text-secondary); }
 .msg__prose table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; font-size: var(--t-md); }
 .msg__prose th, .msg__prose td { padding: var(--s-2) var(--s-5) var(--s-2) 0; border-bottom: 1px solid var(--border); text-align: left; }
 .msg__prose th { font-weight: var(--fw-medium); color: var(--text-muted); }

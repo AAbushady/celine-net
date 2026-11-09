@@ -39,7 +39,7 @@ import { PhotoViewer } from '../components/PhotoViewer'
 import { GalleryContext, collectGeneratedImages, madeDetails, type Made } from '../components/Batch'
 import {
   Button, ConfirmDialog, EmptyState, IconButton, InlineEdit, InlineError, LoadingRow, Notice, Place, PlaceHead, SelectBar,
-  coarse, isNarrow, StatusLine, cx, leave, OUT, useLeave, usePicker, type Shelf,
+  coarse, isNarrow, StatusLine, cx, leave, OUT, useLeave, usePhone, usePicker, type Shelf,
 } from '../ui'
 import { usePref } from '../lib/prefs'
 import { bulkActions, useArchiveOlder } from '../components/Bulk'
@@ -76,6 +76,7 @@ export function Celine({ active, status, sidebarOpen, onSidebar }: {
   const nav = useNav()
   const who = useAgent()
   const mood = useMood()
+  const phone = usePhone()
   const placeName = who?.name ?? ''
   // the side panel and its tab, kept on this device; on a phone it lies over the chat, so
   // it starts closed there
@@ -434,16 +435,16 @@ export function Celine({ active, status, sidebarOpen, onSidebar }: {
                                                  onClick: c.link ? (e: { preventDefault(): void }) => { e.preventDefault(); nav.goPath(c.link!) } : undefined })),
                        title: writingTo,
                      } : {
-                     lead: <AgentFace who={who} size="sm" speaking={convo.running} />,
+                     /* the rail carries its face, name and mood; a phone has no rail, so its head does */
+                     lead: phone ? <AgentFace who={who} size="sm" speaking={convo.running} /> : undefined,
                      title:
                        <span className="chat-who">
-                         <span className="chat-who__name">{name}</span><MoodText mood={mood} />
                          {renaming === current?.id ? (
                            <InlineEdit value={conversationTitle} label="Rename chat" onCancel={() => setRenaming(null)}
                                        onSave={t => { setRenaming(null); if (t && t !== conversationTitle) rename(current.id, t) }} />
-                         ) : (
-                           conversationTitle && <span className="chat-head__title">{conversationTitle}</span>
-                         )}
+                         ) : conversationTitle ? <span className="chat-head__title">{conversationTitle}</span>
+                           : phone ? <><span className="chat-who__name">{name}</span><MoodText mood={mood} /></>
+                           : <span className="chat-head__title">New chat</span>}
                        </span>,
                      })}
                      titleAttr={conversationTitle || undefined}

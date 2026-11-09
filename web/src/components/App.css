@@ -8,69 +8,90 @@
   /* an installed app on a notched phone (viewport-fit=cover): clear of the edges */
   padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
 }
+/* the names hidden on this device: the rail is its icons */
+.app--names-hidden { --rail-w: var(--rail-w-fold); }
 /* the vault is locked: one line across the top, above the rail */
 .vault-banner { flex: none; max-width: none; border-radius: 0; align-items: center; }
 .frame {
   flex: 1; min-height: 0; display: grid;
   grid-template-columns: var(--rail-w) minmax(0, 1fr);
 }
+/* The rail: the agent at its top, then every place by its name in its group, Settings at its
+   foot. It shares the canvas with the page and is split from it by a hairline; its head is
+   as tall as a place's head, so the two hairlines meet. The open place is its words in the
+   full ink, on no fill. Rows are --row-sm on a 34 px pitch. */
 .rail {
-  position: relative; isolation: isolate;
-  display: flex; flex-direction: column; align-items: center; gap: var(--s-1);
-  padding: var(--s-4) 0; overflow-y: auto; scrollbar-width: none;
-  background: var(--rail-bg);
+  position: relative; min-width: 0;
+  display: flex; flex-direction: column; gap: var(--s-0);
+  padding: 0 0 var(--s-2); overflow: hidden auto; scrollbar-width: none;
+  background: var(--rail-bg); border-right: 1px solid var(--border);
   z-index: var(--z-rail);
 }
-/* the one pill under the open section, sliding from item to item */
-.rail[data-slide]::before {
-  content: ''; position: absolute; z-index: -1; left: 0; top: 0; border-radius: var(--r-lg); background: var(--rail-active);
-  width: var(--slide-w); height: var(--slide-h); transform: translate(var(--slide-x), var(--slide-y));
+.rail__agent {
+  flex: none; display: flex; align-items: center; gap: var(--s-3); min-width: 0;
+  height: var(--header-line); padding: 0 var(--s-4); margin-bottom: var(--s-2);
+  border-bottom: 1px solid var(--border); color: var(--text-primary); text-decoration: none;
+  transition: background var(--dur-fast) var(--ease);
 }
-.rail[data-slide='live']::before { transition: transform var(--dur) var(--ease-spring), width var(--dur) var(--ease), height var(--dur) var(--ease); }
-/* its mark: its portrait, or the app's mark on its colour, the size of a row's avatar */
-.rail__brand {
-  flex: none; width: var(--h-md); height: var(--h-md); border-radius: var(--r-full); display: grid; place-items: center;
-  background: var(--accent-wash); color: var(--accent); margin-bottom: var(--s-3);
-}
+.rail__agent:hover { background: var(--rail-hover); }
+.rail__who { flex: 1; min-width: 0; display: grid; }
+.rail__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: var(--t-md); line-height: var(--lh-ui); font-weight: var(--fw-bold); }
+.rail__mood { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: var(--t-xs); line-height: var(--lh-ui); color: var(--text-muted); }
 .rail__item {
-  flex: none; width: calc(var(--rail-w) - 2 * var(--s-1)); min-height: var(--header-h); padding: 0 var(--s-1); border-radius: var(--r-lg);
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-1);
-  color: var(--rail-ink); position: relative; text-decoration: none;
+  flex: none; position: relative; display: flex; align-items: center; gap: var(--s-3); min-width: 0;
+  min-height: var(--row-sm); margin: 0 var(--s-2); padding: 0 var(--s-2); border-radius: var(--r-md);
+  font-size: var(--t-md); line-height: var(--lh-ui); font-weight: var(--fw-regular);
+  color: var(--rail-ink); text-decoration: none;
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
-.rail__item:hover { background: var(--rail-hover); color: var(--text-secondary); }
-.rail__item[aria-current='page'] { background: var(--rail-active); color: var(--rail-active-ink); }
-.rail[data-slide] .rail__item[aria-current='page'] { background: none; }
+.rail__item > svg, .rail__item > .btn__label > svg { flex: none; width: var(--icon-md); height: var(--icon-md); }
+.rail__item:hover { background: var(--rail-hover); color: var(--text-primary); }
+.rail__item[aria-current='page'] { background: var(--rail-active); color: var(--rail-active-ink); font-weight: var(--fw-medium); }
 .rail__item:active { transform: scale(0.98); }
-/* Log out and More are the kit's Button in the rail item's look */
-.rail__item.btn { height: auto; padding: 0 var(--s-1); gap: var(--s-1); border-radius: var(--r-lg); background: none; color: var(--rail-ink); }
-.rail__item.btn:hover:not([aria-disabled='true']) { background: var(--rail-hover); color: var(--text-secondary); }
+/* Frozen, Paused, Waiting for you, Log out and More are the kit's Button in the rail item's look */
+.rail__item.btn { height: auto; justify-content: flex-start; background: none; }
+.rail__item.btn:hover:not([aria-disabled='true']) { background: var(--rail-hover); color: var(--text-primary); }
 .rail__item.btn[aria-current='page'] { color: var(--rail-active-ink); }
 .rail__item > .btn__label { display: contents; }
 /* the phone's More: only in the bottom bar */
 .rail__more { display: none; }
 .rail__frozen.btn, .rail__frozen.btn:hover:not([aria-disabled='true']) { color: var(--error); }
-.rail__label { font-size: var(--t-xs); line-height: var(--lh-ui); font-weight: var(--fw-medium); white-space: nowrap; }
-.rail__spacer { flex: 1; min-height: var(--s-2); }
-.rail__count {
-  position: absolute; top: var(--s-1); right: var(--s-3); min-width: var(--icon-lg); padding: 0 var(--s-1);
-  border-radius: var(--r-full); background: var(--accent-fill); color: var(--text-on-accent);
-  font-size: var(--t-xs); line-height: var(--icon-lg); text-align: center; font-variant-numeric: tabular-nums;
-}
-.rail__door.btn:hover:not([aria-disabled='true']) { color: var(--accent); }
+.rail__waiting.btn, .rail__waiting.btn:hover:not([aria-disabled='true']) { color: var(--text-primary); }
+.rail__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+/* the words over a group of places */
+.rail__group { flex: none; margin: var(--s-4) var(--s-2) var(--s-1); padding: 0 var(--s-2);
+  font-size: var(--t-xs); line-height: var(--lh-ui); color: var(--text-muted); white-space: nowrap; }
+.rail__spacer { flex: 1; min-height: var(--s-3); }
+/* a count at a row's end: the Intercom's unread as a number, what waits for you on amber */
+.rail__count { flex: none; min-width: var(--icon-lg); font-size: var(--t-xs); line-height: var(--icon-lg); text-align: center;
+  font-weight: var(--fw-regular); font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.rail__waiting .rail__count { padding: 0 var(--s-1); border-radius: var(--r-full); background: var(--warn-wash); color: var(--warn); font-weight: var(--fw-medium); }
+/* Settings, and beside it the button that hides or shows the names */
+.rail__foot { flex: none; display: flex; align-items: center; gap: var(--s-1); padding-right: var(--s-2); }
+.rail__foot > .rail__item { flex: 1; margin-right: 0; }
+.rail__names { color: var(--text-muted); }
 /* its name, until the status is in */
 .rail__wait { display: block; width: 4em; height: 1em; border-radius: var(--r-sm); background: var(--surface-3);
   animation: skeleton calc(var(--dur-pulse) * 4 / 3) var(--ease) infinite; }
-/* a short screen (a 1366x768 laptop): every place still fits, each as tall as a touch target */
-@media (max-height: 860px) { .rail__item { min-height: var(--h-lg); } }
-/* shorter still (a 768 px laptop under its browser bars): the mark goes, so every place
-   and Waiting fit without the rail scrolling */
-@media (max-height: 760px) { .rail__brand { display: none; } .rail { padding-block: var(--s-2); } }
-/* a phone on its side: icons only, a narrower rail */
-@media (pointer: coarse) and (max-height: 500px) and (min-width: 768px) {
-  .app { --rail-w: var(--header-h); }
-  .rail__label, .rail__brand { display: none; }
-  .rail__item { min-height: var(--h-lg); }
+
+/* the names hidden (this device's choice, or a window under 1200 px): the places as icons,
+   each with its name as its tip; a group's words become the hairline between groups */
+.rail--folded .rail__agent { justify-content: center; padding: 0; }
+.rail--folded :is(.rail__who, .rail__label) { display: none; }
+.rail--folded .rail__item { justify-content: center; min-height: var(--h-md); padding: 0; }
+.rail--folded .rail__item.btn { justify-content: center; }
+.rail--folded .rail__item > svg, .rail--folded .rail__item > .btn__label > svg { width: var(--icon-lg); height: var(--icon-lg); }
+.rail--folded .rail__group { height: 1px; margin: var(--s-2) var(--s-4); padding: 0; background: var(--border); font-size: 0; line-height: 0; overflow: hidden; }
+.rail--folded .rail__count { position: absolute; top: 0; right: 0; min-width: var(--s-4); padding: 0 var(--s-1); border-radius: var(--r-full);
+  background: var(--surface-3); color: var(--text-primary); line-height: var(--s-4); }
+.rail--folded .rail__waiting .rail__count { background: var(--warn); color: var(--text-on-accent); }
+.rail--folded .rail__foot { flex-direction: column; padding-right: 0; }
+.rail--folded .rail__foot > .rail__item { flex: none; align-self: stretch; margin-right: var(--s-2); }
+@media (min-width: 768px) and (max-width: 1199px) {
+  .app { --rail-w: var(--rail-w-fold); }
+  .rail__names { display: none; }
 }
 
 .sections { min-width: 0; min-height: 0; position: relative; }
@@ -132,7 +153,7 @@ input[type='file']::file-selector-button:hover { background: var(--surface-4); }
 
 /* prose: a document, a note, a page it wrote. Headings on the type scale, a list's
    items apart, code on the sunk surface, tables on hairlines, quotes beside a rule */
-.prose { font-size: var(--t-lg); line-height: var(--lh-body); color: var(--text-primary); overflow-wrap: anywhere; }
+.prose { font-size: var(--t-lg); line-height: var(--lh-read); color: var(--text-primary); overflow-wrap: anywhere; }
 .prose > :first-child { margin-top: 0; }
 .prose > :last-child { margin-bottom: 0; }
 .prose p, .prose ul, .prose ol, .prose pre, .prose blockquote, .prose table { margin: 0 0 var(--s-4); }
@@ -140,7 +161,7 @@ input[type='file']::file-selector-button:hover { background: var(--surface-4); }
 .prose li + li, .prose li > ul, .prose li > ol { margin-top: var(--s-1); }
 .prose li > ul, .prose li > ol { margin-bottom: 0; }
 .prose li::marker { color: var(--text-muted); }
-.prose h1, .prose h2, .prose h3, .prose h4 { font-weight: var(--fw-medium);
+.prose h1, .prose h2, .prose h3, .prose h4 { font-weight: var(--fw-bold);
   line-height: var(--lh-title); margin: var(--s-6) 0 var(--s-3); letter-spacing: var(--tracking-title);
 }
 .prose h1 { font-size: var(--t-2xl); font-weight: var(--fw-bold); letter-spacing: var(--tracking-display); }
@@ -158,7 +179,7 @@ input[type='file']::file-selector-button:hover { background: var(--surface-4); }
 .prose pre { background: var(--surface-sunk); border-radius: var(--r-md); padding: var(--s-3) var(--s-4); overflow-x: auto;
   font-size: var(--t-md); line-height: var(--lh-body); }
 .prose pre code { background: none; padding: 0; font-size: inherit; }
-.prose blockquote { border-left: 3px solid var(--accent-dim); padding: var(--s-1) 0 var(--s-1) var(--s-4); margin-left: 0; color: var(--text-secondary); }
+.prose blockquote { border-left: 2px solid var(--border-strong); padding: var(--s-1) 0 var(--s-1) var(--s-4); margin-left: 0; color: var(--text-secondary); }
 .prose blockquote > :last-child { margin-bottom: 0; }
 .prose hr { border: 0; border-top: 1px solid var(--border); margin: var(--s-6) 0; }
 .prose img { max-width: 100%; border-radius: var(--r-md); }
@@ -180,15 +201,19 @@ input[type='file']::file-selector-button:hover { background: var(--surface-4); }
   .app { --rail-left: 0px; --rail-bottom: calc(var(--header-h) + env(safe-area-inset-bottom)); padding-bottom: 0; }
   .frame { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
   .rail {
-    grid-row: 2; flex-direction: row; justify-content: flex-start; gap: 0; height: var(--rail-bottom);
+    grid-row: 2; flex-direction: row; align-items: center; justify-content: flex-start; gap: 0; height: var(--rail-bottom);
     padding: 0 var(--s-2) env(safe-area-inset-bottom);
     overflow: auto hidden; overscroll-behavior-x: contain; border-right: 0; border-top: 1px solid var(--border);
   }
-  .rail__brand, .rail__spacer, .rail__item--more { display: none; }
+  .rail__agent, .rail__group, .rail__spacer, .rail__item--more, .rail__names { display: none; }
+  .rail__foot { display: contents; }
   .rail__more { display: flex; }
-  .rail__item, .rail__item.btn { flex: 1 0 auto; min-width: calc(var(--h-lg) + var(--s-4)); min-height: var(--h-lg); width: auto; gap: var(--s-0); }
-  .rail__label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
-  .rail__count { right: calc(50% - var(--s-5)); }
+  .rail__item, .rail__item.btn { flex: 1 0 auto; flex-direction: column; justify-content: center; min-width: calc(var(--h-lg) + var(--s-4));
+    min-height: var(--h-lg); margin: 0; padding: 0 var(--s-1); gap: var(--s-0); }
+  .rail__item > svg, .rail__item > .btn__label > svg { width: var(--icon-lg); height: var(--icon-lg); }
+  .rail__label { flex: none; max-width: 100%; font-size: var(--t-xs); text-align: center; }
+  .rail__count { position: absolute; top: var(--s-0); right: calc(50% - var(--s-5)); min-width: var(--s-4); padding: 0 var(--s-1);
+    border-radius: var(--r-full); background: var(--surface-4); color: var(--text-primary); line-height: var(--s-4); font-weight: var(--fw-medium); }
   .sections { grid-row: 1; }
   /* an on-screen keyboard is up (main.tsx): the bar steps aside for it */
   :root[data-keyboard] .app { --rail-bottom: 0px; }

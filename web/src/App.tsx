@@ -1,5 +1,5 @@
 import { Fragment, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { DoorOpen, Ellipsis, Flag, Hand, MessageCircle, PauseCircle, Plug, Rat, Settings as SettingsIcon, Snowflake } from 'lucide-react'
+import { ChevronsLeft, ChevronsRight, DoorOpen, Ellipsis, Flag, Hand, MessageCircle, PauseCircle, Plug, Settings as SettingsIcon, Snowflake } from 'lucide-react'
 import './components/Shell.css'
 import './components/App.css'
 import { api, authApi, type ConfigStatus } from './lib/api'
@@ -18,15 +18,17 @@ import { ConnectionProvider } from './lib/socket'
 import { useWaits } from './lib/waits'
 import { ApprovalCard } from './components/ApprovalCard'
 import { WaitingCount } from './lib/intercom'
-import { useSlide } from './ui/slide'
 import { SectionBoundary } from './components/SectionBoundary'
 import { ServerDown } from './components/ServerDown'
 import { VaultBanner } from './components/VaultBanner'
 import { Shortcuts, Switcher } from './components/Switcher'
 import { isTyping } from './lib/keys'
-import { Button, ConfirmDialog, ICON, coarse, isNarrow, isPhone, ListRow, ListSection, LoadingRow, Sheet, TipLayer, ToastHost, cx, ms, reduced } from './ui'
+import { Button, ConfirmDialog, ICON, IconButton, coarse, isNarrow, isPhone, ListRow, ListSection, LoadingRow, Sheet, TipLayer, ToastHost, cx, ms, reduced, useCompact, usePhone } from './ui'
 import { guardApi, useFrozen } from './lib/guard'
 import { usePageName } from './lib/title'
+import { usePref } from './lib/prefs'
+import { useMood } from './lib/chat'
+import { Portrait } from './components/Portrait'
 import { BAR, TITLE, VIEWS, Welcome, sectionHref, shownPlaces, type RailEntry } from './routes'
 
 export function App() {
@@ -158,8 +160,14 @@ function Shell() {
   // the heads' Go to
   useServerEvents(ev => { if (ev.type === 'ui.goto') setSheet('switch') })
 
-  const rail = useRef<HTMLElement>(null)
-  useSlide(rail, '.rail__item[aria-current="page"]', section)
+  // the rail: every place by its name; this device may keep the names hidden (icons, each
+  // with its name as its tip), and a window under 1200 px hides them by itself. A phone's
+  // rail is the bottom bar, which always carries its words
+  const [hidden, setHidden] = usePref('rail:names-hidden', false)
+  const compact = useCompact()
+  const phone = usePhone()
+  const folded = !phone && (hidden || compact)
+  const mood = useMood()
 
   // switching place: the place left stays painted under the one fading in until the fade
   // is done, so the canvas never shows between them
@@ -178,6 +186,9 @@ function Shell() {
   const built = status?.build
   const build = built ? `${name}\n${built.commit}${built.built ? `, built ${fullDate(built.built)}` : ''}` : name
   const labelOf = (id: Section) => (id === 'celine' ? name : TITLE[id])
+  // in the rail its place is Chat, under its face and name; a phone's bar has no room for
+  // both, so the tab carries its name
+  const railLabel = (id: Section) => (id === 'celine' && !phone ? 'Chat' : labelOf(id))
   const go = (id: Section) => (e: React.MouseEvent) => {
     if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return
     e.preventDefault()
@@ -187,10 +198,11 @@ function Shell() {
   const openWait = (link: string) => { if (link === at) setSheet(null); else nav.goPath(link) }
   const railItem = (s: RailEntry, cls?: string) => (
     <a key={s.id} className={cx('rail__item', cls)} href={sectionHref(s.id)}
-       aria-label={s.id === 'intercom' && unread ? `${labelOf(s.id)}, ${unread} unread` : undefined}
+       aria-label={s.id === 'intercom' && unread ? `${railLabel(s.id)}, ${unread} unread` : folded ? railLabel(s.id) : undefined}
+       data-tip={folded ? railLabel(s.id) : undefined}
        aria-current={section === s.id ? 'page' : undefined} onClick={go(s.id)}>
       <s.icon size={ICON.lg} aria-hidden />
-      <span className="rail__label">{labelOf(s.id) || (!statusIn && <span className="rail__wait" />)}</span>
+      <span className="rail__label">{railLabel(s.id) || (!statusIn && <span className="rail__wait" />)}</span>
       {s.id === 'intercom' && !!unread && count(unread)}
     </a>
   )
@@ -209,18 +221,22 @@ function Shell() {
     <AppearanceContext.Provider value={appearance}>
     <WaitingCount.Provider value={unread}>
     <SpeechProvider features={status?.features}>
-    <div className="app">
+    <div className={cx('app', hidden && 'app--names-hidden')}>
       {section === 'welcome' ? (
         <Suspense fallback={<LoadingRow />}><Welcome status={status} onSaved={shown.onStatus} /></Suspense>
       ) : (<>
       <VaultBanner locked={!!status?.vault_locked} />
       <div className="frame">
-        <nav ref={rail} className="rail" aria-label="Sections">
-          {/* its face when it has one, the app's mark until then */}
-          <div className="rail__brand" title={build}>
-            <Rat size={ICON.lg} aria-hidden />
-          </div>
-          {places.map(p => railItem(p, bar.includes(p.id) ? undefined : 'rail__item--more'))}
+        <nav className={cx('rail', folded && 'rail--folded')} aria-label="Sections">
+          {/* the agent: its face, its name and its mood; it opens its place. Its tip says which build this is */}
+          <a className="rail__agent" href={sectionHref('celine')} data-tip={build} aria-label={name || undefined} onClick={go('celine')}>
+            <Portrait size="sm" />
+            <span className="rail__who">
+              <span className="rail__name">{name || (!statusIn && <span className="rail__wait" />)}</span>
+              {mood && <span className="rail__mood">{mood.text}</span>}
+            </span>
+          </a>
+          {/* how it is, and what it needs from you: under its name, over the places */}
           {frozen && (
             <Button variant="ghost" className="rail__item rail__frozen" title={frozen.why} aria-haspopup="dialog"
                     onClick={() => setSheet('frozen')}>
@@ -229,28 +245,39 @@ function Shell() {
             </Button>
           )}
           {paused && (
-            <Button variant="ghost" className="rail__item" href="/settings/models"
+            <Button variant="ghost" className="rail__item rail__paused" href="/settings/models" title={folded ? 'Paused' : undefined}
                     onClick={e => { e.preventDefault(); nav.goPath('/settings/models') }}>
               <PauseCircle size={ICON.lg} aria-hidden />
               <span className="rail__label">Paused</span>
             </Button>
           )}
           {waiting > 0 && (
-            <Button variant="ghost" className="rail__item rail__item--more" title="Waiting for you"
-                    aria-label={`Waiting, ${waiting}`} aria-haspopup="dialog" onClick={() => setSheet('waiting')}>
+            <Button variant="ghost" className="rail__item rail__waiting rail__item--more" title={folded ? 'Waiting for you' : undefined}
+                    aria-label={`Waiting for you, ${waiting}`} aria-haspopup="dialog" onClick={() => setSheet('waiting')}>
               <Hand size={ICON.lg} aria-hidden />
-              <span className="rail__label">Waiting</span>
+              <span className="rail__label">Waiting for you</span>
               {count(waiting)}
             </Button>
           )}
+          {places.map((p, i) => (
+            <Fragment key={p.id}>
+              {p.group && p.group !== places[i - 1]?.group && <div className="rail__group" aria-hidden>{p.group}</div>}
+              {railItem(p, bar.includes(p.id) ? undefined : 'rail__item--more')}
+            </Fragment>
+          ))}
           <div className="rail__spacer" />
-          {railItem({ id: 'settings', icon: SettingsIcon }, 'rail__item--more')}
           {login && (
-            <Button variant="ghost" className="rail__item rail__door rail__item--more" onClick={logout} disabled={leaving}>
+            <Button variant="ghost" className="rail__item rail__door rail__item--more" title={folded ? 'Log out' : undefined}
+                    onClick={logout} disabled={leaving}>
               <DoorOpen size={ICON.lg} aria-hidden />
               <span className="rail__label">Log out</span>
             </Button>
           )}
+          <div className="rail__foot">
+            {railItem({ id: 'settings', icon: SettingsIcon }, 'rail__item--more')}
+            <IconButton icon={hidden ? ChevronsRight : ChevronsLeft} label={hidden ? 'Show names' : 'Hide names'} size="sm"
+                        className="rail__names" onClick={() => setHidden(!hidden)} />
+          </div>
           {/* the phone's fifth slot: everything else */}
           <Button variant="ghost" className="rail__item rail__more" aria-current={moreHere ? 'page' : undefined}
                   aria-haspopup="dialog" onClick={() => setSheet('more')}>

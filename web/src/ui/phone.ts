@@ -5,6 +5,7 @@ import { useCallback, useMemo, useRef, useSyncExternalStore, type PointerEvent }
 
 const PHONE = '(max-width: 767px)'
 const NARROW = '(max-width: 1023px)'
+const COMPACT = '(max-width: 1199px)'
 
 function useMedia(query: string) {
   return useSyncExternalStore(f => {
@@ -29,6 +30,9 @@ export const usePhone = () => useMedia(PHONE)
 
 /** a window too narrow for the place sidebar beside the page (a tablet or a phone) */
 export const useNarrow = () => useMedia(NARROW)
+
+/** a window too narrow for the rail's names beside a place (under 1200 px): the rail is icons */
+export const useCompact = () => useMedia(COMPACT)
 
 /** how long a finger rests on something before it is a long press */
 export const LONG_PRESS_MS = 500

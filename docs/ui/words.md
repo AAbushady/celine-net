@@ -26,6 +26,9 @@ block at the end of this file lists the words no UI string uses.
 | Word | In Celine | Same word in |
 |---|---|---|
 | (its name) | your chats with the agent (the place takes the agent's name) | ChatGPT, Claude: the chats are the home |
+| Chat | its place in the rail, under its face, name and mood at the rail's top; a phone's bottom bar has no room for both and names the tab after the agent | ChatGPT, Claude "Chats" |
+| Knowledge, Activity, Computer | the words over the rail's groups: Notebook, Documents and Messages; Intercom and Events; Terminals and Browser. The first group (Chat, Search, Missions, Routines) has none | Slack, Linear: sentence-case words over a group of places |
+| Hide names, Show names | the button beside Settings: the rail as icons, each with its name as its tip, and back; a window under 1200 px hides the names by itself | VS Code "Activity Bar"; plain |
 | Missions | long tasks it works on | |
 | Routines | its schedules and their runs | Google Home, Alexa "Routines" |
 | Notebook | its own notes | ChatGPT "Memory" for the same job |
