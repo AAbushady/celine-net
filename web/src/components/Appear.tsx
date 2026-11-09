@@ -3,7 +3,8 @@
    A conversation that loads shows its lines at once and another one replaces them at once:
    the transcript says `data-watching` from its first drawn frame on, and `data-cid`. */
 import { useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react'
-import { curve, leave, ms, OUT, reduced, useLeave } from '../ui'
+import { curve, cx, leave, ms, OUT, reduced, useLeave } from '../ui'
+import './Transcript.css'
 
 const box = (el: Element) => el.closest<HTMLElement>('.is-transcript')
 
@@ -26,8 +27,10 @@ export function useAppear(ref: RefObject<HTMLElement | null>) {
   })
 }
 
+/* `appear` (Transcript.css): a grid's item that shrinks with it, so a line that does not
+   wrap (a long command at work) ends in its ellipsis instead of widening the reply */
 export function Appear({ children, className }: { children: ReactNode; className?: string }) {
   const ref = useRef<HTMLDivElement>(null)
   useAppear(ref)
-  return <div ref={ref} className={className}>{children}</div>
+  return <div ref={ref} className={cx('appear', className)}>{children}</div>
 }

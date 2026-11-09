@@ -21,6 +21,8 @@
 .reply { display: grid; gap: var(--s-3); min-width: 0; }
 .step { display: grid; gap: var(--s-2); min-width: 0; }
 .step:empty { display: none; }
+/* a line that comes and goes (Appear): it shrinks with the step, a long one ends in "..." */
+.appear { min-width: 0; }
 
 /* a line between messages: a reminder, a brief, a note about images, a summary */
 .msg-event { margin: var(--s-2) 0 var(--s-3); }
