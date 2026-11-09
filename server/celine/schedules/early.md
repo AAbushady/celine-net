@@ -1,0 +1,1 @@
+Write {{path}} first, before the work: what this run is for and what is still to do. Fill it in as you go and write it once more at the end, so a run cut at its time limit leaves in it how far it got.

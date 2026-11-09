@@ -544,6 +544,10 @@ async def test_a_partner_and_she_alternate_up_to_the_rounds_then_her_answer_is_t
             if m["role"] in ("user", "assistant") and m["content"]]
     assert said[0][0] == "system:schedules" and said[0][1].startswith(
         "Session about 2026-10-09.")
+    early = "Write diary/2026-10-09-session.md first, before the work"
+    assert early in said[0][1], "with the prompt: the note first, kept current"
+    assert early not in said[-2][1] and "whole result of this run" in said[-2][1], \
+        "after the talk: only what the result is"
     assert [w for w, _ in said[1:]] == ["assistant"] + [
         "system:mentor", "assistant"] * 3 + ["system:schedules", "assistant"]
     assert [t for w, t in said if w == "system:mentor"] == [
@@ -755,6 +759,9 @@ async def test_a_new_note_gets_her_answer_whole(store, cfg):
     note = unstamped((cfg.her.notebook / NOTE).read_text())
     assert note.strip() == "Went well: the search.\nDid not: the mail." == row["result"]
     assert len(backend.calls) == 1, "its first final answer is the result: no second ask"
+    asked = json.dumps(backend.calls[0][-1]["content"])
+    assert f"Write {NOTE} first, before the work" in asked, \
+        "the note first and kept current, so a run cut short leaves how far it got"
 
 
 async def test_a_note_she_wrote_again_keeps_its_text_not_the_closing_line(store, cfg):

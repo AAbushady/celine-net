@@ -19,6 +19,7 @@ FILLS = {
     "sub_agents/drone.md": {"agent_name": "a", "parent": "b", "device": "Mac"},
     "schedules/final.md": {"note": ""},
     "schedules/note.md": {"path": "diary/today.md"},
+    "schedules/early.md": {"path": "diary/today.md"},
     "schedules/missing.md": {"lines": "- diary/today-review.md (Self-review): the run left no note"},
 }
 

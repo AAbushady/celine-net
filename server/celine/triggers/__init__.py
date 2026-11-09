@@ -13,7 +13,7 @@ list, its fires never in the user's intercom list): it starts a turn there, or r
 the one still running at its next step. The text is the trigger's prompt and RULE:
 nothing that needs the user ends the turn with one line for its log; something
 actionable becomes a chat for the user (`intercom__start_chat`) with a message on the
-intercom that waits for them. GET /api/background-conversations lists the background tasks and the
+intercom that waits for them; news alone is an intercom message to the user. GET /api/background-conversations lists the background tasks and the
 runs.
 """
 from __future__ import annotations
@@ -32,8 +32,9 @@ log = logging.getLogger("celine.triggers")
 
 RULE = ("This is a background task: {{username}} is not here and reads nothing of it. If "
         "nothing in it needs {{username}}, end your turn with one short line for your log. "
-        "If something needs {{username}} to act or to know now, start a chat for them with "
-        "intercom__start_chat: a title and what they read first, short and complete.")
+        "If something needs {{username}} to act or decide now, start a chat for them with "
+        "intercom__start_chat: a title and what they read first, short and complete. What "
+        "they only need to know goes to their Intercom: intercom__send to \"user\".")
 
 
 @dataclass(frozen=True)

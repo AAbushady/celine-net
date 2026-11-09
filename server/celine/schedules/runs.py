@@ -39,7 +39,8 @@ BACKGROUND, `binding`), for as long as it takes (RUN_WAIT: the run's ceiling bou
 them, never `background_wait_seconds`), named by the schedule's label, on the role's own
 model only: no other model (turns/dispatcher.py binds them so). What the result is it reads with the prompt and after the partner's
 talk, from final.md beside this file (note.md names the note): the whole result, in
-full, nothing asked again. With a partner, the partner prompt (on the same role, with the
+full, nothing asked again. With the prompt early.md asks for the note first, filled in as
+it goes, so a run cut at its ceiling leaves in it how far it got. With a partner, the partner prompt (on the same role, with the
 read-only tools of READS) and it alternate up to `rounds` lines, the partner may end
 sooner with END alone on its last line; then it is asked for its final answer. The agent's
 final answer is the result. With `note` the app writes it to that notebook path; a note
@@ -121,9 +122,10 @@ WAITED_ON = ("((c.kind = 'mission' AND {mission}) OR (c.kind = 'chat' AND "
              "c.trigger_key IS NULL))")
 
 RULE = ("This runs in the background: {{username}} is not here and reads nothing of it "
-        "live. {final} If something needs {{username}} to act or to know, start a chat "
+        "live. {final} If something needs {{username}} to act or decide, start a chat "
         "for them with intercom__start_chat: a title and what they read first, short and "
-        "complete.")
+        "complete. What they only need to know goes to their Intercom: intercom__send to "
+        "\"user\".")
 PARTNER_LINE = ("In this run you talk with {who} first. {who} answers after your reply "
                 "ends, as a new message in this conversation: write your line as your "
                 "answer and end the reply. intercom__send reaches {{username}}, not {who}.")
@@ -139,11 +141,16 @@ def _repeated(slot: datetime, tz) -> bool:
     return local.utcoffset() != local.replace(fold=0).utcoffset()
 
 
-def final_words(note: str) -> str:
+def final_words(note: str, first: bool = False) -> str:
     """final.md (with note.md's clause for `note`, the notebook path, when there is one):
-    what the result of a run is, said to it with the prompt and after a partner's talk."""
+    what the result of a run is, said to it after a partner's talk; `first`, with the
+    prompt, adds early.md: the note written first and kept current, so a run cut short
+    leaves how far it got."""
     clause = prompts.text(__file__, "note.md").strip().replace("{{path}}", note) if note else ""
-    return prompts.text(__file__, "final.md").strip().replace("{{note}}", clause)
+    words = prompts.text(__file__, "final.md").strip().replace("{{note}}", clause)
+    if first and note:
+        words += " " + prompts.text(__file__, "early.md").strip().replace("{{path}}", note)
+    return words
 
 
 class RunFailed(Exception):
@@ -673,7 +680,8 @@ class Scheduler:
             await self._backups(night)
             res = await store.read(lambda c: results(c, r["night"]))
             note = fill(cfg, s.note, day, res) if s.note else ""
-            where = final_words(note)
+            # what this run must leave, said with the prompt
+            where = final_words(note, first=True)
             # what the note is its own against: what was there before its turns; a note
             # it touched since the run began is its own whole
             start = self._note_text(note)
@@ -689,7 +697,7 @@ class Scheduler:
             if not fresh:
                 answer, final = await self._resume(cid)
             elif s.partner:
-                answer, final = await self._dialogue(rid, s, cid, prompt, day, res, where)
+                answer, final = await self._dialogue(rid, s, cid, prompt, day, res, note)
             else:
                 answer, final = await self._turn(cid, "system:schedules", "\n\n".join(
                     [prompt, cfg.substitute(RULE.replace("{final}", where))]), "trigger",
@@ -855,13 +863,13 @@ class Scheduler:
     # -- a partner
 
     async def _dialogue(self, rid: str, s, cid: str, prompt: str, day: date,
-                        res: dict, where: str) -> tuple[str, bool]:
+                        res: dict, note: str) -> tuple[str, bool]:
         """The agent and the partner alternate (module docstring); -> its final answer
-        as `_said`."""
+        as `_said`. `note`: the run's notebook path, or ""."""
         cfg = self.app.cfg
         who = s.partner.removesuffix(".md")
         sender = f"system:{who}"
-        rule = cfg.substitute(RULE.replace("{final}", where))
+        rule = cfg.substitute(RULE.replace("{final}", final_words(note, first=True)))
         line = cfg.substitute(PARTNER_LINE.replace("{who}", who))
         history = [{"role": "user", "content": (await self._turn(
             cid, "system:schedules", "\n\n".join([prompt, line, rule]), "trigger",
@@ -885,7 +893,7 @@ class Scheduler:
             if ends:
                 break
         return await self._turn(cid, "system:schedules", FINAL.replace(
-            "{who}", who).replace("{final}", where), "trigger", {"run": rid})
+            "{who}", who).replace("{final}", final_words(note)), "trigger", {"run": rid})
 
     async def _settle(self, cid: str) -> None:
         """Until its conversation is `finished`, looked at after every turn or job end;
