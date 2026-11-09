@@ -1,4 +1,4 @@
-"""The login screen: one self-contained page (styles, script and the Geist font
+"""The login screen: one self-contained page (styles, script and the Inter font
 inline), because nothing else is served before a login. Its `:root` copies the tokens
 it uses from web/src/styles/tokens.css, value for value (tests/test_auth.py checks),
 since the image ships the built UI and not its sources."""
@@ -16,7 +16,7 @@ from starlette.responses import HTMLResponse
 
 @functools.cache
 def _font() -> str:
-    raw = (Path(__file__).parent / "geist-latin.woff2").read_bytes()
+    raw = (Path(__file__).parent / "inter-latin.woff2").read_bytes()
     return base64.b64encode(raw).decode()
 
 
@@ -50,23 +50,23 @@ _PAGE = r"""<!doctype html>
 <meta name="color-scheme" content="dark">
 <title>Celine - Login</title>
 <style>
-@font-face{font-family:'Geist Variable';font-style:normal;font-display:swap;font-weight:100 900;
+@font-face{font-family:'Inter Variable';font-style:normal;font-display:swap;font-weight:100 900;
   src:url(data:font/woff2;base64,__FONT__) format('woff2')}
 :root{
-  --font-sans:  'Geist Variable', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-sans:  'Inter Variable', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono:  'JetBrains Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace;
   --text-scale: 1;
-  --t-xs:  calc(clamp(0.78125rem, 0.7582rem + 0.0974vw, 0.875rem) * var(--text-scale));
-  --t-md:  calc(clamp(0.875rem, 0.8442rem + 0.1299vw, 1rem) * var(--text-scale));
-  --t-xl:  calc(clamp(1.25rem, 1.2115rem + 0.1623vw, 1.40625rem) * var(--text-scale));
-  --lh-ui:    1.4;
+  --t-xs:  calc(0.75rem  * var(--text-scale));
+  --t-md:  calc(0.875rem * var(--text-scale));
+  --t-xl:  calc(1.25rem  * var(--text-scale));
+  --lh-ui:    1.43;
   --lh-body:  1.5;
-  --fw-regular: 450;
-  --fw-medium:  580;
-  --fw-bold:    700;
+  --fw-regular: 400;
+  --fw-medium:  500;
+  --fw-bold:    600;
   --s-1: 4px;  --s-2: 8px;  --s-3: 12px; --s-4: 16px;
   --s-5: 24px; --s-6: 32px; --s-7: 48px;
-  --h-md: 40px;
+  --h-md: 36px;
   --h-lg: 44px;
   --dialog-sm: 440px;
   --r-md: 10px;
@@ -74,22 +74,21 @@ _PAGE = r"""<!doctype html>
   --r-full: 999px;
   --dur-fast: 120ms;
   --tint: 1; --contrast: 1;
-  --bg-canvas:     oklch(from var(--accent) 0.161 calc(0.012 * var(--tint)) h);
-  --surface-1:     oklch(from var(--accent) calc(0.161 + 0.034 * var(--contrast)) calc(0.015 * var(--tint)) h);
-  --surface-2:     oklch(from var(--accent) calc(0.161 + 0.075 * var(--contrast)) calc(0.016 * var(--tint)) h);
-  --surface-3:     oklch(from var(--accent) calc(0.161 + 0.114 * var(--contrast)) calc(0.018 * var(--tint)) h);
-  --surface-4:     oklch(from var(--accent) calc(0.161 + 0.157 * var(--contrast)) calc(0.021 * var(--tint)) h);
-  --border:        oklch(from var(--accent) 0.968 calc(0.017 * var(--tint)) h / 0.09);
-  --border-strong: oklch(from var(--accent) 0.968 calc(0.017 * var(--tint)) h / 0.36);
-  --text-primary:   oklch(from var(--accent) 0.951 calc(0.009 * var(--tint)) h);
-  --text-secondary: oklch(from var(--accent) 0.820 calc(0.014 * var(--tint)) h);
-  --text-on-accent: oklch(from var(--accent) 0.215 0.048 h);
+  --bg-canvas:     oklch(from var(--accent) 0.150 calc(0.004 * var(--tint)) h);
+  --surface-1:     oklch(from var(--accent) calc(0.150 + 0.045 * var(--contrast)) calc(0.004 * var(--tint)) h);
+  --surface-2:     oklch(from var(--accent) calc(0.150 + 0.085 * var(--contrast)) calc(0.005 * var(--tint)) h);
+  --surface-3:     oklch(from var(--accent) calc(0.150 + 0.125 * var(--contrast)) calc(0.005 * var(--tint)) h);
+  --border:        oklch(from var(--accent) 0.970 calc(0.003 * var(--tint)) h / 0.09);
+  --border-strong: oklch(from var(--accent) 0.970 calc(0.003 * var(--tint)) h / 0.36);
+  --text-primary:   oklch(from var(--accent) 0.970 calc(0.003 * var(--tint)) h);
+  --text-secondary: oklch(from var(--accent) 0.790 calc(0.004 * var(--tint)) h);
+  --text-on-accent: oklch(from var(--accent) 0.180 calc(0.004 * var(--tint)) h);
   --char-rose: #F29DB9;
   --accent:             var(--char-rose);
-  --accent-fill-hover:  color-mix(in oklch, var(--accent) 88%, black);
-  --accent-wash:        color-mix(in oklch, var(--accent) 12%, transparent);
-  --accent-wash-strong: color-mix(in oklch, var(--accent) 22%, transparent);
-  --error:        #ED7665;
+  --accent-fill:        var(--text-primary);
+  --accent-fill-hover:  oklch(from var(--accent) 0.880 calc(0.004 * var(--tint)) h);
+  --error:        #EF5F6B;
+  --focus-outline: 2px solid var(--text-primary);
 }
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg-canvas);color:var(--text-primary)}
@@ -100,25 +99,25 @@ h2{margin:0 0 var(--s-2);font-size:var(--t-xl);font-weight:var(--fw-bold)}
 p{margin:0 0 var(--s-4);color:var(--text-secondary);line-height:var(--lh-body)}
 label{display:block;margin:0 0 var(--s-2);font-weight:var(--fw-medium);color:var(--text-secondary)}
 input{display:block;width:100%;height:var(--h-md);margin:0 0 var(--s-4);padding:0 var(--s-3);
-  border:1px solid var(--border-strong);border-radius:var(--r-md);background:var(--surface-2);
+  border:1px solid var(--border-strong);border-radius:var(--r-md);background:var(--bg-canvas);
   color:var(--text-primary);font:inherit}
-input:focus{outline:2px solid var(--accent);outline-offset:1px}
+input:focus{outline:var(--focus-outline);outline-offset:1px}
 @media (pointer:coarse){input{font-size:max(1rem,var(--t-md))}}
 #code{font-family:var(--font-mono);letter-spacing:.04em}
 button{display:inline-flex;align-items:center;justify-content:center;height:var(--h-lg);padding:0 var(--s-5);
-  border:0;border-radius:var(--r-md);font:var(--fw-medium) var(--t-md)/var(--lh-ui) var(--font-sans);cursor:pointer}
-button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  border:0;border-radius:var(--r-full);font:var(--fw-medium) var(--t-md)/var(--lh-ui) var(--font-sans);cursor:pointer}
+button:focus-visible{outline:var(--focus-outline);outline-offset:2px}
 button:disabled{opacity:.6;cursor:progress}
-.primary{width:100%;background:var(--accent);color:var(--text-on-accent)}
+.primary{width:100%;background:var(--accent-fill);color:var(--text-on-accent)}
 .primary:hover:not(:disabled){background:var(--accent-fill-hover)}
-.secondary{background:var(--surface-3);color:var(--text-primary)}
-.secondary:hover:not(:disabled){background:var(--surface-4)}
+.secondary{background:var(--surface-2);color:var(--text-primary)}
+.secondary:hover:not(:disabled){background:var(--surface-3)}
 .link{height:auto;padding:var(--s-1) 0;margin-top:var(--s-4);background:none;color:var(--text-secondary);
   font-weight:var(--fw-regular)}
 #v-login{display:flex;flex-direction:column;align-items:center}
-.rat{width:112px;height:112px;padding:0;border-radius:var(--r-full);background:var(--accent-wash);
-  color:var(--accent);transition:background var(--dur-fast),transform var(--dur-fast)}
-.rat:hover:not(:disabled){background:var(--accent-wash-strong);transform:scale(1.05)}
+.rat{width:112px;height:112px;padding:0;border-radius:var(--r-full);background:var(--surface-2);
+  color:var(--text-primary);transition:background var(--dur-fast),transform var(--dur-fast)}
+.rat:hover:not(:disabled){background:var(--surface-3);transform:scale(1.05)}
 .rat:active:not(:disabled){transform:scale(.97)}
 .rat svg{width:60px;height:60px}
 @media (prefers-reduced-motion:reduce){.rat{transition:none}.rat:hover:not(:disabled){transform:none}}
@@ -127,10 +126,10 @@ button:disabled{opacity:.6;cursor:progress}
 form.method{width:100%;margin-top:var(--s-5)}
 .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s-2);margin:0 0 var(--s-4)}
 .card{height:auto;flex-direction:column;gap:var(--s-1);padding:var(--s-3) var(--s-2);background:var(--surface-2);
-  color:var(--text-primary);border:1px solid var(--border);font-weight:var(--fw-medium)}
+  color:var(--text-primary);border:1px solid var(--border);border-radius:var(--r-md);font-weight:var(--fw-medium)}
 .card:hover:not(:disabled){background:var(--surface-3)}
-.card.on{border-color:var(--accent);background:var(--accent-wash)}
-.card small{font-size:var(--t-xs);font-weight:var(--fw-regular);color:var(--accent)}
+.card.on{border-color:var(--text-primary);background:var(--surface-3)}
+.card small{font-size:var(--t-xs);font-weight:var(--fw-regular);color:var(--text-secondary)}
 .pin{display:flex;gap:var(--s-2);margin:0 0 var(--s-4)}
 .pin input{flex:1;min-width:0;height:var(--h-lg);margin:0;padding:0;text-align:center;
   font:var(--fw-medium) var(--t-xl)/var(--lh-ui) var(--font-mono)}
@@ -140,8 +139,6 @@ ol{margin:0 0 var(--s-4);padding:var(--s-3) var(--s-4) var(--s-3) var(--s-7);bac
 .err{min-height:1.55em;margin:var(--s-3) 0 0;color:var(--error)}
 .err:empty{display:none}
 [hidden]{display:none!important}
-/* wide screens: about 12 % larger, like the app (tokens.css) */
-@media (min-width:1600px){main{zoom:1.15}}
 </style>
 </head>
 <body>
