@@ -31,12 +31,12 @@
   background: var(--surface-3); color: var(--text-primary);
   box-shadow: var(--e-float); position: relative; left: 50%; transform: translateX(-50%);
 }
-.jump:hover { background: var(--surface-4); color: var(--accent) }
+.jump:hover { background: var(--surface-4); }
 .composer { position: relative; }
 /* ── side panel: background jobs ──────────────────────────────────────────── */
 .job { min-width: 0 }
 .jobs:focus { outline: none }
-.jobs:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-sm) }
+.jobs:focus-visible { outline: var(--focus-outline); outline-offset: 2px; border-radius: var(--r-sm) }
 
 /* ── the side panel: tabs Model / Tools / Pages / Context ─────────────────────── */
 .panel .jobs { flex: none; }

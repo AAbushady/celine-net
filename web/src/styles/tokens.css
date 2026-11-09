@@ -3,9 +3,11 @@
    Dark only, one theme: near-black, flat. Depth is a step in lightness and nothing else:
    the rail, a place's list and the page share the canvas and are split by hairlines; a
    card is one step up, a field or a menu two. Colour is kept for what means something:
-   the agent's colour on its work in progress and on links, amber on what waits for you,
-   red on what failed, green on what is done. The one primary action is the inverse of the
-   canvas (a light fill, dark words), and so is a switch that is on.
+   the agent's colour on its links and its face, amber on what waits for you, red on what
+   failed, green on what is done. Work in progress is the full ink and a mark that moves (a
+   spinner, the dots, a shimmer), so with a rose agent it never reads as the red of a
+   failure. The one primary action is the inverse of the canvas (a light fill, dark words),
+   and so is a switch that is on.
    The greys take the hue of the agent's colour at a chroma too low to name, each at a
    fixed OKLCH lightness, so contrast is the same for every colour. Appearance scales two
    things: the chroma of the greys (--tint, 1 is the design) and the lightness step from
@@ -166,8 +168,9 @@
   --text-muted:     oklch(from var(--accent) 0.690 calc(0.005 * var(--tint)) h);  /*  7.0:1 on canvas,  4.75:1 on surface-4 (the floor is 4.5) */
   --text-on-accent: oklch(from var(--accent) 0.180 calc(0.004 * var(--tint)) h);  /* the words on the light fill */
 
-  /* the agent's colour: on its work in progress, its links and what is dropped on; never
-     on a button, a tab or the rail. Appearance changes --accent; the greys follow its hue. */
+  /* the agent's colour: on its links, the ring of its face while it speaks and what is
+     dropped on; never on a button, a tab or the rail. Appearance changes --accent; the
+     greys follow its hue. */
   --accent:             var(--char-rose);
   /* the light fill: the one primary action, a switch or a check that is on */
   --accent-fill:        var(--text-primary);
@@ -176,8 +179,8 @@
   --accent-wash:        color-mix(in oklch, var(--accent) 14%, transparent);   /* a drop target, a chip in its colour */
   --accent-wash-strong: color-mix(in oklch, var(--accent) 22%, transparent);
   --selected:           oklch(from var(--accent) 0.970 calc(0.003 * var(--tint)) h / 0.10);   /* a row picked while selecting */
-  --running:      var(--accent);  /* it is at work: its colour, pulsing */
-  --running-wash: var(--accent-wash);
+  --running:      var(--text-primary);  /* it is at work: the full ink, and a mark that moves */
+  --running-wash: var(--selected);
 
   /* the chat, and the writing surface of the large editor */
   --narration: var(--text-secondary);   /* the long text on its writing surface */

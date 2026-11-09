@@ -68,12 +68,12 @@
 .artcards { display: grid; gap: var(--s-2); margin: var(--s-3) 0 0; }
 .artcard {
   display: flex; align-items: center; gap: var(--s-3); width: min(100%, 26rem); min-height: var(--row-lg);
-  padding: 0 var(--s-4); border-radius: var(--r-md); background: var(--surface-1); box-shadow: inset 0 0 0 1px var(--border);
+  padding: 0 var(--s-4); border-radius: var(--r-md); background: var(--surface-1);
   color: var(--text-primary); text-decoration: none; transition: background var(--dur-fast) var(--ease);
 }
 .artcard[href]:hover, .artcard[href]:focus-visible { background: var(--surface-2); }
 .sharecard { display: flex; align-items: center; gap: var(--s-2); }
-.artcard__icon { flex: none; color: var(--accent); }
+.artcard__icon { flex: none; color: var(--text-muted); }
 .artcard__main { flex: 1; min-width: 0; display: grid; gap: var(--s-0); }
 .artcard__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--fw-medium); }
 .artcard__sub { font-size: var(--t-xs); color: var(--text-muted); }

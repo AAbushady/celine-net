@@ -1,7 +1,7 @@
 # Review: the design criteria and how a screen is checked
 
-A UI change counts as done when its screens pass these criteria at 1440x720 and at
-400 px wide, in the running app. The kit ([components.md](components.md)) says how a part
+A UI change counts as done when its screens pass these criteria at 1440x720, at 1280 and
+960 px wide (half of a monitor) and at 400 px wide, in the running app. The kit ([components.md](components.md)) says how a part
 is drawn and [words.md](words.md) which words it uses; this file says what a screen must do
 for the person using it. Each criterion is one check. Where an outside guideline and a
 house rule disagree, the house rule is written here and wins.

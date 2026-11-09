@@ -25,7 +25,7 @@
   position: relative; height: 100%; min-width: 0; overflow: auto; display: flex;
   align-items: flex-start; background: var(--surface-sunk); padding: var(--s-3);
 }
-.term-box--yours:focus-within { box-shadow: inset 0 0 0 2px var(--accent-wash-strong); }
+.term-box--yours:focus-within { box-shadow: inset 0 0 0 2px var(--border-strong); }
 /* overflow: xterm keeps its scrollbar track at the old height after a font change until
    the next scroll or line of output */
 .term-xterm { flex: none; overflow: hidden; font-size: var(--t-xs); transition: opacity var(--dur) var(--ease); } /* the kit's mono size (ui.css .mono) is the terminal's floor (Terminal.tsx fontMin) */

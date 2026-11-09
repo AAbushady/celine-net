@@ -21,32 +21,62 @@ Also:
 
 ---
 
+## The look
+
+Dark, near-black, flat. Every value is in `web/src/styles/tokens.css`; its head says the
+same in more detail.
+
+- **Depth is a step in lightness, nothing else.** The rail, the chats' list and the page
+  share the canvas and are split by hairlines; a card or a section is one step up
+  (`--surface-1`), a field, a menu or a dialog two (`--surface-2`). A thing at rest has no
+  shadow and no border of its own; only what floats (a menu, a dialog, a toast, a tip)
+  casts one.
+- **Colour means something.** The greys carry no colour to speak of. The agent's colour
+  (`--accent`) is on links, on the ring of its face while it speaks and on a drop target;
+  amber (`--warn`) on what waits for you; red (`--error`) on what failed; green
+  (`--success`) on what is done. Work in progress is the full ink with a mark that moves
+  (`--running`). Never colour on a button, a tab, the rail or a selection.
+- **The one primary action is the inverse of the canvas**: a light fill with dark words
+  (`--accent-fill`). A switch or a check that is on is the same light fill.
+- **What is open or picked is the full ink** on a grey step: the open row is
+  `--surface-3`, a tab is its words in `--text-primary` over a 2 px line, the open place in
+  the rail is its words in the full ink on no fill.
+- **Controls are pills** (a button, a chip, a search field, a segmented choice); a form
+  field and a row are `--r-md`, a card and a section `--r-lg`, a dialog and the composer
+  `--r-xl`.
+- **A screen is one sidebar and its page.** The rail names every place. A place with more
+  than one list shows them as tabs in its head (Place). Only the agent's chats have a list
+  beside the page.
+- **A head is its title or tabs, Search, one primary and More.** Everything rare is behind
+  More (PlaceHead).
+- A screen is checked at 1440 px, at 1280 and 960 px (half of a monitor) and at 400 px.
+
 ## Typography
 
-One scale, ratio 1.125, in `web/src/styles/tokens.css`. Each step is one clamp, fluid from a
-380 px phone to a 1920 px desktop and flat beyond, times the Appearance text size. No CSS
-outside `tokens.css` writes a font size, line height, weight or letter spacing as a number.
+Five fixed sizes in `web/src/styles/tokens.css`, times the Appearance text size, in Inter.
+No CSS outside `tokens.css` writes a font size, line height, weight or letter spacing as a
+number.
 
-| Step | Phone to desktop | For | Line height | Tracking |
+| Step | Size | For | Line height | Tracking |
 |---|---|---|---|---|
-| `--t-xs` | 12.5 to 14 px | meta: times, counts, hints, chips, small labels, mono tool bodies | `--lh-ui` | `--tracking-meta` on muted labels (menu headings, groups) |
-| `--t-md` | 14 to 16 px | every piece of UI text: rows, buttons, fields, menus, names | `--lh-ui` one line, `--lh-body` wrapping | none |
-| `--t-lg` | 16 to 18 px | reading text: bubbles, prose, the composer, documents; card and empty-state heads | `--lh-body`, the story editor `--lh-story` | `--tracking-title` when it is a title |
-| `--t-xl` | 20 to 22.5 px | place, section and dialog titles, prose h2 | `--lh-title` | `--tracking-title` |
-| `--t-2xl` | 28 to 32 px | display: the greeting name, prose h1 | `--lh-title` | `--tracking-display` |
+| `--t-xs` | 12 px | meta: times, counts, hints, chips, the words over a group, mono tool bodies | `--lh-ui` | none |
+| `--t-md` | 14 px | every piece of UI text: rows, buttons, fields, menus, names, tabs | `--lh-ui` one line, `--lh-body` wrapping | none |
+| `--t-lg` | 16 px | reading text: its reply, your bubble, prose, the composer, documents; a head's title, card, section and empty-state heads | `--lh-read` for its reply and prose, `--lh-body` otherwise, the story editor `--lh-story` | none |
+| `--t-xl` | 20 px | dialog titles, prose h2 | `--lh-title` | `--tracking-title` |
+| `--t-2xl` | 24 px | display: the greeting name, prose h1 | `--lh-title` | `--tracking-display` |
 
 - On a touch screen `--t-md` is `--t-lg`: the phone UI has one text size, 16 px at 100 %, and
   a field's label matches it. A field never goes below 16 px there, at any text size, so iOS
   never zooms into it (base.css).
 - Inline code in a sentence is `--t-code` (0.9em); a code block is `--t-md`.
-- Weights: `--fw-regular` for text, `--fw-medium` for names, labels, buttons, rows and
-  titles, `--fw-bold` for `strong` and a prose h1. Nothing else.
-- Reading widths are in em of `--t-lg`: `--measure` (the chat column, 32em of text plus the
-  bubble's padding) and `--measure-prose` (notes, documents, the story editor, 32em), about
-  66 characters a line at every text size. Forms and card grids (`--measure-form`,
-  `--measure-wide`) stay in rem.
-- Text size (Appearance) moves every step by whole steps of the scale: Small one down,
-  Large one up, Larger two up. Control heights, icons and faces stay.
+- Weights: `--fw-regular` (400) for text, a row's words in the rail and in a tool row;
+  `--fw-medium` (500) for names, labels, buttons, tabs and a list row's title; `--fw-bold`
+  (600) for titles and `strong`. Nothing is heavier.
+- Reading widths are in em of `--t-lg`: `--measure` (the chat column) and `--measure-prose`
+  (notes, documents, the story editor), both 36em, about 70 characters a line at every text
+  size. Forms and card grids (`--measure-form`, `--measure-wide`) stay in rem.
+- Text size (Appearance) scales every step: Small 13 px UI text, Large 15, Larger 16.
+  Control heights, icons and faces stay.
 
 ---
 
@@ -69,23 +99,27 @@ destroy shows as its own icon button, no menu), `actions` (a page's
 own controls, before More), `newLabel` with `onNew` or `newHref` (the one primary "New
 X"), `newPressed` (its page is open), `newDisabled` (true, or the reason as its tip),
 `tools` (a row under the head; new code uses the Toolbar and PageIndex instead).
-**Order:** title and count, Search, Select, Archive, Trash, `actions`, More, then
-New at the far right. On a shelf the title is "Archive" or "Trash" with the way back.
-**Do:** keep it one row at every width. The part measures itself and steps down until it
-fits: the words go (icon buttons with tips), then Select, Archive and Trash move into
-More, then New becomes a round "+", then the crumbs become the back arrow and the name ends
-in an ellipsis (its state beside it stays whole; the name keeps at least 8rem), last
+**Order:** title and count (or the place's tabs), Search, `actions`, More, then New at the
+far right. Select, Archive and Trash are always in More, before the caller's own items. On a
+shelf the title is "Archive" or "Trash" with the way back.
+**Do:** keep it one row at every width, with one primary and everything rare behind More.
+On the top page of a Place with `sections` the head shows them as tabs where its title
+would be, their underline on the head's hairline, the title kept for screen readers; a page
+with `back` or `crumbs`, or an open shelf, shows its own title. The part measures itself and
+steps down until it fits: the words go (icon buttons with tips), then New becomes a round
+"+", then the crumbs become the back arrow and the name ends in an ellipsis (its state
+beside it stays whole; the name keeps at least 8rem) and the tabs scroll sideways, last
 `actions` take their own line under the row, at its right. In a head narrower than 640 px
-Search takes its own full-width row under it. On a shelf New keeps its place unseen, so
-Select, Archive and Trash never move under the pointer. Its sides sit on the page's edge
-(`--edge`: the gutter, or a list page's column).
+Search takes its own full-width row under it. On a shelf New keeps its place unseen. Its
+sides sit on the page's edge (`--edge`: the gutter, or a list page's column).
 **Don't:** wrap to a second row; put a second primary in it; hand-build a head; put
-filters, Sort or Group in it (they are the Toolbar's); float a New button over the list.
+filters, Sort or Group in it (they are the Toolbar's); float a New button over the list; add
+a visible button for something used once a week (it goes in `more`).
 **Phone:** the same steps: icon buttons, a round "+", Search on its own row.
-Inside a Place, below 1024 px, it starts with the place's panel button, which opens the place
-sidebar as a Drawer from the left (left out on a page with `back` or `crumbs`). In a Place
-with `fold`, on a wide screen, the sidebar's own head starts with Close sidebar and the
-page's head with Open sidebar while the sidebar is away.
+Beside the chats' list (a Place with `side`), below 1024 px, it starts with the panel button,
+which opens the list as a Drawer from the left (left out on a page with `back` or
+`crumbs`). With `fold`, on a wide screen, the list's own head starts with Close sidebar and
+the page's head with Open sidebar while the list is away.
 
 ### Toolbar
 **When:** under a PlaceHead, for the state of a list, its filters, Sort and Group.
@@ -94,7 +128,8 @@ page's head with Open sidebar while the sidebar is away.
 Haddad" or "2 folders", `items` with `current`, `onClear`), `sort` and `group` (each a
 `ToolChoice` of `label`, `value`, `options`, `onChange`, shown as "Sort: Recent"), `toggles`
 (each a `ToolToggle`: `label` "Favourites", `icon`, `on`, `onChange`: a filter that is on or
-off, pressed while on).
+off, pressed while on), `compact` (it shares its row with something else, such as a day
+strip: the state is one button with its menu and the filters are icons at every width).
 **Do:** the state on the left, the filters as buttons that show what is picked (an x
 clears it), Sort and Group at the right end; one row that never wraps: with no room Sort and
 Group, then the filters, become icons, then the state becomes one button with its menu
@@ -109,7 +144,7 @@ While selecting, the SelectBar takes its place.
 **Props:** `icon`, `title`, `detail` (what the group is, muted: "Noir, slow burn"),
 `count` with its noun ("22 documents"), `href` or `onClick` (opens the group's own page),
 `menu` (the group's own "..." and right-click: a folder's Rename, Move to Trash), `onDrop`
-(a dragged row lands in the group; the head takes the accent wash while one is over it).
+(a dragged row lands in the group; the head takes the wash of the agent's colour while one is over it).
 **Don't:** open or close (no fold); carry more than its "...".
 `ListSection` is the head of a group in a place sidebar ("Recent", "Today"): UI size in
 `--text-secondary`, so it stands apart from the rows. With `onToggle` (and `open`) its label
@@ -174,8 +209,8 @@ one hidden file input.
 
 ### ListRow
 **When:** every row of every list.
-**Props:** `leading` (face, icon or glyph), `running` (the kit's spinner in the icon tile), `icon` (a glyph on a tile: a folder;
-`iconAccent` for the top one), `title`, `subtitle` (one line), `detail` (a third, smaller
+**Props:** `leading` (face, icon or glyph), `running` (the kit's spinner in the glyph's place), `icon` (a glyph, drawn alone in the
+muted ink, never on a tile; `iconAccent` for the top one), `title`, `subtitle` (one line), `detail` (a third, smaller
 line), `meta` (time on the right), `column` (beside the text on a wide screen: a terminal's
 conversation, a folder's faces), `cell` (a short cell before the time: "Ended",
 "20 documents"; on a phone a line under the text), `depth` (a row's steps under the row it
@@ -232,7 +267,7 @@ while all are picked), then at the right the actions, then Done.
 presets), or a pick of one of a few (a preset, a picture).
 **Props:** `media` (a face or a glyph before the title), `cover` (a picture across the
 card's whole top, to its edges: a cover), `title`, `subtitle`, `meta`, `selected`
-(a pick: the accent ring), `onClick`, `href`, `menu` (the "..." items, also right-click and
+(a pick: a ring in the full ink), `onClick`, `href`, `menu` (the "..." items, also right-click and
 long press), `menuLabel`, `children` (a few lines under the head), `actions` (buttons at its
 foot, each its own press beside the card's: Open, New folder), `pick` (the grid's
 Select: a check on the card while selecting), `tooltip`. `CardGrid` lays cards out in as
@@ -423,7 +458,7 @@ Don't: draw a form's fields by hand; show a stored secret or a part of one.
 | `StateWord` | a state as the server's word in a text tone (`tone`: muted, warn, error, success, running): "Not connected" in warn, "3 problems", "Off"; the kit has no state dot | never a dot or a light beside it; muted unless something needs a look |
 | `Chip` | one picked filter or a search token | always with an x; never a state, never a row of them |
 | `EventLine` | one quiet line in a transcript (a delivery, a reminder, a tool call) | with `detail` a click opens it in a Sheet (`detailTitle`); it never unfolds; `running`: the words shimmer (Thinking, a call going on) |
-| `Step` | the number of a step in a list of steps | `n`, `done` (a check), `current` (the accent) |
+| `Step` | the number of a step in a list of steps | `n`, `done` (a check), `current` (the light fill) |
 | `Divider` | a day in a thread | a hairline across with the words in its middle; never a chip |
 | `Quote` | someone's own words shown in the app (its vault request, the message a reply answers) | a rule on the left, `who` under it; `onClick` makes it the way to the original |
 | `Snippet` | a found passage | `text`, `words` (marked), `lines` (then an ellipsis) |
@@ -464,8 +499,10 @@ the page (the page is that list); hand-build a sidebar.
 children (the text), `time`, `versions` (`at`, `total`, `onPrev`, `onNext`), `actions` (the
 caller's buttons), `menu` (its "..." and right-click), `source` (where it came from, always
 shown), `shown` (the action row without a hover).
-**Do:** its own on `--bubble-theirs` with its face beside it, yours as a `--bubble-mine` bubble
-at the right. The action row keeps its height and shows on hover,
+**Do:** its own as text on the page with its face beside it (no bubble), at `--lh-read`;
+yours as a `--bubble-mine` bubble at the right. Its thinking is one quiet Fold line and each
+tool call one quiet row between its words; they are never folded into one summary line. The
+action row keeps its height and shows on hover,
 focus or a tap; right-click and a long press open its menu.
 
 ### ComposerBox
@@ -473,7 +510,7 @@ focus or a tap; right-click and a long press open its menu.
 **Props:** `value`, `onChange`, `onSend`, `onStop`, `running`, `ready`, `placeholder`,
 `label`, `start` (the plus, Attach), `tools` (before Send), `files` (on their way in, above
 the text), `disabled` (why it cannot send: Send's tip), `inputRef`, `onKeyDown`, `onPaste`.
-**Do:** the one raised object: `--r-xl`, `--e-float`, the halo on focus; Enter sends,
+**Do:** `--r-xl` on `--surface-1` with a hairline edge that strengthens on focus; Enter sends,
 Shift+Enter is a new line; Send becomes Stop while it answers.
 
 ### Picture
@@ -481,7 +518,7 @@ Shift+Enter is a new line; Send becomes Stop while it answers.
 **Props:** `src`, `full` (the file the Viewer shows when `src` is a smaller copy), `name` (never a file name), `ratio`, `more` (its "...", right-click and
 the Viewer's menu), `gallery` with `at` (the Viewer flips through them), `viewer`
 (`actions`, `panel`, `caption` for the Viewer), `onOpen` (a page of its own opens it in
-place of the Viewer here), `current` (the open one: the accent ring), `pick` (a check while
+place of the Viewer here), `current` (the open one: a ring in the full ink), `pick` (a check while
 selecting),
 `favourite` with `onFavourite` (the heart), `making` (on its way: a breathing surface with
 "Creating image").
@@ -508,7 +545,7 @@ Every duration and curve is a token (`tokens.css`); only `opacity` and `transfor
 | `--dur-slow` 320 ms | large enters: a dialog, a sheet, a drawer, the Viewer |
 | `--ease` | enter and move |
 | `--ease-exit` | leave |
-| `--ease-spring` | the rail's pill only: a destination; tabs and Segmented glide on `--ease` |
+| `--ease-spring` | a sheet springing back after a drag too short to close it; tabs and Segmented glide on `--ease` |
 
 Enter is slower than exit: a drawer slides in on `--dur-slow --ease` and out on
 `--dur --ease-exit`. Keyframes in `base.css`: `fade`, `rise`, `grow`, `pulse`, `sheet-up`,
@@ -521,7 +558,7 @@ Enter is slower than exit: a drawer slides in on `--dur-slow --ease` and out on
 | `glideAfter(el)` | before a change that resizes `el` alone (Fold): what follows it up to its scroller glides from where it was |
 | `useReplaced(ref)` | what takes a skeleton's place fades in (LoadingRow has it) |
 | `usePush(ref, depth)` | a phone: a deeper page pushes in from the right, back reverses it (PlaceHead has it) |
-| `useSlide` (`ui/slide.ts`) | one mark that slides to the chosen item: rail, Tabs, Segmented, Radios |
+| `useSlide` (`ui/slide.ts`) | one mark that slides to the chosen item: Tabs, Segmented, Radios |
 
 A place switch fades the new place in over the one left (`App.tsx`). Press is
 `scale(0.98)` on `:active` with `transform` in the transition. A row that scrolls into view
@@ -534,6 +571,6 @@ working marks (spin, dots) keep moving at half speed.
 
 | Part | When |
 |---|---|
-| `Rail` | the app's left column of places; the phone's scrollable bottom bar of icons |
-| `Tabs` | only the agent's side panel (Model, Tools, Pages, Context, Sub-agents). Nowhere else |
+| `Rail` | the app's one sidebar: the agent at its top (face, name, mood), Waiting for you while something waits, every place by its name in its group, Settings at its foot with Hide names beside it; icons under 1200 px or with the names hidden; the phone's bottom bar |
+| `Tabs` | a place's sections in its head (PlaceHead draws them from the Place), and the agent's side panel (Model, Tools, Pages, Context, Sub-agents) |
 | `DisclosureArrow` | only in a Tree, a Fold and a folding ListSection |
