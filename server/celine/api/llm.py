@@ -10,7 +10,7 @@ router = APIRouter(prefix="/api")
 
 @router.get("/llm-queue")
 async def queue(request: Request) -> dict:
-    """Same shape as the `llm.queue` event on the global feed (WS /ws/events)."""
+    """The model queue as it is now: {type, running, waiting} (Queue.snapshot)."""
     llm = request.app.state.services.llm
     if llm is None:
         return {"type": LLM_QUEUE, "running": [], "waiting": []}

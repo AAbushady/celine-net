@@ -727,8 +727,8 @@ through the same Router (below) but do not queue here.
   run), which waits like any turn (`LLM.wait_timeout`). Waiting time is credited to the turn's clock.
 
 - **Visible.** Each call appends durable `llm.queue` events to the conversation
-  (`waiting`, `running`, `left`); the global feed gets a `llm.queue` snapshot on every
-  change; `GET /api/llm-queue` returns the same (`Queue.snapshot`, `Ticket.public`).
+  (`waiting`, `running`, `left`); `GET /api/llm-queue`
+  returns the queue as it is now (`Queue.snapshot`, `Ticket.public`).
 
 ### The work queue
 

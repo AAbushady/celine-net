@@ -152,7 +152,9 @@ def build_app(cfg: config_mod.Config, dev: bool) -> FastAPI:
                 reload.refill(cfg)
             # the one LLM queue and router, before anything that asks a model (document
             # descriptions start with the first scan, captions with their scheduler)
-            llm = services.llm = llm_mod.LLM(cfg, store.emit_global)
+            # no `publish`: a snapshot on every change filled the global feed's ring
+            # (13,000 of its 20,000 rows); GET /api/llm-queue has the queue as it is
+            llm = services.llm = llm_mod.LLM(cfg)
             from .settings import features     # what is on now (hot: core/runners.py)
             from .core.runners import Runner, Runners
             on = features.effective(cfg.settings.features)

@@ -262,7 +262,7 @@ export const api = {
     } while (cursor)
     return all
   },
-  /** the same snapshot as the feed's `llm.queue` event */
+  /** the model queue as it is now */
   llmQueue: () => request<QueueSnapshot>('/llm-queue'),
   /** one conversation's background jobs, running first, then the newest */
   jobs: (conversation: string, limit: number) =>
