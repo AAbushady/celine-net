@@ -317,13 +317,16 @@ class IntercomSkill:
         title: Annotated[str, "The chat's name: its topic in 2 to 4 plain words, like "
                               "\"Shell wedge\" or \"Invoice due\". Not a sentence, not "
                               "a headline."],
-        text: Annotated[str, "What {{username}} reads first: what happened and what it "
-                             "needs from them, short and complete."],
+        text: Annotated[str, "What {{username}} reads first: what happened and what you "
+                             "need from them, short and complete."],
     ) -> ToolResult:
-        """Start a chat for {{username}} about something they need to act on or know now.
-        Check intercom__read first: when they have it already (a thread, an open bug
-        report), add to that thread instead. Your text is your first message in the new
-        chat, which waits for them in their chat list; when they answer, you go on there."""
+        """Start a chat for {{username}} when you need them: their answer, a decision, or
+        something only they can do. What they only need to know (a finding, a correction,
+        news) goes to their Intercom instead, intercom__send to "user"; they move it into a
+        chat when they want to talk about it. Check intercom__read first: when they have it
+        already (a thread, an open bug report), add to that thread instead. Your text is your
+        first message in the new chat, which waits for them in their chat list; when they
+        answer, you go on there."""
         from ..conversations import store as conversations, tree
         from ..events import notice
         if not title.strip() or not text.strip():

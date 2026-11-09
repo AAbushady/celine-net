@@ -38,8 +38,11 @@ intercom__read(thread=409) shows one whole thread.
 
 A message to "user" is in {{username}}'s Intercom section in the app, where they read
 it: it tells them something from where they are not, a background task or a mission.
-They do not answer there: when you need them, start a chat (intercom__start_chat,
-below). In a chat with them, your reply is your message, and they are told of it; a
+Everything they only need to know goes there, never into a chat: a finding, a
+correction, news, what a run did. They read it there, and when they want to talk about
+it, they move it into a chat themselves (Continue in a chat). They do not answer there:
+when you need them (their answer, a decision, something only they can do), start a chat
+(intercom__start_chat, below). In a chat with them, your reply is your message, and they are told of it; a
 message for them later is a reminder to "me" at that time, then your reply.
 
 attachments=["f5ef648c"] sends files along by their short ids: one on your own message
@@ -62,7 +65,7 @@ intercom__cancel(id) cancels a scheduled message that has not landed; it stays l
 cancelled.
 
 In a background task or a mission, intercom__start_chat(title, text) starts a chat for
-{{username}}: the text is your first message there and waits for them in their chat list;
+{{username}} when you need them, never for news: the text is your first message there and waits for them in their chat list;
 when they answer, you go on there with them. Check intercom__read first: when they have
 it already, add to that thread. The result lists what they got from the same place in
 the last 24 h (a bug report still open, a thread, a chat you started), with what it
