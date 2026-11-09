@@ -324,7 +324,7 @@ class Video:
 async def probe(cfg, services) -> dict[str, str]:
     """Settings, Features: the watch helper at the saved address (else the default) answers /health with the
     app's key."""
-    from ..errors import bad_key, her_bad_key, her_not_set_up, her_unreachable, not_set_up, unreachable_words
+    from ..errors import bad_key, agent_bad_key, agent_not_set_up, agent_unreachable, not_set_up, unreachable_words
     saved = services_mod.url(cfg, SERVICE)
     at = saved or services_mod.default(SERVICE)
     found = {} if saved else {"url": at}
@@ -334,12 +334,12 @@ async def probe(cfg, services) -> dict[str, str]:
     except httpx.HTTPError as e:
         if not saved:
             return {"state": "unset", "detail": not_set_up("the watch helper"),
-                    "why": her_not_set_up("the watch helper")}
+                    "why": agent_not_set_up("the watch helper")}
         return {"state": "missing", "detail": unreachable_words("the watch helper", at, e),
-                "why": her_unreachable("the watch helper", at)}
+                "why": agent_unreachable("the watch helper", at)}
     if r.status_code in (401, 403):
         return {"state": "missing", "detail": bad_key("the watch helper", at),
-                "why": her_bad_key("the watch helper", at), "key": True, **found}
+                "why": agent_bad_key("the watch helper", at), "key": True, **found}
     if r.status_code >= 400:
         return {"state": "missing", "detail": f"The watch helper at {urlsplit(at).netloc} answered with error "
                                               f"{r.status_code}.", **found}

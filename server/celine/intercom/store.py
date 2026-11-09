@@ -95,8 +95,8 @@ def follows(c: sqlite3.Connection, sender: str, to: str, turn: str) -> int | Non
 
 
 # the names people read for the user and for it; the settings set them when they load
-# (settings.compile_her)
-NAMES: dict = {"user": "you", "her": ""}
+# (settings.compile_agent)
+NAMES: dict = {"user": "you", "agent": ""}
 # the app's own senders by name: the app, and Bastet, the guard (guard/bastet.py)
 SYSTEM_NAMES = {"app": "the app", "guard": "Bastet"}
 
@@ -115,7 +115,7 @@ def name_of(c: sqlite3.Connection, addr: str) -> str | None:
     r = c.execute("SELECT coalesce(mi.name, c.agent_name) AS name "
                   "FROM conversations c LEFT JOIN missions mi ON mi.conversation_id = c.id "
                   "WHERE c.id=?", (rest,)).fetchone()
-    return None if r is None else r["name"] or NAMES["her"]
+    return None if r is None else r["name"] or NAMES["agent"]
 
 
 def source_of(c: sqlite3.Connection, addr: str) -> dict | None:
@@ -203,11 +203,16 @@ def state(c: sqlite3.Connection, r: sqlite3.Row) -> str:
 
 def listed(c: sqlite3.Connection, to: str | None = None, from_addr: str | None = None,
            scheduled: bool = False, thread: int | None = None, after: int = 0,
-           limit: int | None = None) -> list[dict]:
+           limit: int | None = None, waiting: bool = False) -> list[dict]:
     """Messages to `to` (a stored address) and from `from_addr`, in thread `thread`, with
     an id above `after`, oldest first; with `scheduled` only those with a due time, by
-    due time. Each with its `text` and `state`."""
+    due time; with `waiting` only those that wait for the user outside a bug report (a
+    mission's page: what it asked). Each with its `text`
+    and `state`."""
     sql, args = "SELECT * FROM intercom i WHERE i.id > ?", [after]
+    if waiting:
+        sql += f" AND {_UNREAD} AND NOT {BUG}"
+        args += ["user", now()]
     if to:
         sql += (" AND EXISTS (SELECT 1 FROM intercom_deliveries d WHERE "
                 "d.intercom_id = i.id AND d.to_addr = ?)")
@@ -248,6 +253,14 @@ def read(c: sqlite3.Connection, ids: list[int]) -> list[int]:
     return out
 
 
+def read_from(c: sqlite3.Connection, addr: str) -> list[int]:
+    """Every message from `addr` outside a bug report that waits for the user becomes
+    read (a mission that stopped asks nothing any more). -> the ids changed."""
+    return read(c, [r[0] for r in c.execute(
+        f"SELECT i.id FROM intercom i WHERE i.from_addr = ? AND {_UNREAD} AND NOT {BUG}",
+        (addr, "user", now()))])
+
+
 # SQL: 1 when message `i` waits for the address in its first ?: delivered to nobody
 # there yet and due by the second ?
 _UNREAD = ("EXISTS (SELECT 1 FROM intercom_deliveries d WHERE d.intercom_id = i.id AND "
@@ -262,12 +275,29 @@ PLAIN = ("(i.from_addr = 'user' AND i.to_addr <> 'user' AND i.kind = 'message' A
          "i.due_at IS NULL AND i.until_at IS NULL AND i.reply_to IS NULL)")
 
 # A thread the app opened into a background task (a trigger's fire, a run's prompt and
-# its partner's lines, a notice): it stays inside that conversation, never listed.
+# its reviewer's lines, a notice): it stays inside that conversation, never listed.
 # What it sends from there in a thread of its own (to the user) is listed.
 BACKGROUND = ("EXISTS (SELECT 1 FROM intercom r JOIN intercom_deliveries d ON "
               "d.intercom_id = r.id JOIN conversations bg ON bg.id = d.conversation_id "
               "WHERE r.id = i.thread AND r.from_addr LIKE 'system:%' AND "
               "bg.kind = 'background')")
+
+# A bug report's thread (bugreports/store.py): an Intercom thread of its own, whoever filed it.
+BUG = "i.thread IN (SELECT thread FROM bugreports WHERE thread IS NOT NULL)"
+
+# Sent by a mission outside a bug report: what it writes to the user has the mission as its
+# home (its page's Waiting for you, waits.py), not the Intercom's Waiting for you.
+MISSION_FROM = ("(i.from_addr IN (SELECT 'agent:' || conversation_id FROM missions) AND "
+                f"NOT {BUG})")
+
+# The app's own notice into a mission (its keep-going line, its time limit, a restart):
+# in the mission's transcript, never listed as a thread.
+APP_TO_MISSION = ("(i.from_addr = 'system:app' AND i.kind = 'notice' AND "
+                  "i.to_addr IN (SELECT 'agent:' || conversation_id FROM missions))")
+
+# A message of the agent's that lands in its own chat as its message there at its due
+# time (intercom/skill.py send from a chat, deliver.py): never listed as a thread.
+SAY = "json_extract(i.data, '$.say') IS NOT NULL"
 
 
 # A thread for the user: a message in it came to them. The Intercom tells them things; they
@@ -314,7 +344,10 @@ def threads(c: sqlite3.Connection, addr: str | None, unread: bool = False,
     activity first, as {thread, last (its newest id), count, unread (waiting for
     `reader`, default `addr`), with (everyone in it but `reader`, addresses), name (them
     by name)}. Only messages of `kind`; without it, no job results (`jobs` counts them).
-    Never the threads of a background task (BACKGROUND: GET /api/background-conversations has them).
+    Never the threads of a background task (BACKGROUND: GET /api/background-conversations has them),
+    the app's notices into a mission (APP_TO_MISSION) or what lands in a chat as the
+    agent's own message (SAY). With `unread` for the user, never a thread whose waiting
+    messages a mission sent (MISSION_FROM: they wait on the mission).
     The user's plain chat messages are never listed; cancelled ones are (marked by the
     newest's state). `with_`: only the threads someone is in by that name, address or
     conversation id ("user": the user). The name leaves out the app's senders when
@@ -323,10 +356,11 @@ def threads(c: sqlite3.Connection, addr: str | None, unread: bool = False,
     `user_in`: only the threads the user is in (WITH_USER), as the user's lists show them."""
     ts, reader = now(), reader or addr
     mine, margs = _mine(addr, received)
-    where = f"NOT {PLAIN} AND NOT {BACKGROUND} AND {mine}"
+    where = (f"NOT {PLAIN} AND NOT {BACKGROUND} AND NOT {APP_TO_MISSION} AND NOT {SAY} "
+             f"AND {mine}")
     if user_in:
         where += f" AND {WITH_USER}"
-    args = [reader, ts, *margs]
+    args = [reader, ts, reader, ts, *margs]
     if kind:
         where += " AND i.kind = ?"
         args.append(kind)
@@ -337,6 +371,7 @@ def threads(c: sqlite3.Connection, addr: str | None, unread: bool = False,
         args.append(ts)
     rows = c.execute(
         f"SELECT i.thread, max(i.id) AS last, count(*) AS n, sum({_UNREAD}) AS unread, "
+        f"sum({_UNREAD} AND {MISSION_FROM}) AS homed, "
         "(SELECT group_concat(a, ', ') FROM (SELECT t.from_addr || ', ' || t.to_addr AS a "
         "  FROM intercom t WHERE t.thread = i.thread ORDER BY t.id)) AS addrs "
         f"FROM intercom i WHERE {where} GROUP BY i.thread " +
@@ -352,8 +387,9 @@ def threads(c: sqlite3.Connection, addr: str | None, unread: bool = False,
     out = []
     for r in rows:
         others = list(dict.fromkeys(a for a in r["addrs"].split(", ") if a != reader))
-        # Bastet's threads have their own tab (with_ GUARD), never Waiting for you
-        if unread and GUARD in others:
+        # Bastet's threads have their own tab (with_ GUARD), never Waiting for you; what
+        # a mission asks waits on the mission
+        if unread and (GUARD in others or (reader == "user" and r["homed"] == r["unread"])):
             continue
         if want and not any(want in (a, a.partition(":")[2], named(a)) for a in others):
             continue
@@ -363,12 +399,6 @@ def threads(c: sqlite3.Connection, addr: str | None, unread: bool = False,
         out.append({"thread": r["thread"], "last": r["last"], "count": r["n"],
                     "unread": r["unread"], "with": others, "name": name})
     return out
-
-
-def waiting(c: sqlite3.Connection, addr: str) -> int:
-    """How many messages wait for `addr` (the user: landed and not read yet): the
-    unread of the threads its Waiting list shows, so a badge and the list agree."""
-    return sum(t["unread"] for t in threads(c, addr, unread=True, received=True))
 
 
 def waiting_ids(c: sqlite3.Connection, addr: str) -> list[int]:
@@ -439,13 +469,13 @@ def thread_view(c: sqlite3.Connection, t: dict) -> dict:
 
 def grouped(c: sqlite3.Connection, found: list[dict], per: int, limit: int,
             before: int | None = None) -> tuple[list[dict], int | None]:
-    """The threads of `threads` grouped by who they are with, by name (her chats are one
+    """The threads of `threads` grouped by who they are with, by name (the agent's chats are one
     group "Celine", whatever conversation each thread sits in; a sub-agent by its name),
     the group with the newest activity first: {name, addresses (every address of that
     name in these threads), threads (how many), waiting (how many of them wait), items
-    (its `per` newest threads, as thread_view), more (the rest)}. `limit` groups, those
-    whose newest thread is below `before`. -> (the groups, the `before` of the next page
-    or None)."""
+    (its `per` newest threads, as thread_view; all of them when one alone would be left
+    over), more (the rest)}. `limit` groups, those whose newest thread is below `before`.
+    -> (the groups, the `before` of the next page or None)."""
     groups: dict[str | tuple, dict] = {}
     for t in found:
         g = groups.setdefault(t["name"] or tuple(sorted(t["with"])), {
@@ -454,13 +484,13 @@ def grouped(c: sqlite3.Connection, found: list[dict], per: int, limit: int,
         g["addresses"] += [a for a in t["with"] if a not in g["addresses"]]
         g["threads"] += 1
         g["waiting"] += 1 if t["unread"] else 0
-        if len(g["items"]) < per:
-            g["items"].append(t)
-        else:
-            g["more"] += 1
+        g["items"].append(t)
     rows = [g for g in groups.values() if before is None or g["newest"] < before]
     page, rest = rows[:limit], rows[limit:]
     for g in page:
+        if len(g["items"]) > per + 1:         # "Show more" never hides a single thread
+            g["more"] = len(g["items"]) - per
+            g["items"] = g["items"][:per]
         g["items"] = [thread_view(c, t) for t in g["items"]]
     return page, (page[-1]["newest"] if rest else None)
 

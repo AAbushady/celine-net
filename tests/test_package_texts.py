@@ -21,6 +21,10 @@ FILLS = {
     "schedules/note.md": {"path": "diary/today.md"},
     "schedules/early.md": {"path": "diary/today.md"},
     "schedules/missing.md": {"lines": "- diary/today-review.md (Self-review): the run left no note"},
+    "schedules/background.md": {"final": "Your answer is the result."},
+    "schedules/reviewer_first.md": {"who": "mentor"},
+    "schedules/talk_over.md": {"who": "mentor", "final": "Your answer is the result."},
+    "schedules/line.md": {"n": 1, "turns": 8},
 }
 
 
@@ -40,7 +44,6 @@ def test_fill_says_once_what_nothing_fills(tmp_path, monkeypatch):
     monkeypatch.setenv("CELINE_DATA_DIR", str(tmp_path / "var"))
     cfg = load()
     (tmp_path / "t.md").write_text("Summarise for {{username}} in {{words}} words, {{style}}.\n")
-    prompts.text.cache_clear()
     assert prompts.fill(cfg, str(tmp_path / "m.py"), "t.md", words=100).startswith("Summarise for ")
     assert [str(p) for p in cfg.problems if "nothing fills" in str(p)] == \
         [f"{tmp_path.name}/t.md: nothing fills {{{{style}}}}"]

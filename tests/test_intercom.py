@@ -175,11 +175,11 @@ async def test_the_users_reply_marks_the_thread_read(store):
     a = await ic.send(f"agent:{parent}", "", "the blue", reply_to=asked["intercom_id"])
     b = await ic.send(f"agent:{parent}", "", "or the red", reply_to=asked["intercom_id"])
     other = await ic.send(f"agent:{parent}", "user", "elsewhere")
-    assert await store.read(lambda c: rows.waiting(c, "user")) == 3
+    assert await store.read(lambda c: _waiting(rows, c)) == 3
     gid = await store.read(lambda c: c.execute("SELECT max(id) FROM global_events"
                                                ).fetchone()[0])
     await ic.send("user", "", "blue", reply_to=b["intercom_id"])
-    assert await store.read(lambda c: rows.waiting(c, "user")) == 1, "the other thread waits"
+    assert await store.read(lambda c: _waiting(rows, c)) == 1, "the other thread waits"
     changed = await store.read(lambda c: [json.loads(r[0])["intercom_id"] for r in c.execute(
         "SELECT data FROM global_events WHERE id > ? AND type='intercom.state'", (gid,))])
     assert {a["intercom_id"], b["intercom_id"]} <= set(changed)
@@ -353,7 +353,7 @@ async def test_a_named_token_sends_on_the_intercom_only_a_revoked_one_gets_404(s
         "the refused ones sent nothing"
 
 
-async def test_her_threads_group_by_who_and_chat_and_job_results_are_no_threads(store, cfg):
+async def test_the_agents_threads_group_by_who_and_chat_and_job_results_are_no_threads(store, cfg):
     """Celine's note: one-message threads from chat traffic and job results buried the
     threads that matter."""
     import httpx
@@ -370,21 +370,21 @@ async def test_her_threads_group_by_who_and_chat_and_job_results_are_no_threads(
         await put("user", f"agent:{parent}", "message", t)
     for _ in range(2):
         job = await put(f"agent:{parent}", f"agent:{parent}", "job", "made it")
-    for n in range(4):
+    for n in range(5):
         await put(f"agent:{scout}", f"agent:{parent}", "report", f"found {n}", subject=f"s{n}")
     await put(f"agent:{parent}", "user", "message", "done?")
 
     skill, ctx = IntercomSkill(cfg), ToolContext(parent, "t", "k", store, cfg, None)
     out = (await skill.read(ctx)).content.splitlines()
     assert out[0].startswith("with ") and out[0].endswith(": 1 thread")    # the user
-    assert out[2] == "with scout one: 4 threads, 4 waiting"
-    assert [ln.split(":")[0] for ln in out[3:6]] == ['  #9 "s3"', '  #8 "s2"', '  #7 "s1"']
-    assert out[6] == '  and 1 more: intercom__read(with="scout one").'
+    assert out[2] == "with scout one: 5 threads, 5 waiting"
+    assert [ln.split(":")[0] for ln in out[3:6]] == ['  #10 "s4"', '  #9 "s3"', '  #8 "s2"']
+    assert out[6] == '  and 2 more: intercom__read(with="scout one").'
     assert out[7] == f'2 job results, newest #{job}: intercom__read(kind="job").'
     assert len(out) == 8 and not any("hi" in ln for ln in out)
-    assert len((await skill.read(ctx, with_="scout one")).content.splitlines()) == 5
-    jobs = (await skill.read(ctx, kind="job")).content
-    assert jobs.count("made it") == 2 and "job results" not in jobs
+    assert len((await skill.read(ctx, with_="scout one")).content.splitlines()) == 6
+    # kind="job" lists the job rows (none here), test_find_own.py
+    assert (await skill.read(ctx, kind="job")).content == "No jobs yet."
     assert "wait for you" not in (await skill.tail_part(ctx) or "")
 
     app = FastAPI()
@@ -419,9 +419,9 @@ async def test_two_counterparts_with_one_name_show_their_addresses(store, cfg):
     assert f'#2 "s" with agent:{b}: 1 message' in out and f'#1 "s" with agent:{a}: 1 message' in out
 
 
-async def test_the_badge_counts_what_waiting_lists_and_dismiss_all_reads_it(store):
-    """The rail's badge (/api/changes `unread`) and the Waiting list are one count: a
-    note to yourself waits and is listed, a job result is neither."""
+async def test_waiting_lists_a_note_and_dismiss_all_reads_it(store):
+    """The Waiting list: a note to yourself waits and is listed, a job result is
+    neither; Dismiss all reads what it lists."""
     import httpx
     from fastapi import FastAPI
     from celine.intercom import Intercom, api as intercom_api, store as rows
@@ -433,7 +433,7 @@ async def test_the_badge_counts_what_waiting_lists_and_dismiss_all_reads_it(stor
     found = await store.read(lambda c: rows.threads(c, "user", unread=True, reader="user",
                                                     received=True))
     assert len(found) == 2 and "Celine" in {t["name"] for t in found}
-    assert await store.read(lambda c: rows.waiting(c, "user")) == \
+    assert await store.read(lambda c: _waiting(rows, c)) == \
         sum(t["unread"] for t in found) == 2
 
     app = FastAPI()
@@ -443,11 +443,11 @@ async def test_the_badge_counts_what_waiting_lists_and_dismiss_all_reads_it(stor
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
                                  base_url="http://t") as http:
         assert len((await http.post("/api/intercom/read?all=1")).json()["read"]) == 2
-    assert await store.read(lambda c: rows.waiting(c, "user")) == 0
+    assert await store.read(lambda c: _waiting(rows, c)) == 0
 
 
 async def test_a_background_tasks_threads_stay_inside_it(store):
-    """A partner's lines into a run, a trigger's fire into a background task and its
+    """A reviewer's lines into a run, a trigger's fire into a background task and its
     reply in those threads are never listed; its own message to the user is."""
     from celine.intercom import Intercom, store as rows
     ic = Intercom(store)
@@ -464,7 +464,7 @@ async def test_a_background_tasks_threads_stay_inside_it(store):
     assert await store.read(lambda c: rows.threads(c, None, kind="trigger")) == []
 
 
-async def test_her_answer_to_a_host_script_reaches_the_user(store):
+async def test_the_agents_answer_to_a_host_script_reaches_the_user(store):
     from celine.intercom import Intercom, tokens
     await store.write(lambda c: tokens.make(c, "server-updates"))
     cid = await conversations.create(store)
@@ -515,8 +515,8 @@ async def test_a_reply_wakes_a_conversation_whose_turn_was_stopped(store):
     assert reply["turn_id"] and reply["turn_id"] != tid, "the reply starts its next turn"
 
 
-async def test_her_chats_are_one_group_for_the_user(store, cfg):
-    """Group by who: her threads from different chats are one group "Celine" with every
+async def test_the_agents_chats_are_one_group_for_the_user(store, cfg):
+    """Group by who: the agent's threads from different chats are one group "Celine" with every
     chat's address, and `with=Celine` lists them all (the Intercom page's From filter)."""
     import httpx
     from fastapi import FastAPI
@@ -592,7 +592,7 @@ async def test_archive_moves_a_thread_out_of_the_lists_until_something_newer_lan
     async with await _archive_app(store) as http:
         assert (await http.post("/api/intercom/threads/archive",
                                 json={"threads": [a, 99999]})).json() == {"archived": [a]}
-        assert await store.read(lambda c: rows.waiting(c, "user")) == 1, "it was read"
+        assert await store.read(lambda c: _waiting(rows, c)) == 1, "it was read"
         assert _listed((await http.get("/api/intercom/threads?with=all")).json()) == {b}
         assert _listed((await http.get("/api/intercom/threads?with=all&archived=true")).json()) == {a}
         assert (await http.get(f"/api/intercom?thread={a}")).json()["archived"] is True
@@ -602,7 +602,7 @@ async def test_archive_moves_a_thread_out_of_the_lists_until_something_newer_lan
         await ic.send(f"agent:{cid}", "user", "it failed again", reply_to=a)
         assert _listed((await http.get("/api/intercom/threads?with=all")).json()) == {a, b}
         assert _listed((await http.get("/api/intercom/threads?with=all&archived=true")).json()) == set()
-        assert await store.read(lambda c: rows.waiting(c, "user")) == 2
+        assert await store.read(lambda c: _waiting(rows, c)) == 2
         assert (await http.get(f"/api/intercom?thread={a}")).json()["archived"] is False
 
         await http.post("/api/intercom/threads/archive", json={"threads": [a]})
@@ -624,7 +624,7 @@ async def test_a_scheduled_message_brings_an_archived_thread_back_when_it_lands(
         await store.write(lambda c: c.execute(
             "UPDATE intercom SET due_at='2000-01-01T00:00:00.000+00:00' WHERE id=?", (later,)))
         assert _listed((await http.get("/api/intercom/threads?with=all")).json()) == {a}
-        assert await store.read(lambda c: rows.waiting(c, "user")) == 1
+        assert await store.read(lambda c: _waiting(rows, c)) == 1
 
 
 async def test_archive_read_takes_what_is_done_and_leaves_what_is_not(store):
@@ -652,3 +652,6 @@ async def test_archive_read_takes_what_is_done_and_leaves_what_is_not(store):
         page = (await http.get("/api/intercom/threads?with=all&archived=true")).json()
         assert _listed(page) == {done, closed}
         assert (await http.post("/api/intercom/threads/archive?read=1")).json() == {"archived": []}
+def _waiting(rows, c) -> int:
+    """How many messages the user's Waiting list holds: the unread of its threads."""
+    return sum(t["unread"] for t in rows.threads(c, "user", unread=True, received=True))

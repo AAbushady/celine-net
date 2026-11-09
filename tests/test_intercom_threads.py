@@ -22,7 +22,7 @@ async def _asked(store, ic, cid):
     return other, first
 
 
-async def test_a_message_she_sends_from_that_turn_answers_in_the_thread(store, cfg):
+async def test_a_message_the_agent_sends_from_that_turn_answers_in_the_thread(store, cfg):
     """The agent's instructions name the thread; no reply_to needed; one it meant as new starts
     its own; another turn under the same subject starts its own too (no endless thread
     on a word like "update")."""
@@ -87,6 +87,7 @@ async def test_bastets_threads_wait_on_their_own_tab_not_waiting_for_you(store):
         insert(c, f"agent:{cid}", "user", "message", "hi", store=store)
         waiting = rows.threads(c, "user", unread=True, reader="user", received=True)
         guard = rows.threads(c, None, reader="user", with_=rows.GUARD)
-        return [t["name"] for t in waiting], [t["name"] for t in guard], rows.waiting(c, "user")
+        return ([t["name"] for t in waiting], [t["name"] for t in guard],
+                sum(t["unread"] for t in waiting))
     waiting, guard, n = await store.write(fn)
     assert waiting == ["Celine"] and guard == ["Bastet"] and n == 1

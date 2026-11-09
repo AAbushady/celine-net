@@ -30,11 +30,20 @@ by itself. new_thread=true starts a new thread.
 intercom__read lists your threads by who they are with, newest activity first: one
 line per counterpart ("with scout: 4 threads, 2 waiting"), then its 3 newest threads
 and a count of the rest. {{username}}'s plain chat messages are no threads: they are
-in the conversation. Job results are one line ("2 job results, newest #530"), listed
-with kind="job". with="scout" (a name, "user" or a conversation id) lists every thread
-with them, kind="report" (message, brief, report, job, notice, trigger) only messages
-of that kind, unread=true only threads with messages waiting for you.
+in the conversation. Job results are one line ("2 job results, newest #530").
+with="scout" (a name or a conversation id) lists every thread with them,
+kind="report" (message, brief, report, notice, trigger) only messages of that kind,
+unread=true only threads with messages waiting for you.
 intercom__read(thread=409) shows one whole thread.
+
+with="user" lists every thread between {{username}} and any of your conversations
+(chats, missions, runs, tasks), newest activity first, one line each: its number and
+subject, where it lives (kind, title, conversation id), how many messages, whether it
+waits for them, and the last message; unread=true only those that still wait for them.
+kind="job" lists your jobs in every conversation, running first, then the newest that
+ended: its id, tool, what it was asked, its conversation, its state and time, and for
+an ended one its result message's number and first line (intercom__read(thread=<that
+number>) reads it whole).
 
 A message to "user" is in {{username}}'s Intercom section in the app, where they read
 it: it tells them something from where they are not, a background task or a mission.

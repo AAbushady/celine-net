@@ -156,12 +156,13 @@ class BackendConfig:
 
 @dataclass
 class Config:
-    """config.load fills `server` and `data_dir`; boot.load the rest."""
+    """config.load fills `server`, `data_dir` and `plugins_dir`; boot.load the rest."""
 
     server: dict[str, Any]
     data_dir: Path
+    plugins_dir: Path | None = None     # your plugins (CELINE_PLUGINS_DIR, <data>/plugins)
     problems: list[Problem] = field(default_factory=list)
-    name: str = ""             # its own (celine.her)
+    name: str = ""             # its own (celine.agent)
     user: str = ""             # yours (Settings, General)
     skills: dict[str, dict[str, Any]] = field(default_factory=dict)
     kb: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -169,6 +170,8 @@ class Config:
     mcp: dict[str, Any] = field(default_factory=dict)    # id -> mcp.McpServerConfig
     # every MCP server's rows, mcp.toml's and the plugins' (mcp.row_words, skills/words.py)
     tool_words: dict[str, Any] = field(default_factory=dict)
+    # the tool calls MCP servers show in a UI place (mcp.placed): {wire name: {place, where}}
+    tool_places: dict[str, Any] = field(default_factory=dict)
     llm: dict[str, Any] = field(default_factory=dict)   # config/llm.toml: [queue]
     media: dict[str, Any] = field(default_factory=dict)  # kb.toml [media]: kb/media.py
     # config/image_presets and music_presets, as read (comfyui/presets.py `load`): kept
@@ -177,13 +180,13 @@ class Config:
     # var/settings/*.toml (celine.settings.registry.Settings): providers, model roles,
     # tools, general (with the Advanced values: `r`)
     settings: Any = None
-    # its row (celine.her.Her); None before the first start
-    her: Any = None
+    # the agent's row (celine.agent.Agent); None before the first start
+    agent: Any = None
     # var/settings/schedules (celine.schedules): name -> Schedule
     schedules: dict[str, Any] = field(default_factory=dict)
     bio: str = ""              # what the user wrote about themselves (General settings)
     timezone: str = "UTC"      # the app's time zone (General settings, celine/clock.py)
-    pronouns: str = "she"      # its own: {{she}}, {{her}}, {{herself}}, {{them}}
+    pronouns: str = "she"      # the agent's: {{pronouns}}
     # var/settings/context.toml (turns/loads.py): the shares of the window it carries
     # notes and tools in, and the turns a loaded one stays without being touched
     context: dict[str, Any] = field(default_factory=dict)
@@ -220,25 +223,20 @@ class Config:
         return bool(self.skill(skill_id).get("enabled", True))
 
     def substitute(self, text: str, *, braces: bool = False, agent: str | None = None) -> str:
-        """{{username}} or {{user}} (the user's name) and {{name}} or {{char}} (its own) in
-        prompt text, and its pronouns: {{she}}, {{her}} (possessive), {{herself}},
-        {{them}} (the object: it, him, them), capitalised as written ({{Her}}). Resolved
-        when a request is built, never stored resolved; never applied to tool output,
-        where the same strings may be real content. `braces`: a template that goes to
-        str.format next, so a { or } in a name is doubled and stays as written."""
-        her = getattr(self, "her", None)
-        name = her.name if her is not None else self.name
-        pronouns = her.pronouns if her is not None else self.pronouns
+        """{{username}} or {{user}} (the user's name), {{name}} or {{char}} (the agent's)
+        and {{pronouns}} (the agent's pronouns: she/her, he/him, they/them or it/its) in
+        prompt text. Resolved when a request is built, never stored resolved; never applied
+        to tool output, where the same strings may be real content. `braces`: a template
+        that goes to str.format next, so a { or } in a name is doubled and stays as
+        written."""
+        own = getattr(self, "agent", None)
+        name = own.name if own is not None else self.name
+        pronouns = own.pronouns if own is not None else self.pronouns
         for key, value in (("{{username}}", self.user), ("{{user}}", self.user),
-                           ("{{agent_name}}", agent or name), ("{{name}}", name), ("{{char}}", name)):
+                           ("{{agent_name}}", agent or name), ("{{name}}", name), ("{{char}}", name),
+                           ("{{pronouns}}", PRONOUNS.get(pronouns, PRONOUNS["she"]))):
             text = text.replace(key, value.replace("{", "{{").replace("}", "}}")
                                 if braces else value)
-        if "{{" not in text:
-            return text
-        words = PRONOUNS.get(pronouns, PRONOUNS["she"])
-        for key, word in zip(("she", "her", "herself", "them"), words):
-            text = text.replace("{{" + key + "}}", word)
-            text = text.replace("{{" + key.capitalize() + "}}", word.capitalize())
         return text
 
     def secrets(self) -> list[str]:
@@ -248,10 +246,8 @@ class Config:
         return [s for s in dict.fromkeys(out) if s]
 
 
-# it, it (possessive), itself, them (the object) for each choice of a character's
-# pronouns
-PRONOUNS = {"she": ("she", "her", "herself", "her"), "he": ("he", "his", "himself", "him"),
-            "they": ("they", "their", "themselves", "them"), "it": ("it", "its", "itself", "it")}
+# each choice of the agent's pronouns as the models read it ({{pronouns}})
+PRONOUNS = {"she": "she/her", "he": "he/him", "they": "they/them", "it": "it/its"}
 
 
 def _is(v: Any, t: Any) -> bool:
@@ -321,7 +317,7 @@ def load() -> Config:
     if not path.exists():
         raise ConfigError(f"no config/celine.toml under {ROOT}")
     main = tables(shown_path(path), read_toml(path, problems),
-                  {"server": SERVER_KEYS, "paths": {"data": "str"}}, problems)
+                  {"server": SERVER_KEYS, "paths": {"data": "str", "plugins": "str"}}, problems)
     server = {"host": "127.0.0.1", "port": 8766, **main.get("server", {})}
     for env, key in _SERVER_ENV.items():
         if os.environ.get(env):
@@ -331,4 +327,10 @@ def load() -> Config:
         data_dir = _expand(os.environ["CELINE_DATA_DIR"])     # a second instance beside the real one
     if not data_dir.is_absolute():
         data_dir = ROOT / data_dir
-    return Config(server=server, data_dir=data_dir, problems=problems)
+    # your plugins' code (docs/plugins.md); their data stays in <data>/plugins/<id>/
+    plugins_dir = Path(main.get("paths", {}).get("plugins") or data_dir / "plugins")
+    if os.environ.get("CELINE_PLUGINS_DIR"):
+        plugins_dir = _expand(os.environ["CELINE_PLUGINS_DIR"])
+    if not plugins_dir.is_absolute():
+        plugins_dir = ROOT / plugins_dir
+    return Config(server=server, data_dir=data_dir, plugins_dir=plugins_dir, problems=problems)

@@ -30,6 +30,8 @@ from typing import Any, Callable, Sequence
 
 import httpx
 
+from ..errors import said
+
 log = logging.getLogger("celine.kb.embed")
 
 
@@ -80,6 +82,10 @@ def _fit(s: dict[str, Any], text: str) -> list[float]:
 
 
 def _embed_once(s: dict[str, Any], texts: list[str]) -> list[list[float]]:
+    # `hour`: the sentence once the provider used its Requests per hour, else None
+    # (counts this request: kb/semantic.Embedder)
+    if (hour := s.get("hour")) is not None and (full := hour()):
+        raise SemanticError(full)
     headers = {**s.get("headers", {})}
     if s.get("key"):
         headers["Authorization"] = f"Bearer {s['key']}"
@@ -88,17 +94,19 @@ def _embed_once(s: dict[str, Any], texts: list[str]) -> list[list[float]]:
                        headers=headers, timeout=httpx.Timeout(float(s.get("timeout", 300.0))))
     except httpx.HTTPError as e:
         raise SemanticError(_no_answer(s, e)) from None
-    if r.status_code in (401, 403):
-        raise SemanticError(f"the embedding server at {_host(s)} rejected the API key "
-                            f"(Settings, Models)")
-    if r.status_code == 404:
-        raise SemanticError(f"the embedding server at {_host(s)} has no model "
-                            f"{s.get('model')} (Settings, Models)")
     if r.status_code >= 400:
-        msg = f"the embedding server at {_host(s)} answered {r.status_code}"
+        words = said(r.content, r.status_code).text
         if r.status_code in (400, 413, 422) and any(w in r.text.lower() for w in _TOO_LONG):
-            raise TooLong(f"{msg}: {r.text}")
-        raise SemanticError(msg)
+            raise TooLong(f"the embedding server at {_host(s)} answered {r.status_code}: "
+                          f"{words}")
+        if r.status_code in (401, 403):
+            raise SemanticError(f"the embedding server at {_host(s)} rejected the API key: "
+                                f"{words} (Settings, Models)")
+        if r.status_code == 404:
+            raise SemanticError(f"the embedding server at {_host(s)} has no model "
+                                f"{s.get('model')}: {words} (Settings, Models)")
+        raise SemanticError(f"the embedding server at {_host(s)} answered {r.status_code}: "
+                            f"{words}")
     try:
         data = sorted(r.json()["data"], key=lambda d: d["index"])
         return [d["embedding"] for d in data]

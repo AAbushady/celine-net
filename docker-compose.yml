@@ -32,7 +32,7 @@
 
 # Celine's uid and gid in its shellbox and its browser, the owner of its home (shellbox/):
 # named here once. Both boxes are built with it, the app gives its home to it.
-x-her-uid: &her-uid "1000"
+x-agent-uid: &agent-uid "1000"
 
 # The egress firewall (egress/firewall.sh), one per box. It owns the network namespace and
 # the box joins it (network_mode) without NET_ADMIN, so root in the box cannot change the
@@ -83,7 +83,8 @@ services:
       CELINE_SEARXNG_URL: http://searxng:8080
       CELINE_SHELL_URL: http://shellbox:8770
       CELINE_BROWSER_URL: http://browser:8771
-      HER_UID: *her-uid
+      CELINE_PLUGINS_DIR: /plugins
+      AGENT_UID: *agent-uid
       TZ: ${TZ:-UTC}
     # the whole volume: at its start (as root, docker-entrypoint in the Dockerfile) the app
     # makes the folders the other services mount and gives its home to its uid, then runs
@@ -91,6 +92,8 @@ services:
     # healthy, which is what the others wait for
     volumes:
       - data:/data
+      # your plugins (docs/plugins.md), read at start; their data goes to app/plugins/
+      - ./user-plugins:/plugins:ro
     # default: the connectors and the search engine; shellbox: its shellbox; browser: its
     # browser. Naming networks here drops the default one unless it is listed too.
     networks: [default, shellbox, browser]
@@ -119,7 +122,7 @@ services:
       context: .
       dockerfile: shellbox/Dockerfile
       args:
-        HER_UID: *her-uid
+        AGENT_UID: *agent-uid
     image: localhost/celine/celine-shellbox:latest
     pull_policy: never
     restart: unless-stopped
@@ -200,7 +203,7 @@ services:
       context: .
       dockerfile: browser/Dockerfile
       args:
-        HER_UID: *her-uid
+        AGENT_UID: *agent-uid
     image: localhost/celine/celine-browser:latest
     pull_policy: never
     restart: unless-stopped

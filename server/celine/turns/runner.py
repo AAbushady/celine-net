@@ -17,7 +17,7 @@ from ..skills import words
 from ..skills.gating import overrides_for
 from ..intercom import deliver
 from ..plans import flow as plan_flow
-from . import compactions, context, loads, message_context, prompt, reply, tokens, waiting
+from . import context, loads, message_context, prompt, reply, tokens, waiting
 from . import store as turns
 from .compact import SummaryFailed, closing, stoppable
 from .tools import run_tool_calls
@@ -218,7 +218,7 @@ async def _run_turn(turn: dict, store: Store, cfg, backend, bus,
             if taken:
                 await message_context.ensure(store, cfg, registry, cid, tid, taken,
                                              tool_turn["max_output_tokens"])
-                context.add_user(messages, context.user_wire(cfg, taken, cid))
+                context.add_wire(messages, context.user_wire(cfg, taken, cid))
                 parent = taken[-1]["id"]
                 grown = True
 
@@ -335,9 +335,9 @@ async def _run_turn(turn: dict, store: Store, cfg, backend, bus,
         text = await _verify_citations(store, cfg, cid, mid, text, thinking, messages, kbs,
                                        hidden)
         # `request`: what was just sent, the guard's view of the outside text in it
-        texts = await run_tool_calls({**tool_turn, "root_message_id": mid, "request": step},
-                                     [{**c, "message_id": mid} for c in calls],
-                                     store, cfg, registry, overrides, token, jobs)
+        await run_tool_calls({**tool_turn, "root_message_id": mid, "request": step},
+                             [{**c, "message_id": mid} for c in calls],
+                             store, cfg, registry, overrides, token, jobs)
         if token.cancelled:
             await _stopped(store, tid, cid, token)
             return
@@ -350,22 +350,9 @@ async def _run_turn(turn: dict, store: Store, cfg, backend, bus,
         if plan_flow.stops(plan, calls) or (waits and await _all_ok(store, waits)):
             await turns.transition(store, tid, cid, "done")
             return
-        # as the context builder sends a stored reply: as stored, with its signed
-        # thinking (the next step continues the tool loop)
-        messages.append({"role": "assistant", "content": text,
-                         **({"thinking": done.thinking} if done and done.thinking else {}),
-                         "tool_calls": [_wire_call(c) for c in calls],
-                         ORIGIN: context.origin(cid, turn=tid, message=mid)})
-        stored = await compactions.calls_of(store, mid)
-        screens = []
-        for call in calls:
-            res, images = context.with_images(cfg, stored.get(call["id"]) or {},
-                                              texts.get(call["id"], "result unavailable"))
-            messages.append({"role": "tool", "tool_call_id": call["id"], "content": res,
-                             ORIGIN: context.origin(cid, turn=tid, call=call["id"])})
-            if images:
-                screens.append(context.screen_message(cid, tid, call, images))
-        messages += screens
+        # the step as stored, in the bytes every later build sends (context.step_wire):
+        # the next request starts with what the server cached
+        messages += await context.step_wire(store, cfg, cid, mid)
         parent = await turns.step_tail(store, mid)
         iteration += 1
         grown = True
@@ -409,7 +396,7 @@ async def _stopped(store, tid, cid, token) -> None:
 
 
 def _carried_notes(carried) -> list[dict]:
-    """The notes she carries in full this step, for Bastet's leak rule (guard/facts.py
+    """The notes the agent carries in full this step, for Bastet's leak rule (guard/facts.py
     private)."""
     return [{"path": n["path"], "text": n["text"]} for n in carried.notes
             if n.get("state") == "included" and n.get("text")]
@@ -460,9 +447,6 @@ async def _record_usage(store, cid, tid, iteration, backend, counter, estimate,
 
 
 
-def _wire_call(c: dict) -> dict:
-    return {"id": c["id"], "type": "function",
-            "function": {"name": c["name"], "arguments": c["arguments"]}}
 
 
 
@@ -514,7 +498,7 @@ async def _too_small(store, tid, cid, cfg, backend, need: int | None, win: int, 
     else:
         what = (f"This turn needs {about} tokens even after compacting, and {model} has "
                 f"room for {win:,}.")
-    fix = " Choose a model with more context for this conversation"
+    fix = " Choose a model with more context for this chat"
     fix += (f", or give {model} a larger context size in Settings, Models."
             if kind == "ollama" else ".")
     await _failed(store, tid, cid, "context_too_small", what + fix, False)

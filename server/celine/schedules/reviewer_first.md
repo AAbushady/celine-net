@@ -1,0 +1,1 @@
+In this run you talk with {{who}} first. {{who}} answers after your reply ends, as a new message in this conversation: write your line as your answer and end the reply. intercom__send reaches {{username}}, not {{who}}.

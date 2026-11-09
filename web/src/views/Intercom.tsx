@@ -29,8 +29,8 @@ import { OFFLINE_TITLE, useOnline } from '../lib/socket'
 import { useAction } from '../lib/useAction'
 import { useResource } from '../lib/useResource'
 import {
-  Avatar, Button, ComposerBox, copied, cx, Dialog, Divider, Dot, EventLine, Field, GroupHead, ICON, InlineError,
-  ListRow, Loaded, LoadingRow, MenuButton, Message, PlaceHead, SelectBar, TextArea, Toolbar, useContextMenu, usePicker,
+  Avatar, Button, ComposerBox, copied, cx, Dialog, Divider, EventLine, Field, GroupHead, ICON, InlineError,
+  ListRow, Loaded, LoadingRow, MenuButton, Message, PlaceHead, SelectBar, StateWord, TextArea, Toolbar, useContextMenu, usePicker,
   coarse, toast, VirtualList, type BulkResult, type MenuItem, type PickProps, type Shelf,
 } from '../ui'
 import './Intercom.css'
@@ -208,7 +208,7 @@ function List({ active }: { active: boolean }) {
     for (const k of keys) {
       try {
         const bug = await intercomApi.bugOf(Number(k))
-        if (bug?.state !== 'open') { out.skipped.push({ id: k, reason: 'It is not an open bug report.' }); continue }
+        if (bug?.state !== 'open') { out.skipped.push({ id: k, reason: 'It is not an open bug.' }); continue }
         await intercomApi.closeBug(bug.id)
         out.done.push(k)
       } catch (e) { out.skipped.push({ id: k, reason: e instanceof Error ? e.message : String(e) }) }
@@ -306,7 +306,7 @@ function ThreadRow({ t, waiting, under, pick, menu, onOpen, onMenu }: {
              subtitle={<>{who !== titleOf(t) && who !== under && <span className="intercom-who">{who}: </span>}{firstLine(t.last.text)}</>}
              column={source !== under ? source : ''} cell={what}
              meta={<span className="intercom-meta"><span title={fullDate(t.last.created_at)}>{listTime(t.last.created_at)}</span>
-               {waiting && <Dot tone="accent" label={`${t.unread} waiting for you`} />}</span>}
+               {waiting && <StateWord tone="warn">{`${t.unread} waiting`}</StateWord>}</span>}
              trailing={!pick.checked && <MenuButton icon={MoreHorizontal} label="More" items={menu} size="sm" />} />
   )
 }
@@ -366,12 +366,14 @@ function ThreadPage({ id }: { id: number }) {
                  actions={<>
                    {unread.length > 0 && <Button variant="ghost" icon={CheckCheck} loading={dismiss.busy} onClick={() => void dismiss.run()}>Dismiss</Button>}
                    {bug?.state === 'open' && <Button variant="ghost" icon={CircleCheck} onClick={() => setClosing(true)}>Close</Button>}
+                   {/* a mission's thread: the mission is its home */}
+                   {src?.kind === 'mission' && src.link && <Button variant="ghost" icon={Flag} onClick={() => nav.goPath(src.link!)}>Open mission</Button>}
                    {msgs.length > 0 && <Button variant="ghost" icon={archived ? ArchiveRestore : Archive} loading={shelve.busy} onClick={() => void shelve.run()}>{archived ? 'Restore' : 'Archive'}</Button>}
                    {msgs.length > 0 && <Button variant="ghost" icon={MessageSquarePlus} loading={toChat.busy} onClick={() => void toChat.run()}>Continue in a chat</Button>}
                  </>}
                  more={[
-                   ...(src?.link ? [{ label: src.kind === 'mission' ? 'Open mission' : 'Open', detail: src.kind === 'mission' ? undefined : src.title ?? undefined,
-                                      icon: SOURCE_ICON[src.kind], onSelect: () => nav.goPath(src.link!) }] : []),
+                   ...(src?.link && src.kind !== 'mission' ? [{ label: 'Open', detail: src.title ?? undefined,
+                                                                 icon: SOURCE_ICON[src.kind], onSelect: () => nav.goPath(src.link!) }] : []),
                    { label: 'Copy link', icon: Link, onSelect: () => copyLink(id) },
                  ]} />
       <div className="page intercom-thread__scroll">
@@ -424,9 +426,9 @@ function ThreadMessage({ m, onCancel }: { m: IntercomMessage; onCancel: () => vo
   const scheduled = isScheduled(m)
   // where it came from, unless that is the sender its name already says
   const from = m.source && m.source.title !== senderName(m) ? m.source : null
-  // a mission writing to its own team: "to the team", its name is beside it already
+  // a mission writing to its own sub-agents: "to its sub-agents", its name is beside it already
   const own = `team:${m.from.split(':')[1]}`
-  const to = m.to.split(', ').filter(a => a !== 'user').map(a => (a === own ? 'the team' : addressName(a, m.to_names))).join(', ')
+  const to = m.to.split(', ').filter(a => a !== 'user').map(a => (a === own ? 'its sub-agents' : addressName(a, m.to_names))).join(', ')
   const when = m.state === 'cancelled' ? 'Cancelled'
     : scheduled ? `Scheduled ${dueTime(m.due_at)}`
     : m.until_at ? `${stamp(m.created_at)}, until ${stamp(m.until_at)}`
@@ -437,7 +439,7 @@ function ThreadMessage({ m, onCancel }: { m: IntercomMessage; onCancel: () => vo
              head={<>
                {to && <span title={`to ${to}`}>to {to}</span>}
                {m.kind !== 'message' && <span>{KIND_WORD[m.kind]}</span>}
-               {m.unread && <Dot tone="accent" label="Waiting for you" />}
+               {m.unread && <StateWord tone="warn">Waiting for you</StateWord>}
              </>}
              time={<span title={fullDate(m.until_at ?? m.due_at ?? m.created_at)}>{when}</span>}
              source={(from || scheduled) && <>

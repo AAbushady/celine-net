@@ -29,12 +29,17 @@ export const KeepPlace = createContext<(id: string) => void>(() => {})
     following until your next scroll. A scroll down
     to within REPIN px pins it again. Not following and more than REPIN px above the bottom,
     `below` holds (the jump shows), and `unseen` says a new message came meanwhile. `fresh`:
-    what makes a message new (their count, the live one). `reset`: another conversation,
+    what makes a message new (`said`: the messages with words). `reset`: another conversation,
     pinned at once. `observe`: when the scroller or its content element may have changed.
     `jump()` glides to the bottom (your jump); `jump({ smooth: false })` is there at once (a
     send); a flick still coasting does not stop either. `keep(id)` holds the message with data-id `id` where
     it is on screen. The scroller says `data-unpinned` while it is not pinned (native
     anchoring keeps your reading place then). */
+/** the messages that say something: every user message and every reply with words (a
+    round of tool calls with no text is not a new message) */
+export function said(messages: { role: string; content: string }[]): number {
+  return messages.reduce((n, m) => n + (m.role === 'user' || (m.role === 'assistant' && m.content.trim()) ? 1 : 0), 0)
+}
 export function useStickToBottom(ref: RefObject<HTMLElement | null>, fresh: unknown[],
                                  reset: unknown[], observe: unknown[]) {
   const pinned = useRef(true)

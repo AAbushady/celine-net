@@ -19,14 +19,14 @@ from ..skills import CORE, META, ToolContext, ToolResult
 from ..skills.gating import (OFF, READ_ONLY_REFUSAL, down_sentence, is_enabled,
                              read_mode_has)
 from .cancel import until_stop
-from . import store as turns
+from . import compact, store as turns
 
 log = logging.getLogger("celine.tools")
 
 
 async def run_tool_calls(turn, calls, store, cfg, registry, overrides,
-                         token, jobs=None) -> dict[str, str]:
-    """-> {call_id: result text}, what the model is told for each call.
+                         token, jobs=None) -> None:
+    """Runs a reply's calls and stores each result (the context builder sends them).
 
     The calls of one reply run concurrently when each is read-only and blocking, or
     hands work that only adds (not destructive) to a job, like several sub-agents
@@ -35,7 +35,6 @@ async def run_tool_calls(turn, calls, store, cfg, registry, overrides,
     are not one)."""
     tid, cid = turn["id"], turn["conversation_id"]
     calls = [{**c, "args": parsed(c["arguments"])} for c in calls]
-    texts: dict[str, str] = {}
     guarded = guard.enabled(cfg, cid)
 
     async def write(call, out) -> None:
@@ -48,12 +47,13 @@ async def run_tool_calls(turn, calls, store, cfg, registry, overrides,
         withheld = mask(withheld or "") or None
         await turns.finish_tool_call(store, cid, call["message_id"], call["id"],
                                      call["name"], result, state, withheld)
-        texts[call["id"]] = marked(result, guarded)
         _seen(registry, cid, call["name"])
         known = registry is not None and registry.get(call["name"]) is not None
         metrics.TOOL_CALLS.labels(call["name"] if known else "unknown", state).inc()
+        why = {"reason": compact.one_line(result.content, 200)} \
+            if result.is_error or state == "gated" else {}
         log.info("tool done", extra={"event": "tool.done", "turn": tid,
-                                     "tool": call["name"], "state": state})
+                                     "tool": call["name"], "state": state, **why})
     if _concurrent(calls, registry):
         done: dict[str, tuple] = {}
 
@@ -66,13 +66,12 @@ async def run_tool_calls(turn, calls, store, cfg, registry, overrides,
         for call in calls:
             if done.get(call["id"]) is not None:     # None: shutdown before it started
                 await write(call, done[call["id"]])
-        return texts
+        return
     for call in calls:
         out = await _resolve(turn, call, store, cfg, registry, overrides, token, jobs)
         if out is None:                            # shutdown: left pending, settled interrupted
             break
         await write(call, out)
-    return texts
 
 
 def parsed(arguments: str | None) -> dict | None:
@@ -239,7 +238,7 @@ async def _resolve(turn, call, store, cfg, registry, overrides, token, jobs):
     async def progress(note: str) -> None:
         said.append(note)
         await turns.tool_progress(store, turn["conversation_id"], call["id"], note)
-    # Bastet (guard/calls.py), before the time check: her wait for the judge counts on
+    # Bastet (guard/calls.py), before the time check: its wait for the judge counts on
     # its clock
     gate = await bastet_calls.at_call(turn, call, spec, args, store=store, cfg=cfg,
                                       registry=registry, token=token, jobs=jobs,
@@ -343,7 +342,17 @@ def _invalid(args: dict | None, arguments: str | None, spec, cfg) -> str | None:
             near = _meant(u, sorted(missing), list(props))
             parts.append(f"{u} is not a parameter" + (f", did you mean {near}?" if near else ""))
         return "; ".join(parts)
-    return mistyped(args, spec.schema)
+    return mistyped(args, spec.schema) or _marked(args)
+
+
+def _marked(args: dict) -> str | None:
+    """An argument that ends in the app's own shortening mark (compact.short_arguments):
+    the model copied an aged call as the context showed it. The mark is never content."""
+    if (hit := compact.marked(args)) is None:
+        return None
+    key, cid = hit
+    return (f"{key} ends in the app's mark for the shortened {key} of call {cid}; "
+            f"past_conversations__read_tool_call(id=\"{cid}\") reads that call back")
 
 
 def _meant(name: str, missing: list[str], props: list[str]) -> str | None:

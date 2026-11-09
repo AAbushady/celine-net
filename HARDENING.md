@@ -1,7 +1,7 @@
 # Hardening
 
 This fork runs upstream's app with tighter defaults, for one owner on one machine. It
-branched from upstream commit `69928d0`.
+branched from upstream commit `69928d0` and was last merged with `9e56196` (v2.1.0).
 
 ## What differs from upstream
 
@@ -24,13 +24,11 @@ branched from upstream commit `69928d0`.
 | A memory lookup embeds only the note sections no earlier one did, and an index build sends 16 passages in one request at a time | Every message embedded up to 40 sections again, and a build sent 512 passages at once, so on the CPU embedder most lookups ran past their 10 seconds and the agent took the embedder for down | `server/celine/skills/recall.py`, `batch` and `workers` in `config/kb.toml` |
 | An embedding input the server refuses as too long is cut until it fits | Upstream's build fails on that batch on every run, so one long message leaves everything older out of the index | `server/celine/kb/embed.py` |
 | The Intercom has an Archive: a thread leaves the lists until something newer lands in it, and Archive read takes everything done | Upstream's All list keeps every thread for good, read or not, so what needs you gets lost. Her own `intercom__read` still lists every thread | `server/celine/intercom/`, `web/src/views/Intercom.tsx` |
-| An image a tool returns reaches the model at its next step | Upstream sends it only when a later turn rebuilds the request, so the model is told an image is there and sees none | `with_images` in `server/celine/turns/context.py` |
 | She can watch YouTube videos and Plex films with their picture and sound, through a watch helper on the GPU machine | Upstream watches with captions and stills in her box, which YouTube blocks and which cannot reach a Plex server on the LAN. The helper loads its model only for a watch and frees the GPU after, falls back to stills and subtitles while the GPU is in use, deletes downloads, keeps her Plex token to itself, and answers only the app's key on the host's loopback (the boxes cannot reach it). The helper and its model live outside this repo | `server/celine/skills/video.py`, `keys.py` (`video.key`), `settings/services.py` |
 | Reading back an old conversation says where a result carried an image | The stored text holds no image and no "[the image follows]" line, so a screenshot that arrived read back like one that failed, and the agent retracted true statements on that reading | `_pictures` in `server/celine/skills/conversations.py` |
 | The agent's reply to its own message goes where that message went | Upstream sends a reply without `to` to the sender of the message it answers, so answering its own thread sent the message to itself: the user never got it and it woke the agent as a new message | `insert` in `server/celine/intercom/store.py` |
 | A chat waiting on an approval does not hold the routines | One unanswered approval held a whole night's routines until morning | `waited_on` in `server/celine/schedules/runs.py` |
 | A turn's limit is 100 steps, with 4 hours of work as the backstop, and at either limit the agent gets one last step to say where the work stands | Upstream stops a turn after 30 minutes with no words. On a slow model that is a few steps, and a routine stopped that way loses its note | `server/celine/turns/runner.py`, `server/celine/settings/general.py` |
-| A routine's sub-agents run as the routine at every depth, and a routine's model calls wait for a slot as long as it takes | Upstream looks one level up for the routine while sub-agents go three deep, so a sub-agent's own sub-agents ran ahead of the routine and took the model's slots. A routine's calls also gave up after 120 seconds like a title's, which failed routines and their sub-agents on a model with two slots | `binding` in `server/celine/schedules/runs.py`, `run_of` in `server/celine/homes.py`, `turn_queue_wait` in `server/celine/backends/llm.py` |
 | A sub-agent's report into a routine that ended does not wake it | A sub-agent whose own turn had failed reported once a Stop ended its sub-agents, and the report woke the stopped routine, which then did its work | `_facts` in `server/celine/sub_agents/report.py` |
 | Writing a note does not end the turn | Upstream ends a turn when a reply holds text and only a note write. A model that narrates before it acts was cut off mid-task and lost routine notes | `server/celine/turns/runner.py` |
 | Line endings are LF everywhere | The containers run these files, and Git for Windows would otherwise check them out with CRLF | `.gitattributes` |
@@ -133,7 +131,7 @@ Nothing here updates itself. Read the changes before merging them:
 ```sh
 git remote add upstream <its address>   # once per clone
 git fetch upstream
-git diff 69928d0 upstream/master
+git diff 9e56196 upstream/master
 ```
 
 Read the Dockerfiles, the compose files, the lockfiles, `config/` and `server/celine/guard/`

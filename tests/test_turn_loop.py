@@ -261,8 +261,8 @@ async def test_an_empty_last_step_ends_the_turn_capped_with_no_empty_row(store, 
     assert (state, code, replies) == ("capped", "max_tool_iterations", 1)
 
 
-async def test_tool_results_reach_her_as_the_tool_made_them(store, cfg):
-    cfg.her.talk = "a chat.\n\n## how I sound\n\nshort and dry, a little formal\nmore\n"
+async def test_tool_results_reach_the_agent_as_the_tool_made_them(store, cfg):
+    cfg.agent.talk = "a chat.\n\n## how I sound\n\nshort and dry, a little formal\nmore\n"
     reg = _registry(cfg, Notebook())
     cid = await conversations.create(store)
     b = Replies([_calls(("notebook__write", {"path": "a.md", "text": "x"}),

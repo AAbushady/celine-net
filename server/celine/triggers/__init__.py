@@ -80,6 +80,12 @@ def state(cfg, t) -> dict:
     return {"on": bool(saved.get("on", False))}
 
 
+def fired(c, name: str) -> str | None:
+    """When trigger `name` last fired, None: never."""
+    return c.execute("SELECT max(created_at) FROM intercom WHERE kind = 'trigger' AND "
+                     "json_extract(data, '$.trigger') = ?", (name,)).fetchone()[0]
+
+
 class _Fill(dict):
     def __missing__(self, key: str) -> str:
         return "{" + key + "}"

@@ -1,12 +1,21 @@
 ---
 name: routines
-description: The Routines: what runs on its own at a time, read, change and start them.
+description: The Routines: what runs on its own at a time, read, change and start them;
+  their runs with their results, and the triggers.
 ---
 A Routine is a prompt that runs on its own at a time of day (or a cron line), in a
 conversation of its own; {{username}} sees them on the Routines page.
 
-routines__list lists them. routines__read(name) gives one whole: every setting, the
-prompt, the reviewer prompt and its newest runs. routines__write makes or changes one
+routines__list lists them (name, label, when, on or off, the newest run) and the
+triggers: each trigger's name, label, on or off, when it last fired and the id of its
+background task's conversation (one per trigger, every fire in it).
+routines__list(night="2026-01-09") lists every routine's runs of that night (from 12:00
+the day before to 12:00 that day), routines__list(runs=10) the newest 10 runs of all
+routines: each run:<id> with its routine, time, state, error or reason and its result's
+last line. routines__read(name) gives one whole: every setting, the prompt, the
+reviewer prompt and its newest runs, each the same way. A run's whole talk:
+past_conversations__read(conversation="run:<id>"); a trigger's:
+past_conversations__read(conversation="<trigger name>"). routines__write makes or changes one
 with the checks of the Routines page: a change changes only what you give (a prompt you
 give replaces the old one whole, so read it first), a new one needs label, prompt and
 time or cron. When it is not saved, nothing changed: the error names the field and what
@@ -16,10 +25,9 @@ in Events and in the routine's history.
 Bastet asks {{username}} before every change but switching one off (unless they took
 routines off her list): her banner with Approve and Deny shows on the page of the
 conversation you call from (your chat, a run, a mission, a task), and a notice takes
-them there. The call waits for their answer, in their own chat until they give it,
-anywhere else for two minutes. The result says whether they said yes; after a no or no
-answer nothing changed. Unanswered in a run, a mission or a task, ask them in a chat
-(intercom__start_chat), where the call waits until they answer. When they ask where to
+them there. The call waits for their answer; a run waits as long as its time limit lets it.
+The result says whether they said yes; after a no or no answer nothing changed. When
+they ask where to
 approve, it is on that page.
 
 A run has an address on the intercom: run:<id> (routines__read lists them), or

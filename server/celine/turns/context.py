@@ -85,6 +85,7 @@ class Policy:
 
 
 POLICY = Policy()
+READBACK = "past_conversations__read_tool_call"   # the tool a shortened argument names
 
 
 def room(backend, system: str, tools: list[dict], win: int | None = None) -> int:
@@ -150,18 +151,23 @@ def user_wire(cfg, msgs: list[dict], cid: str) -> list[dict]:
     guarded = guard.enabled(cfg, cid)
     out: list[dict] = []
     for i, m in enumerate(msgs):
-        add_user(out, wire_message(cfg, _Item(i, m, None, tz, cfg.user, guarded=guarded,
+        add_wire(out, wire_message(cfg, _Item(i, m, None, tz, cfg.user, guarded=guarded,
                                               cid=cid)))
     return out
 
 
-def add_user(out: list[dict], wire: list[dict]) -> None:
-    """Appends wire messages; consecutive user messages of plain text go as one, a
-    blank line between them, with both origins."""
+def add_wire(out: list[dict], wire: list[dict]) -> None:
+    """Appends wire messages; consecutive messages of one role in plain text go as one,
+    a blank line between them, with both origins, as the chat templates want roles to
+    alternate: user lines, and the agent's reply with its timed message to the user that
+    landed after it (intercom store.SAY). A reply with calls, or a second one with its own
+    thinking, stays apart."""
     for w in wire:
         last = out[-1] if out else None
-        if (last is not None and w["role"] == last["role"] == "user"
-                and isinstance(w["content"], str) and isinstance(last["content"], str)):
+        if (last is not None and w["role"] == last["role"] in ("user", "assistant")
+                and isinstance(w["content"], str) and isinstance(last["content"], str)
+                and not (w["role"] == "assistant" and (
+                    "tool_calls" in last or set(w) - {"role", "content", ORIGIN}))):
             out[-1] = {**last, "content": last["content"] + "\n\n" + w["content"],
                        ORIGIN: [*last.get(ORIGIN, ()), *w.get(ORIGIN, ())]}
         else:
@@ -220,7 +226,7 @@ def malformed(messages: list[dict], cid: str) -> str | None:
 
 
 # ---- the path as items ----------------------------------------------------------------
-HER_FIRST = "This chat starts with your message."   # history: before a reply that is first
+AGENT_FIRST = "This chat starts with your message."   # history: before a reply that is first
 
 
 def _thought(it: "_Item") -> dict:
@@ -274,39 +280,6 @@ class _Item:
                 "attachments": self.attachments, "calls": self.calls}
 
 
-def with_images(cfg, call: dict, res: str) -> tuple[str, list[dict]]:
-    """The result `res` of a stored call as it reads it, and the image parts it holds:
-    its files (shell__look, whose notes stay in the tool message) and a result meant to be
-    seen (browser__look's screen, display "see"). A step of the turn that made the call
-    and every later build send it the same way."""
-    images: list[dict] = []
-    if call.get("attachments"):
-        rendered = attachments.render(cfg, [
-            {"role": "tool", "content": res,
-             "attachments": call["attachments"]}])[0]["content"]
-        if isinstance(rendered, list):
-            res, images = rendered[0]["text"], rendered[1:]
-        else:
-            res = rendered
-    shown = call.get("display") or {}
-    shot = shown.get("shot") if shown.get("see") else None
-    if shot:
-        images.append({"type": attachments.IMAGE, "attachment": {
-            **{k: shot[k] for k in ("id", "filename", "sha256", "media_type")},
-            "size": attachments.image_size_of(attachments.blob_path(cfg, shot["sha256"]))}})
-    if images:
-        res += "\n" + ("[the image follows]" if len(images) == 1 else "[the images follow]")
-    return res, images
-
-
-def screen_message(cid: str, turn: str | None, call: dict, images: list[dict]) -> dict:
-    """A result's images as the message after the results of its reply: the chat templates
-    take image parts in user turns only. It goes on until the result is aged away."""
-    return {"role": "user", "content": [
-        {"type": "text", "text": f"[the screen from {call['name']}]"}, *images],
-        ORIGIN: origin(cid, turn=turn, call=call["id"], note="screen")}
-
-
 def _kept(call: dict, policy: Policy) -> bool:
     """A call that never ages (policy.never_age): its arguments and result go whole."""
     return any((call.get("name") or "").startswith(p) for p in policy.never_age)
@@ -327,6 +300,7 @@ class _Plan:
         self.cid = cid
         self.view = view
         self.guarded = guard.enabled(cfg, cid)        # a chat can turn Bastet off
+        self.readback = False       # the request offers past_conversations__read_tool_call
         chain = view["chain"]
         self.chain = chain
         self.pos = {m["id"]: i for i, m in enumerate(chain)}
@@ -376,39 +350,10 @@ class _Plan:
         return bool(it.calls) and it.idx <= self.mark
 
     def wire(self, it: _Item, aged: bool) -> list[dict]:
-        if aged in it._wire:
-            return it._wire[aged]
-        if it.calls:
-            # an aged call's long string arguments go shortened (compact.short_arguments),
-            # whatever the size of its result; never_age keeps a notebook call whole
-            out = [{"role": "assistant", "content": it.content, **_thought(it), "tool_calls": [
-                {"id": c["id"], "type": "function",
-                 "function": {"name": c["name"], "arguments":
-                              compact.short_arguments(c["arguments"], c["id"])
-                              if aged and not _kept(c, self.policy) else c["arguments"]}}
-                for c in it.calls], ORIGIN: origin(it.cid, turn=it.turn, message=it.id)}]
-            screens = []
-            for c in it.calls:
-                came = origin(it.cid, turn=it.turn, message=c.get("result_message_id"),
-                              call=c["id"])
-                res = c["result"] if c["result"] is not None else "result unavailable"
-                stubbed = aged and _agable(c, self.policy, self.counter)
-                if not stubbed:
-                    res = mark.shown(res, c.get("display"), self.guarded)  # guard/mark.py
-                images: list[dict] = []
-                if stubbed:
-                    res = compact.stub(c["name"], c["arguments"], c["result"], self.cited)
-                else:
-                    res, images = with_images(self.cfg, c, res)
-                out.append({"role": "tool", "tool_call_id": c["id"], "content": res,
-                            ORIGIN: came})
-                if images:
-                    screens.append(screen_message(it.cid, it.turn, c, images))
-            out += screens
-        else:
-            out = wire_message(self.cfg, it)
-        it._wire[aged] = out
-        return out
+        if aged not in it._wire:
+            it._wire[aged] = calls_wire(self.cfg, it, self.guarded, self if aged else None) \
+                if it.calls else wire_message(self.cfg, it)
+        return it._wire[aged]
 
     def cost(self, it: _Item, aged: bool | None = None) -> int:
         a = self.aged(it) if aged is None else aged
@@ -419,11 +364,11 @@ class _Plan:
     def history(self) -> list[dict]:
         out: list[dict] = []
         for it in self.items:
-            add_user(out, self.wire(it, self.aged(it)))
+            add_wire(out, self.wire(it, self.aged(it)))
         if out and out[0]["role"] == "assistant" and self.items[0] is self.all_items[0]:
             # its message first (a chat start_chat made): a user line before it, as the
             # chat templates want one, with where it came from
-            out.insert(0, {"role": "user", "content": self.opening or HER_FIRST,
+            out.insert(0, {"role": "user", "content": self.opening or AGENT_FIRST,
                            ORIGIN: origin(self.cid, note="opening")})
         return out
 
@@ -477,6 +422,77 @@ def wire_message(cfg, it: _Item) -> list[dict]:
         return [{**w, ORIGIN: came} for w in attachments.render(cfg, [
             {"role": it.role, "content": it.content, "attachments": it.attachments}])]
     return [{"role": it.role, "content": it.content, **_thought(it), ORIGIN: came}]
+
+
+def calls_wire(cfg, it: _Item, guarded: bool, plan: _Plan | None = None) -> list[dict]:
+    """A reply with calls on the wire: the reply with its thinking, each result, and the
+    images of its results after them as a user message. With `plan`, aged as `plan` ages
+    it. A turn's next step (step_wire) and every later build send a reply through here,
+    so the server's cached prefix holds from one request to the next."""
+    aged = plan is not None
+    # an aged call's long string arguments go shortened (compact.short_arguments),
+    # whatever the size of its result, where the request offers the tool that reads
+    # the call back; never_age keeps a notebook call whole
+    out = [{"role": "assistant", "content": it.content, **_thought(it), "tool_calls": [
+        {"id": c["id"], "type": "function",
+         "function": {"name": c["name"], "arguments":
+                      compact.short_arguments(c["arguments"], c["id"])
+                      if aged and plan.readback and not _kept(c, plan.policy)
+                      else c["arguments"]}}
+        for c in it.calls], ORIGIN: origin(it.cid, turn=it.turn, message=it.id)}]
+    screens = []
+    for c in it.calls:
+        came = origin(it.cid, turn=it.turn, message=c.get("result_message_id"),
+                      call=c["id"])
+        res = c["result"] if c["result"] is not None else "result unavailable"
+        stubbed = aged and _agable(c, plan.policy, plan.counter)
+        if not stubbed:
+            res = mark.shown(res, c.get("display"), guarded)  # guard/mark.py
+        images: list[dict] = []
+        if stubbed:
+            res = compact.stub(c["name"], c["arguments"], c["result"], plan.cited)
+        elif c.get("attachments"):
+            # the result's files (shell__look): their notes stay in the tool
+            # message, the image parts go below
+            rendered = attachments.render(cfg, [
+                {"role": "tool", "content": res,
+                 "attachments": c["attachments"]}])[0]["content"]
+            if isinstance(rendered, list):
+                res, images = rendered[0]["text"], rendered[1:]
+            else:
+                res = rendered
+        # a result meant to be seen (browser__look's screen, display "see")
+        shown = (c.get("display") or {}) if not stubbed else {}
+        shot = shown.get("shot") if shown.get("see") else None
+        if shot:
+            images.append({"type": attachments.IMAGE, "attachment": {
+                **{k: shot[k] for k in ("id", "filename", "sha256", "media_type")},
+                "size": attachments.image_size_of(
+                    attachments.blob_path(cfg, shot["sha256"]))}})
+        if images:
+            res += "\n" + ("[the image follows]" if len(images) == 1
+                           else "[the images follow]")
+        out.append({"role": "tool", "tool_call_id": c["id"], "content": res,
+                    ORIGIN: came})
+        # the chat templates take image parts in user turns only: a result's
+        # images follow the results of the reply as a user message, until the
+        # result is aged away
+        if images:
+            screens.append({"role": "user", "content": [
+                {"type": "text", "text": f"[the screen from {c['name']}]"}, *images],
+                ORIGIN: origin(it.cid, turn=it.turn, call=c["id"], note="screen")})
+    return out + screens
+
+
+async def step_wire(store, cfg, cid: str, mid: str) -> list[dict]:
+    """Reply `mid` with its calls' results, read back as stored and sent as every later
+    build sends it (calls_wire): its thinking and its results' images included."""
+    row = await store.read(lambda c: dict(c.execute(
+        "SELECT id, role, content, reasoning, turn_id FROM messages WHERE id=?",
+        (mid,)).fetchone()))
+    view = await compactions.context_view(store, cid, [row])
+    it = _Item(0, row, view["calls"].get(mid), None, cid=cid)
+    return calls_wire(cfg, it, guard.enabled(cfg, cid))
 
 
 # ---- build --------------------------------------------------------------------------------
@@ -543,6 +559,8 @@ async def _build(store, cfg, backend, cid, system, tools, mode, focus, policy,
     view = await compactions.context_view(store, cid, path)
     plan = _Plan(view, cfg, backend, counter, policy, int(cfg.r("history_messages") or 0),
                  cid)
+    # the mark of a shortened argument names the read-back tool: no tool, no shortening
+    plan.readback = any((t.get("function") or {}).get("name") == READBACK for t in tools)
     plan.opening = await store.read(lambda c: (c.execute(
         "SELECT v FROM kv WHERE k=?", (OPENING + cid,)).fetchone() or [""])[0])
     run = _Run(store, cfg, backend, cid, plan, system, tools, mode, focus, policy,
