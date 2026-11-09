@@ -243,11 +243,10 @@ function List({ active }: { active: boolean }) {
                  crumbs={who ? [{ label: 'Intercom', onClick: e => { e.preventDefault(); setWho(null) } }] : undefined}
                  search={{ value: q, onChange: setQ, placeholder: 'Search' }} picker={failed ? undefined : picker}
                  shelf={who || failed ? undefined : { archive: true, value: shelf, onChange: setShelf }}
-                 actions={!who && !onShelf && <>
+                 actions={!who && !onShelf && (
                    <Button icon={CheckCheck} disabled={!waitN} loading={dismissAll.busy} onClick={() => void dismissAll.run()}>Dismiss all</Button>
-                   <Button icon={PackageCheck} loading={archiveRead.busy} onClick={() => void archiveRead.run()}>Archive read</Button>
-                 </>}
-                 />
+                 )}
+                 more={!who && !onShelf ? [{ label: 'Archive read', icon: PackageCheck, disabled: archiveRead.busy, onSelect: () => void archiveRead.run() }] : []} />
       {!failed && <div className="list-page__top">
         {picker.on
           ? <SelectBar picker={picker} noun={n => count(n, 'thread')}

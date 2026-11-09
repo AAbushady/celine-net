@@ -3,6 +3,10 @@
 
 .routines-page { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
+/* over the runs, one row: the days, then the state and the schedule as two small menus; a
+   phone gives each its own row */
+.routines-top { grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: var(--s-4); }
+@media (max-width: 767px) { .routines-top { grid-template-columns: minmax(0, 1fr); } }
 /* the fourteen days: Earlier, the days (a failed one in the error tone), Later */
 .routines-days { display: flex; align-items: center; gap: var(--s-1); min-width: 0; }
 /* one row that scrolls sideways, never wraps */

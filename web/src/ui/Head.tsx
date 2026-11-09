@@ -1,21 +1,19 @@
 /* Heads: PlaceHead (the head of every place and page), Toolbar (the state of a list under
    it) and GroupHead (above each group of a grouped list).
 
-   PlaceHead is ONE row at every width. Its order: the title and count, Search, Select,
-   Archive, Trash, the caller's own actions, More, then New at the far right. The top page
-   of a place with sections (ui/Place.tsx) shows them as tabs where its title would be, the
-   title kept for screen readers; the tabs keep their words until the step at which a title
-   would end in an ellipsis, and scroll sideways from there. It measures
+   PlaceHead is ONE row at every width. Its order: the title and count, Search, the
+   caller's own actions, More, then New at the far right: one primary, and everything rare
+   behind More. Select, Archive and Trash are always in More, before the caller's own items.
+   The top page of a place with sections (ui/Place.tsx) shows them as tabs where its title
+   would be, the title kept for screen readers; the tabs keep their words until the step at
+   which a title would end in an ellipsis, and scroll sideways from there. It measures
    itself: when the row does not fit, it steps down, one step at a time, until it does:
-   the buttons lose their words, then Select, Archive and Trash move into More, then New
-   becomes a round "+", then the title ends in an ellipsis (shorter in a narrow head), then
-   the lead (a face) goes, and last the caller's own actions take their own line under the
-   row, which a phone's head never needs. In a narrow head (a list column, a phone)
-   Search takes its own row under it, the buttons have no words, and Select, Archive and
-   Trash are in More. A touch screen has no
-   hover to show a tip, so there the words stay one step longer: Select, Archive and Trash
-   move into More first, then the words go, at every width. On a shelf New keeps its place, unseen, so nothing
-   the user just clicked moves. */
+   the buttons lose their words, then New becomes a round "+", then the title ends in an
+   ellipsis (shorter in a narrow head), then the lead (a face) goes, and last the caller's
+   own actions take their own line under the row, which a phone's head never needs. In a
+   narrow head (a list column, a phone) Search takes its own row under it and the buttons
+   have no words. On a shelf New keeps its place, unseen, so nothing the user just clicked
+   moves. */
 import { useLayoutEffect, useRef, useState, type ReactNode, type Ref } from 'react'
 import {
   Archive, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, Layers, ListChecks, MoreHorizontal, PanelLeft, Plus, Trash2, X, type LucideIcon,
@@ -26,7 +24,6 @@ import { cx } from './cx'
 import { SearchField } from './Form'
 import { Help } from './Help'
 import { ICON } from './icons'
-import { coarse } from './phone'
 import { usePush } from './motion'
 import { Menu, MenuButton, useContextMenu, type MenuItem } from './Menu'
 import { usePlace } from './Place'
@@ -64,7 +61,7 @@ type PlaceShelf = {
 const SHELF = { archive: { label: 'Archive', icon: Archive }, trash: { label: 'Trash', icon: Trash2 } } as const
 
 /** the steps a head takes when it does not fit (see the top of this file) */
-const STEPS = 6
+const STEPS = 5
 /** below this width Search takes its own row */
 const NARROW = 640
 
@@ -119,7 +116,6 @@ export function PlaceHead({
   const [narrow, setNarrow] = useState(false)
   const [moreAt, setMoreAt] = useState<HTMLElement | null>(null)
   const width = useRef(0)
-  const [touch] = useState(coarse)
 
   // a new width starts from the roomiest step; the effect below steps down until it fits
   useLayoutEffect(() => {
@@ -148,8 +144,7 @@ export function PlaceHead({
     if (step < STEPS && (over || sticks)) setStep(s => s + 1)
   })
 
-  const words = touch ? step < 2 : step < 1 && !narrow
-  const shelvesInMore = narrow || step >= (touch ? 1 : 2)
+  const words = step < 1 && !narrow
 
   // a page's own buttons lose their words with the rest; the words become their tip
   useLayoutEffect(() => {
@@ -162,20 +157,19 @@ export function PlaceHead({
   })
 
   const open = shelf && shelf.value !== 'list' ? shelf.value : null
-  const roundNew = step >= 3 || narrow
-  const clip = step >= 4
-  const leadless = step >= 5
-  const actsBelow = step >= 6 && !!actions
+  const roundNew = step >= 2 || narrow
+  const clip = step >= 3
+  const leadless = step >= 4
+  const actsBelow = step >= 5 && !!actions
 
   const toggle = (s: 'archive' | 'trash') => shelf!.onChange(shelf!.value === s ? 'list' : s)
   const selectItem: MenuItem | null = picker ? { label: picker.on ? 'Done' : 'Select', icon: ListChecks, onSelect: () => (picker.on ? picker.stop() : picker.start()) } : null
   const shelfItems: MenuItem[] = (['archive', 'trash'] as const).filter(s => shelf?.[s])
     .map(s => ({ label: SHELF[s].label, icon: SHELF[s].icon, current: shelf!.value === s, onSelect: () => toggle(s) }))
-  const moreItems: MenuItem[] = shelvesInMore ? [selectItem, ...shelfItems].filter((x): x is MenuItem => !!x) : []
+  const moreItems: MenuItem[] = [selectItem, ...shelfItems].filter((x): x is MenuItem => !!x)
   const allMore = [...moreItems, ...(moreItems.length && more.length ? ['sep' as const] : []), ...more]
-  // a More of one plain item with an icon is that item's own button, labelled like Select and
-  // Archive while there is room (an icon alone beside Archive read as a second Archive): no menu for one choice
-  // (one that destroys stays in the menu, its last item)
+  // a More of one plain item with an icon is that item's own button, with its words while
+  // there is room: no menu for one choice (one that destroys stays in the menu, its last item)
   const only = allMore.length === 1 ? allMore[0] : undefined
   const lone = only && only !== 'sep' && !('heading' in only) && only.icon && typeof only.label === 'string'
     && !only.danger && only.current === undefined ? only : null
@@ -234,9 +228,6 @@ export function PlaceHead({
         )}
         {!narrow && searchBox}
         <div className="place-head__acts">
-          {!shelvesInMore && picker && act(ListChecks, 'Select', picker.on, () => (picker.on ? picker.stop() : picker.start()))}
-          {!shelvesInMore && (['archive', 'trash'] as const).filter(s => shelf?.[s])
-            .map(s => <span key={s} className="place-head__slot">{act(SHELF[s].icon, SHELF[s].label, shelf!.value === s, () => toggle(s))}</span>)}
           {!actsBelow && actions}
           {lone ? act(lone.icon!, lone.label as string, false, () => lone.onSelect?.(), { disabled: lone.disabled, title: lone.title })
             : allMore.length > 0 && (
@@ -266,7 +257,8 @@ export function PlaceHead({
    never wraps: when it does not fit, Sort and Group, then the filters not picked, become
    icons with their words as the tip, then the state becomes one button with its menu; a picked filter shrinks to an ellipsis, and what
    still has no room scrolls sideways and fades at the edge with more; while selecting,
-   the SelectBar takes its place. ── */
+   the SelectBar takes its place. `compact`: it shares its row with something else (a day
+   strip), so it starts at its last step. ── */
 type ToolFilter = {
   /** the filter's name: "Folder" */
   label: string
@@ -281,20 +273,23 @@ type ToolFilter = {
 /** a filter that is on or off (Favourites): a button that stays pressed while on */
 type ToolToggle = { label: string; icon: LucideIcon; on: boolean; onChange: (on: boolean) => void }
 
-export function Toolbar({ state, filters = [], toggles = [], sort, group, className }: {
+export function Toolbar({ state, filters = [], toggles = [], sort, group, compact = false, className }: {
   state?: { label: string; value: string; onChange: (value: string) => void; options: { value: string; label: string; count?: number }[] }
   filters?: ToolFilter[]
   /** after the filters */
   toggles?: ToolToggle[]
   sort?: ToolChoice
   group?: ToolChoice
+  /** the state as one button with its menu and the filters as icons, at every width */
+  compact?: boolean
   className?: string
 }) {
   const [at, setAt] = useState<{ el: HTMLElement; label: string; items: MenuItem[]; align: 'start' | 'end' } | null>(null)
   const row = useRef<HTMLDivElement>(null)
   // 0 words, 1 Sort and Group as icons, 2 the filters too, 3 the state as one button with
   // its menu; a new width starts from 0
-  const [tight, setTight] = useState(0)
+  const [fit, setTight] = useState(0)
+  const tight = compact ? 3 : fit
   const width = useRef(0)
   useLayoutEffect(() => {
     const el = row.current

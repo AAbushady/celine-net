@@ -268,7 +268,7 @@ function RunsDay({ list, night, today, days, nodes, runs, all, active, go, onEar
       <PlaceHead level={1} title={nightWords(night)} count={ran.length || undefined}
                  search={{ value: q, onChange: setQ, placeholder: 'Search runs' }}
                  newLabel="New schedule" onNew={() => go({ schedule: 'new' })} />
-      <div className="list-page__top">
+      <div className="list-page__top routines-top">
         <div className="routines-days" ref={strip}>
           <IconButton icon={ChevronLeft} size="sm" label="Earlier" onClick={onEarlier} />
           <Segmented label="Day" className="routines-days__strip" value={night} onChange={d => go({ night: d }, true)}
@@ -280,7 +280,7 @@ function RunsDay({ list, night, today, days, nodes, runs, all, active, go, onEar
                      })} />
           <IconButton icon={ChevronRight} size="sm" label="Later" disabled={newest >= today} onClick={onLater} />
         </div>
-        <Toolbar state={{ label: 'State', value: show, onChange: setShow, options: [
+        <Toolbar compact state={{ label: 'State', value: show, onChange: setShow, options: [
                    { value: 'all', label: 'All', count: ran.length },
                    { value: 'running', label: STATE_WORD.running, count: ran.filter(n => n.state === 'running').length },
                    { value: 'waiting', label: STATE_WORD.waiting, count: ran.filter(n => n.state === 'waiting').length },
