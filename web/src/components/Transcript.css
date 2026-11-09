@@ -23,6 +23,9 @@
 .step:empty { display: none; }
 /* a line that comes and goes (Appear): it shrinks with the step, a long one ends in "..." */
 .appear { min-width: 0; }
+/* nothing in a reply widens it: each part of its grids shrinks with it, so a line that
+   does not wrap (a command, a path) ends in "..." or scrolls in its own box */
+:is(.reply, .step, .msg-quiet) > * { min-width: 0; }
 
 /* a line between messages: a reminder, a brief, a note about images, a summary */
 .msg-event { margin: var(--s-2) 0 var(--s-3); }
