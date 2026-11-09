@@ -15,7 +15,7 @@ pytestmark = pytest.mark.anyio
 
 DEFAULTS = {
     "accent": "rose",
-    "grain": "fine",
+    "grain": "none",
     "grain_opacity": 4,
     "tint": 100,
     "contrast": 100,

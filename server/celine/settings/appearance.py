@@ -20,7 +20,7 @@ CONTRAST_MAX = 110
 ACCENTS = ("rose", "peach", "sage", "teal", "sky", "violet", "miku")
 APPEARANCE: dict[str, tuple[tuple, Any]] = {
     "accent": (ACCENTS, "rose"),
-    "grain": (("fine", "coarse", "paper", "none"), "fine"),
+    "grain": (("fine", "coarse", "paper", "none"), "none"),
     "grain_opacity": (tuple(range(0, 21)), 4),
     "tint": (tuple(range(0, 301, 25)), 100),
     "contrast": (tuple(range(50, CONTRAST_MAX + 1, 10)), 100),

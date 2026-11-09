@@ -45,7 +45,7 @@ export const appearanceApi = {
 /** the look until the server answers, on a device that kept none */
 export const DEFAULT_APPEARANCE: Appearance = {
   accent: 'rose',
-  grain: 'fine',
+  grain: 'none',
   grain_opacity: 4,
   tint: 100,
   contrast: 100,
