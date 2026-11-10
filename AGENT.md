@@ -23,7 +23,7 @@ The map of the code and the rules it follows.
 | Module | What |
 |---|---|
 | `__main__.py`, `config.py`, `boot.py`, `reload.py`, `saves.py` | preflight and lifespan; celine.toml into a Config and the readers' helpers; the whole load (every config file, var/settings, its row), which writes nothing; config reloaded in place; the Settings saves, one function each, for the routes and the agent's `settings` skill |
-| `core/` | the single writer and event append, EventBus, ids and times, Services; `statuses.py` every status set the app shows, each an enum with its display (words and tone) |
+| `core/` | the single writer and event append, EventBus, ids and times, Services; `statuses.py` every status set the app shows, each an enum with its display (words and tone); `dto.py` the base of a route's answer model and the shapes answers share |
 | `db/` | `migrations/0001_schema.sql`, the later `NNNN_*.sql` and `NNNN_*.py` (a `.py` one moves stored data), and the chains for `log/` and `notebook/`; `migrate.py` applies them |
 | `conversations/` | conversation rows, the message tree, snapshot and replay, routes |
 | `turns/` | one turn: dispatcher, runner, tool chokepoint, context, compaction, titles; `reply.py` the one place that touches a stored reply (citation tokens only); `warm.py` keeps the newest chat ready on its model server |
@@ -52,7 +52,7 @@ The map of the code and the rules it follows.
 | `commands/` | slash commands the composer runs |
 | `auth/` | login: passkey, password, PIN |
 | `api/` | HTTP routes and the WebSocket |
-| `clock.py`, `errors.py`, `logs.py`, `ops.py`, `keys.py` | time zone; errors; logging; `celine doctor/export/purge/keys` |
+| `clock.py`, `errors.py`, `logs.py`, `ops.py`, `keys.py`, `page_types.py` | time zone; errors; logging; `celine doctor/export/purge/keys`; the page's types written from the route models |
 
 ### web/src
 
@@ -62,7 +62,7 @@ The map of the code and the rules it follows.
 | `ui/` | the kit; `ui/index.ts` exports it; `ui/ui.css` styles it |
 | `views/` | one place each: `Celine`, `Missions`, `Routines`, `Notebook`, `Documents`, `Chats`, `Intercom`, `Terminals`, `Terminal`, `Browser`, `Events`, `Search`, `Artifact`, `Welcome`, `settings/` |
 | `components/` | app parts made of kit parts: Transcript, Composer, ToolRow, ConversationList, ConversationPanel, Markdown, Plan, ProviderFields |
-| `lib/` | api clients, socket and bus, `nav.tsx`, `prefs.ts` (this device's conveniences in localStorage), hooks (`useResource`, `useAction`, `useReveal`, `useConversation`) |
+| `lib/` | api clients, `api.gen.ts` (the server's route models as types, written by `celine.page_types`, never edited), socket and bus, `nav.tsx`, `prefs.ts` (this device's conveniences in localStorage), hooks (`useResource`, `useAction`, `useReveal`, `useConversation`) |
 | `styles/` | `tokens.css` (every value), `base.css` (keyframes, resets) |
 
 ## Words
@@ -92,7 +92,7 @@ An instance on a scratch data dir: `CELINE_DATA_DIR=DIR/data ./start.sh --port 8
 
 1. No backwards compatibility: no shims, aliases or old shapes. Stored data changes once, in a migration, and the old code goes in the same change.
 2. An interactive turn that fails fails with its reason. Nothing re-asks behind the user's back; a routine waits for its model; a failed run runs again only as its schedule's "When a run fails" setting says, or when the user presses Retry on it (a failed, skipped or stopped run), as a fresh run of its prompt. A model's output is stored and shown as it came: no code transforms, trims, replaces or rewrites a reply (`turns/reply.py` touches citation tokens only; known secrets are masked).
-3. The server owns state: lists, counts, labels, paths and effective settings come from the server through explicit events. The client never guesses. A status is an enum in `core/statuses.py`, sent as its value with its `display` (words and tone), so the page keeps no word table. A list comes with its filter options (label and count each) and is fetched again on its events.
+3. The server owns state: lists, counts, labels, paths and effective settings come from the server through explicit events. The client never guesses. A status is an enum in `core/statuses.py`, sent as its value with its `display` (words and tone), so the page keeps no word table. A list comes with its filter options (label and count each) and is fetched again on its events. A route's answer is a model beside the route (`core/dto.py` `Answer`), the page takes its types for it from `web/src/lib/api.gen.ts`, and a changed model is written there again with `uv run python -m celine.page_types > web/src/lib/api.gen.ts`. Sub-agents are the first feature done this way, and a route still answering a plain `dict` moves over when it is next changed.
 4. Routes are plain REST: `/api/<plural-noun>[/{id}[/<sub-resource>]]`, kebab-case, a verb only as a trailing action (`/run`, `/stop`, `/test`), singular only for a singleton (`/api/agent`, `/api/status`), sockets under `/ws/`.
 5. A text a model reads lives beside the code that sends it (`prompts.text`), or in `config/` when a user is meant to edit it, or edited by the user in Settings, Advanced, Prompts (var/prompts), which `prompts.text` reads first.
 6. A feature is one entry in `settings/features.py`; a service address is a setting with a probe.

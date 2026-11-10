@@ -157,3 +157,14 @@ def look(c: sqlite3.Connection, sub: str, own: dict) -> dict:
 def _first_line(text: str | None) -> str | None:
     s = (text or "").strip().split("\n")[0].strip()
     return s or None
+
+
+def is_conversation(c: sqlite3.Connection, cid: str) -> bool:
+    """`cid` is a conversation: one a sub-agent can be started under."""
+    return c.execute("SELECT 1 FROM conversations WHERE id=?", (cid,)).fetchone() is not None
+
+
+def is_sub_agent(c: sqlite3.Connection, cid: str) -> bool:
+    """`cid` is a sub-agent's conversation."""
+    return c.execute("SELECT 1 FROM conversations WHERE id=? AND agent_of IS NOT NULL",
+                     (cid,)).fetchone() is not None

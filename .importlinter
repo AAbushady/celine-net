@@ -48,6 +48,7 @@ forbidden_modules =
     celine.metrics
     celine.missions
     celine.ops
+    celine.page_types
     celine.plans
     celine.push
     celine.reload
