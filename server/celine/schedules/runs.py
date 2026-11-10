@@ -103,7 +103,7 @@ import logging
 import posixpath
 import re
 import sqlite3
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 import anyio
 from croniter import croniter
@@ -152,6 +152,19 @@ ROW = ("SELECT r.*, a.slot AS again_slot, x.id AS retried, x.slot AS retried_slo
        "(SELECT y.id FROM runs y WHERE y.again_of = r.id ORDER BY y.slot DESC LIMIT 1)")
 WAITED_ON = ("((c.kind = 'mission' AND {mission}) OR (c.kind = 'chat' AND "
              "c.trigger_key IS NULL))")
+
+# the runs `r` whose slot is on some calendar days: its two values are day_span's. Slots
+# are compared as moments, whatever the precision they were written with
+ON_DAYS = "datetime(r.slot) >= datetime(?) AND datetime(r.slot) < datetime(?)"
+
+
+def day_span(first: date, last: date, tz) -> tuple[str, str]:
+    """The first moment of `first` and of the day after `last` in the app's zone: the
+    calendar days `first` to `last`, midnight to midnight (ON_DAYS). The Routines page
+    and routines__list give a day's runs so."""
+    return (iso(datetime.combine(first, time.min, tz)),
+            iso(datetime.combine(last + timedelta(days=1), time.min, tz)))
+
 
 def _repeated(slot: datetime, tz) -> bool:
     """The second 02:00 of the night the clocks go back: that wall time already ran."""

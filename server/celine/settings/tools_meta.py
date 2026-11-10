@@ -226,7 +226,7 @@ TOOLS: dict[str, dict[str, str]] = {
                    "summary": "Marks a step of the plan as in progress or done."},
     "routines__list": {"label": "Routines: list",
                        "summary": "Lists the Routines with their time and last run and the "
-                                  "triggers, or the runs of a night."},
+                                  "triggers, or the runs of a day."},
     "routines__read": {"label": "Routines: read",
                        "summary": "Reads one Routine whole, with its newest runs and their "
                                   "results."},

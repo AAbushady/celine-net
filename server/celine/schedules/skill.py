@@ -1,5 +1,5 @@
 """The agent's hand on the Routines: routines__list (the routines and the triggers, or the
-runs of a night or the newest runs), routines__read, routines__write and routines__run. A write is schedules/edit.py's, the same checks as the Routines page,
+runs of a calendar day or the newest runs), routines__read, routines__write and routines__run. A write is schedules/edit.py's, the same checks as the Routines page,
 recorded as its own (its texts' History by it); a run it starts is `started_by` it
 (runs.started_by), so both show as its own in Events and in the routine's history."""
 from __future__ import annotations
@@ -14,7 +14,7 @@ from ..errors import CelineError
 from ..skills import ToolContext, ToolResult, guide, tool, described
 from ..turns.compact import one_line
 from . import shown
-from .runs import ROW, view as run_view
+from .runs import ON_DAYS, ROW, day_span, view as run_view
 
 RUNS_SHOWN = 5
 RUNS_MAX = 50       # runs one routines__list(runs=) gives at most
@@ -54,19 +54,20 @@ class Routines:
     async def list(
         self,
         ctx: ToolContext,
-        night: Annotated[str | None, "A night, such as 2026-11-08 (from 12:00 the day "
-                                     "before to 12:00 that day): its runs, every "
-                                     "routine's."] = None,
+        day: Annotated[str | None, "A day, such as 2026-11-08: the runs whose time is "
+                                   "on that date, midnight to midnight, every "
+                                   "routine's."] = None,
         runs: Annotated[int, f"The newest runs of every routine, this many, at most "
                              f"{RUNS_MAX}."] = 0,
     ) -> ToolResult:
         """List the Routines (name, label, when, on or off, the newest run) and the
         triggers (name, label, on or off, when it last fired, its background task's
-        conversation id). With night or runs, runs instead: each run:<id> with its
-        routine, time, state, reason and its result's last line."""
+        conversation id). With day or runs, runs instead: each run:<id> with its
+        routine, time, state, reason and its result's last line. A day lists what the
+        Routines page shows under that day."""
         tz = zone(ctx.config)
-        if night or runs:
-            return await self._runs(ctx, night, runs, tz)
+        if day or runs:
+            return await self._runs(ctx, day, runs, tz)
         every = self._every()
         # SQLite: the bare columns come from the row of max(slot)
         last = await ctx.store.read(lambda c: {r["schedule"]: dict(r) for r in c.execute(
@@ -82,21 +83,23 @@ class Routines:
             lines += ["Triggers:", *fires]
         return ToolResult(content="\n".join(lines), display={"routines": len(every)})
 
-    async def _runs(self, ctx: ToolContext, night: str | None, n: int, tz) -> ToolResult:
-        """routines__list's runs: those of `night`, else the newest `n`."""
-        if night:
+    async def _runs(self, ctx: ToolContext, day: str | None, n: int, tz) -> ToolResult:
+        """routines__list's runs: those whose slot is on the calendar day `day`, else the
+        newest `n`."""
+        if day:
             try:
-                night = dt.date.fromisoformat(night.strip()).isoformat()
+                on = dt.date.fromisoformat(day.strip())
             except ValueError:
-                return ToolResult(content=f"{night!r} is not a night. Use 2026-11-08.",
+                return ToolResult(content=f"{day!r} is not a day. Use 2026-11-08.",
                                   is_error=True)
-            sql, args = f"{ROW} WHERE r.night = ? ORDER BY r.slot", (night,)
+            day = on.isoformat()
+            sql, args = f"{ROW} WHERE {ON_DAYS} ORDER BY r.slot", day_span(on, on, tz)
         else:
             sql, args = f"{ROW} ORDER BY r.slot DESC LIMIT ?", (min(max(n, 1), RUNS_MAX),)
         rows = await ctx.store.read(lambda c: [run_view(r, self.app.cfg)
                                                for r in c.execute(sql, args)])
         if not rows:
-            return ToolResult(content=f"No runs the night of {night}." if night
+            return ToolResult(content=f"No runs on {day}." if day
                               else "No runs yet.", display={"runs": 0})
         return ToolResult(content="\n".join(_run_line(r, tz, label=True) for r in rows),
                           display={"runs": len(rows)})

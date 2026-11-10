@@ -111,8 +111,10 @@ async def test_routines_give_runs_with_their_result_and_the_triggers(store):
     assert "- run:r0 Thu 29 Oct 01:00 failed: 502" in read
     newest = (await skill.list(ctx, runs=1)).content
     assert newest == "- run:r1 World Fri 30 Oct 01:00 done\n  result: The rain stops on Friday."
-    assert (await skill.list(ctx, night="2026-10-29")).content.startswith("- run:r0 World ")
-    assert (await skill.list(ctx, night="Friday")).is_error
+    assert (await skill.list(ctx, day="2026-10-29")).content == \
+        "- run:r0 World Thu 29 Oct 01:00 failed: 502", "that calendar day's runs only"
+    assert (await skill.list(ctx, day="2026-10-28")).content == "No runs on 2026-10-28."
+    assert (await skill.list(ctx, day="Friday")).is_error
     listed = (await skill.list(ctx)).content
     assert listed.startswith("- world: World, every day at 01:00, on, last run ")
     fired = listed.split("Triggers:\n", 1)[1]

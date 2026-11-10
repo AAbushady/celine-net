@@ -1242,10 +1242,10 @@ clears `waiting` (`answered_sync`). The agent's request carries the plan in its 
 next step, and its words beside them are no end of the turn; a `plan__step` that reached an ask
 checkpoint and a mission's wait end the turn at once.
 
-`routines` (`schedules/skill.py`): `list(night, runs)`, `read(name)`, `write(name,
+`routines` (`schedules/skill.py`): `list(day, runs)`, `read(name)`, `write(name,
 label, prompt, time|cron, role, on, note, after, wall_minutes)` and `run(name)`. `list`
 gives the routines and the triggers (`triggers.declared`, its on or off, `triggers.fired`,
-its `trigger:<name>` conversation); with `night` or `runs` it gives runs instead, every
+its `trigger:<name>` conversation); with `day` (a calendar day, as the Routines page lists it) or `runs` it gives runs instead, every
 routine's: `run:<id>`, time, state, error or reason and the result's last line, as
 `read` gives a routine's newest. A write goes through
 `schedules/edit.save`, the same path and checks as PUT /schedules/{name}; a run it starts

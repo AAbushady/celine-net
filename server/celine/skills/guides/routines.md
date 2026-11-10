@@ -9,8 +9,8 @@ conversation of its own; {{username}} sees them on the Routines page.
 routines__list lists them (name, label, when, on or off, the newest run) and the
 triggers: each trigger's name, label, on or off, when it last fired and the id of its
 background task's conversation (one per trigger, every fire in it).
-routines__list(night="2026-01-09") lists every routine's runs of that night (from 12:00
-the day before to 12:00 that day), routines__list(runs=10) the newest 10 runs of all
+routines__list(day="2026-01-09") lists every routine's runs of that day (midnight to
+midnight, what the Routines page shows under it), routines__list(runs=10) the newest 10 runs of all
 routines: each run:<id> with its routine, time, state, error or reason and its result's
 last line. routines__read(name) gives one whole: every setting, the prompt, the
 reviewer prompt and its newest runs, each the same way. A run's whole talk:
