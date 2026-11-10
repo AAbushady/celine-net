@@ -38,11 +38,6 @@ export type Schedule = {
   on: boolean
   /** When a run fails: retry runs a failed run again up to three times for the same day, skip ends it skipped and quiet */
   on_fail: OnFail
-  /** the next slot (UTC), null while off */
-  next: string | null
-  /** the calendar day of the next slot in the app's zone, and its time of day ("02:00") */
-  next_day: string | null
-  next_at: string | null
 }
 
 export type OnFail = 'retry' | 'skip'
@@ -101,7 +96,10 @@ export type Run = {
 /** one of the fourteen days: failed when a schedule's newest try that day failed */
 export type Day = { day: string; failed: boolean }
 
-export type Runs = { runs: Run[]; days: Day[]; today: string }
+/** a slot still to come today: its schedule's name and title, the time (UTC) and its time of day ("14:00") */
+export type Planned = { schedule: string; label: string; slot: string; at: string }
+/** `planned`: every slot still to come today, the server's list; empty for another day */
+export type Runs = { runs: Run[]; planned: Planned[]; days: Day[]; today: string }
 
 /** GET /schedules: a field's choices and its "?" text, the server's */
 export type ScheduleWords = { choices: { on_fail: { value: OnFail; label: string }[] }; help: Record<'on_fail' | 'idle_only' | 'wall_minutes', string> }

@@ -13,11 +13,12 @@ from ..settings.files import Invalid
 from ..settings.registry import ROLES
 from ..clock import zone
 from . import VARIABLES, fill, run_date, run_roles, shown, words
-from .runs import IDLE_MINUTES, ROW, STOPPED, first_slot, results, \
+from .runs import IDLE_MINUTES, ROW, STOPPED, _repeated, first_slot, results, \
     view as run_view
 
 router = APIRouter(prefix="/api")
 DAYS = 14                       # the past days the page shows
+PLANNED = 100                   # the slots of one schedule the rest of a day lists at most
 # a field's "?" on the schedule page (ui Help): at most two sentences, filled by the server;
 # what runs.py does (_fail, _idle_skip), the period in the Routines page's word (day)
 HELP = {
@@ -49,11 +50,7 @@ def _today(cfg) -> date:
 
 def _view(s, cfg) -> dict:
     """`label` as written (its {{username}} and {{name}} kept, so a save keeps them),
-    `title` the label filled; `every` its cron in words ("Daily at 02:00", schedules.words);
-    `next_day` the calendar day of the next slot and `next_at` its time of day."""
-    from croniter import croniter
-    tz = zone(cfg)
-    nxt = croniter(s.cron, datetime.now(tz)).get_next(datetime) if s.on else None
+    `title` the label filled; `every` its cron in words ("Daily at 02:00", schedules.words)."""
     return {"name": s.name, "label": s.label, "title": shown(s), "summary": s.summary, "cron": s.cron, "time": s.time,
             "every": words(s.cron),
             "prompt": s.prompt, "after": list(s.after),
@@ -61,10 +58,30 @@ def _view(s, cfg) -> dict:
             "note": s.note, "role": s.role,
             "on": s.on, "idle_only": s.idle_only,
             "daytime": s.daytime,
-            "wall_minutes": s.wall_minutes, "on_fail": s.on_fail,
-            "next": iso(nxt) if nxt else None,
-            "next_day": nxt.date().isoformat() if nxt else None,
-            "next_at": f"{nxt:%H:%M}" if nxt else None}
+            "wall_minutes": s.wall_minutes, "on_fail": s.on_fail}
+
+
+def _planned(cfg, taken: set[tuple[str, str]], now_: datetime) -> list[dict]:
+    """What is still to come on the day of `now_` (a time in the app's zone): every slot of
+    a schedule that is on, after `now_` and before midnight, that has no run yet (`taken`:
+    the (schedule, slot) of the day's runs), soonest first; each {schedule, label, slot
+    (UTC), at (its time of day)}. A schedule with several slots a day gives each of them,
+    at most PLANNED; the wall time the clocks repeat is left out, as the scheduler leaves
+    it."""
+    from croniter import croniter
+    out = []
+    for s in (getattr(cfg, "schedules", None) or {}).values():
+        if not s.on:
+            continue
+        slots = croniter(s.cron, now_)
+        for _ in range(PLANNED):
+            at = slots.get_next(datetime)
+            if at.date() != now_.date():
+                break
+            if (s.name, iso(at)) not in taken and not _repeated(at, now_.tzinfo):
+                out.append({"schedule": s.name, "label": shown(s), "slot": iso(at),
+                            "at": f"{at:%H:%M}"})
+    return sorted(out, key=lambda p: (p["slot"], p["schedule"]))
 
 
 def _scheduler(request: Request):
@@ -77,11 +94,9 @@ def _scheduler(request: Request):
 @router.get("/schedules")
 async def list_schedules(request: Request) -> dict:
     """{schedules: [{name, label, title, summary, cron, time, every, prompt, after, reviewer,
-    reviewer_prompt, turns, note, role, on, idle_only, wall_minutes, on_fail, next,
-    next_day, next_at}],
+    reviewer_prompt, turns, note, role, on, idle_only, wall_minutes, on_fail}],
     roles, variables, today, choices, help}: by time of day; `time` "02:00" for a daily one (else
-    null), `every` in words ("Daily at 02:00", "Sundays at 07:00"), `next` the next
-    slot (UTC, null while off), `next_day` its calendar day and `next_at` its time of day,
+    null), `every` in words ("Daily at 02:00", "Sundays at 07:00"),
     `roles` the chat roles a schedule can run on,
     `variables` the words a prompt can hold, `today` the day the page opens on,
     `choices` a field's choices ({on_fail: [{value, label}]}), `help` a field's "?" text
@@ -175,9 +190,11 @@ async def preview(request: Request) -> dict:
 @router.get("/runs")
 async def list_runs(request: Request, day: str | None = None,
                     schedule: str | None = None, until: str | None = None) -> dict:
-    """{runs, days, today}: the runs of `day` (a calendar date in the app's zone, midnight
-    to midnight: a run's `day`; default: today) or of one `schedule` (its newest 50),
-    oldest slot first; `days` the DAYS days up to `until` (default and at most today),
+    """{runs, planned, days, today}: the runs of `day` (a calendar date in the app's zone,
+    midnight to midnight: a run's `day`; default: today) or of one `schedule` (its newest
+    50), oldest slot first; `planned` what is still to come today, when `day` is today
+    (`_planned`: every slot left of every schedule that is on), else nothing;
+    `days` the DAYS days up to `until` (default and at most today),
     newest first, each {day, failed: the newest try of one of its schedules on that day
     failed}. A run's `asked`: an approval waits in it or in a sub-agent of it
     (approvals.asked)."""
@@ -208,7 +225,9 @@ async def list_runs(request: Request, day: str | None = None,
     days = [{"day": n, "failed": n in failed} for n in
             ((last - timedelta(days=i)).isoformat() for i in range(DAYS))]
     runs = [{**r, "asked": r["conversation_id"] in waits} for r in runs]
-    return {"runs": runs, "days": days, "today": today.isoformat()}
+    planned = _planned(cfg, {(r["schedule"], r["slot"]) for r in runs},
+                       datetime.now(zone(cfg))) if schedule is None and which == today else []
+    return {"runs": runs, "planned": planned, "days": days, "today": today.isoformat()}
 
 
 @router.get("/runs/{rid}")

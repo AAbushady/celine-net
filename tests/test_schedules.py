@@ -256,6 +256,25 @@ async def _state(store, rid, state) -> bool:
     return r["state"] == state
 
 
+def test_today_lists_every_slot_still_to_come(cfg):
+    from zoneinfo import ZoneInfo
+
+    from celine.schedules import api as schedules_api
+    ny = ZoneInfo("America/New_York")
+    cfg.schedules = {"daydream": _s("daydream", "0 10-22/2 * * *"), "world": _s("world"),
+                     "off": _s("off", "0 23 * * *", on=False)}
+    now_ = datetime(2026, 11, 10, 9, 45, tzinfo=ny)
+    taken = {("daydream", iso(datetime(2026, 11, 10, 14, tzinfo=ny)))}     # 14:00 has its run
+    got = schedules_api._planned(cfg, taken, now_)
+    assert [(p["schedule"], p["at"]) for p in got] == [
+        ("daydream", at) for at in ("10:00", "12:00", "16:00", "18:00", "20:00", "22:00")], \
+        "each slot left today but the one with its run; not tomorrow's 02:00, not a schedule that is off"
+    assert got[0] == {"schedule": "daydream", "label": "Daydream",
+                      "slot": "2026-11-10T15:00:00.000+00:00", "at": "10:00"}
+    late = schedules_api._planned(cfg, set(), datetime(2026, 11, 10, 22, 0, tzinfo=ny))
+    assert late == [], "at 22:00 the 22:00 slot has come, and nothing is left today"
+
+
 async def test_a_moment_before_noon_is_that_dates_night_from_noon_the_next(store, cfg):
     from zoneinfo import ZoneInfo
 
@@ -729,7 +748,6 @@ async def test_the_api_ships_four_schedules_and_edits_previews_runs_and_deletes(
         reflection = by_name["reflection"]
         assert (reflection["time"], reflection["after"]) == ("05:00", ["self-review"])
         assert reflection["every"] == "Daily at 05:00" and reflection["turns"] == 8
-        assert reflection["next_at"] == "05:00" and reflection["next_day"] >= got["today"]
         assert reflection["reviewer"] == "mentor.md" and "neutral and direct" in \
             reflection["reviewer_prompt"]
         day = by_name["user-day"]
@@ -779,6 +797,8 @@ async def test_the_api_ships_four_schedules_and_edits_previews_runs_and_deletes(
         assert [x["id"] for x in listed["runs"]] == [run["id"]]
         assert len(listed["days"]) == 14 and listed["days"][0]["day"] == listed["today"]
         assert (await api.get("/api/runs?day=Friday")).json()["error"]["detail"]["field"] == "day"
+        assert isinstance(listed["planned"], list), "today comes with what is still to come"
+        assert (await api.get("/api/runs?day=2026-01-20")).json()["planned"] == [], "today only"
         earlier = (await api.get("/api/runs?until=2026-01-20")).json()["days"]
         assert [earlier[0]["day"], earlier[-1]["day"]] == ["2026-01-20", "2026-01-07"]
         one = (await api.get(f"/api/runs/{run['id']}")).json()

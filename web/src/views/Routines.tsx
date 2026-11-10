@@ -110,7 +110,8 @@ export function Routines({ active }: { active: boolean }) {
   const [until, setUntil] = useState<string | undefined>(undefined)
   // the runs of the day the address names; with no day in it the server answers with
   // today's, at every reload, so the page follows the server's clock
-  const runs = useResource(signal => routinesApi.runs(route.day, signal, until), [route.day, until], { events: isRunEvent })
+  const runs = useResource(signal => routinesApi.runs(route.day, signal, until), [route.day, until],
+                           { events: ev => isRunEvent(ev) || ev.type === 'settings.changed' })
   const triggers = useResource(signal => routinesApi.triggers(signal), [], { events: ev => ev.type === 'settings.changed' })
   const tasks = useResource(signal => routinesApi.tasks(signal), [], { events: isTaskEvent })
   const today = runs.data?.today ?? schedules.data?.today
@@ -131,13 +132,9 @@ export function Routines({ active }: { active: boolean }) {
     const out: Node[] = (runs.data?.runs ?? []).map(r => ({
       key: r.id, label: r.label, at: r.at, sort: Date.parse(r.slot), state: r.state, reason: r.reason, run: r, schedule: byName.get(r.schedule),
     }))
-    // today also shows what is still to come today (the server's next slot and its day)
-    if (day && day === today) {
-      for (const s of schedules.data?.schedules ?? []) {
-        if (s.on && s.next && s.next_day === day && !out.some(n => n.run?.schedule === s.name)) {
-          out.push({ key: `s:${s.name}`, label: s.title, at: s.next_at ?? '', sort: Date.parse(s.next), state: 'planned', reason: '', schedule: s })
-        }
-      }
+    // today also shows every slot still to come, the server's list
+    for (const p of runs.data?.planned ?? []) {
+      out.push({ key: `p:${p.schedule}:${p.slot}`, label: p.label, at: p.at, sort: Date.parse(p.slot), state: 'planned', reason: '', schedule: byName.get(p.schedule) })
     }
     // how many runs-after deep a schedule is: in the same minute, one that runs after another comes after it
     const depth = (name = '', seen: string[] = []): number => {
@@ -145,7 +142,7 @@ export function Routines({ active }: { active: boolean }) {
       return !s || seen.includes(name) ? 0 : Math.max(0, ...s.after.map(a => 1 + depth(a, [...seen, name])))
     }
     return out.sort((a, b) => a.sort - b.sort || depth(a.schedule?.name) - depth(b.schedule?.name))
-  }, [runs.data, schedules.data, byName, day, today])
+  }, [runs.data, byName])
 
   // the keys of the place, while it is on screen and no dialog is over it
   const save = useRef<(() => void) | null>(null)
