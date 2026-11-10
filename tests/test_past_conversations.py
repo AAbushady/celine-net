@@ -13,6 +13,7 @@ from celine.conversations import store as conversations, tree
 from celine.skills import ToolContext
 from celine.skills.conversations import PastConversations
 from celine.turns import store as turns
+from runs_fixtures import add_run
 
 
 async def _day(store, cid: str) -> str:
@@ -213,15 +214,14 @@ async def test_a_dead_run_and_a_failed_chat_are_marked_a_draft_not_a_source(stor
     mute = await conversations.for_trigger(store, "run:r3", "World news, Sat 24 Oct")
     _, tid, _ = await user_says(store, mute, "ten items, all checked")   # 502, no word
     await turns.transition(store, tid, mute, "failed", "the server returned 502")
-    await store.write(lambda c: c.executemany(
-        "INSERT INTO runs(id, schedule, label, slot, night, state, reason, created_at, "
-        "conversation_id, error) VALUES (?, 'world', 'World news', ?, ?, ?, '', ?, ?, ?)", [
-            ("r1", "2026-10-22T02:00:00Z", "2026-10-21", "failed", "2026-10-22T02:00:00Z",
-             dead, "Ran over 3 hours"),
-            ("r2", "2026-10-23T02:00:00Z", "2026-10-22", "done", "2026-10-23T02:00:00Z",
-             fine, None),
-            ("r3", "2026-10-24T02:00:00Z", "2026-10-23", "failed", "2026-10-24T02:00:00Z",
-             mute, "the server returned 502")]))
+    def three(c):
+        for rid, slot, night, state, cid, error in (
+                ("r1", "2026-10-22T02:00:00Z", "2026-10-21", "failed", dead, "Ran over 3 hours"),
+                ("r2", "2026-10-23T02:00:00Z", "2026-10-22", "done", fine, None),
+                ("r3", "2026-10-24T02:00:00Z", "2026-10-23", "failed", mute, "the server returned 502")):
+            add_run(c, rid, "world", label="World news", slot=slot, night=night, state=state,
+                    conversation_id=cid, error=error)
+    await store.write(three)
     ctx = ToolContext(conversation_id=here, turn_id="t", tool_call_id="x", store=store,
                       config=cfg, emit=None)
     words = "run World news, failed: Ran over 3 hours (a draft, not a source)"

@@ -13,6 +13,7 @@ from celine.db.migrate import migrate
 from celine.intercom.store import source_of
 from celine.skills.places import offered, place_of
 from celine.sub_agents.skill import agents_of
+from runs_fixtures import add_run
 
 pytestmark = pytest.mark.anyio
 
@@ -25,10 +26,9 @@ async def _tree(store) -> dict[str, str]:
     for parent in ("chat", "mission", "run", "task"):
         ids[f"{parent}-agent"] = await conversations.create(
             store, agent_of=ids[parent], agent_name="helper", kind="agent")
-    await store.write(lambda c: c.execute(
-        "INSERT INTO runs(id, schedule, label, slot, night, state, conversation_id, "
-        "created_at) VALUES('r1', 'diary', 'Diary', '2026-10-21T12:00:00+00:00', '2026-10-22', "
-        "'done', ?, '2026-10-22T23:00:00+00:00')", (ids["run"],)))
+    await store.write(lambda c: add_run(
+        c, "r1", "diary", slot="2026-10-21T12:00:00+00:00", night="2026-10-22",
+        conversation_id=ids["run"], created_at="2026-10-22T23:00:00+00:00"))
     await store.write(lambda c: c.execute(
         "UPDATE conversations SET created_at='2026-10-21T10:00:00+00:00' WHERE id=?",
         (ids["task"],)))

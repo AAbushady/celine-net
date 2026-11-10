@@ -28,6 +28,7 @@ from celine.schedules.variables import tool_failures
 from celine.skills import Registry
 from celine.skills.notebook import Notebook
 from celine.turns.dispatcher import Dispatcher
+from runs_fixtures import add_run
 
 pytestmark = pytest.mark.anyio
 UTC = timezone.utc
@@ -80,10 +81,8 @@ async def test_the_reviewer_binds_behind_the_user_with_the_schedules_label(store
     run_cid = await conversations.create(store, "run")
     sub = await conversations.create(store, "scout", agent_of=run_cid, agent_name="scout")
     deep = await conversations.create(store, "digger", agent_of=sub, agent_name="digger")
-    await store.write(lambda c: c.execute(
-        "INSERT INTO runs(id, schedule, label, slot, night, state, conversation_id, "
-        "created_at) VALUES('r', 'reflection', 'Reflection', 'x', '2026-10-16', 'running', ?, "
-        "'x')", (run_cid,)))
+    await store.write(lambda c: add_run(c, "r", "reflection", night="2026-10-16", state="running",
+                                        conversation_id=run_cid))
     for cid in (run_cid, sub, deep):            # every depth binds as the run
         assert await store.read(lambda c: binding(c, cid, cfg)) == {
             "priority": Priority.BACKGROUND, "label": "Reflection", "run": "r"}

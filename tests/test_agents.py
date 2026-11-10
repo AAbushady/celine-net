@@ -27,6 +27,7 @@ from celine.skills.notebook import Notebook
 from celine.turns.dispatcher import Dispatcher
 from celine.skills.gating import overrides_for
 from celine.skills.gating import set_override
+from runs_fixtures import add_run
 
 pytestmark = pytest.mark.anyio
 
@@ -220,10 +221,8 @@ async def test_a_report_into_a_run_that_ended_lands_without_waking_it(store, cfg
     """A sub-agent whose own turn had failed before the run's Stop still had sub-agents at
     work; when they were stopped its report woke the stopped run, which did its work."""
     run_cid = await conversations.create(store, "run")
-    await store.write(lambda c: c.execute(
-        "INSERT INTO runs(id, schedule, label, slot, night, state, conversation_id, "
-        "created_at) VALUES('r', 'growth', 'Growth check', 'x', '2026-11-08', 'running', ?, "
-        "'x')", (run_cid,)))
+    await store.write(lambda c: add_run(c, "r", "growth", label="Growth check", night="2026-11-08",
+                                        state="running", conversation_id=run_cid))
     d = Dispatcher(store, cfg, EventBus(), lambda: None, Registry())
     intercom = Intercom(store, d.notify)
     d.intercom = intercom

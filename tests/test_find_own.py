@@ -19,6 +19,7 @@ from celine.schedules.skill import Routines
 from celine.skills import ToolContext
 from celine.skills.conversations import PastConversations
 from celine.triggers import Event
+from runs_fixtures import add_run
 
 pytestmark = pytest.mark.anyio
 
@@ -56,13 +57,11 @@ async def _house(store):
     await store.write(lambda c: rows.read(c, [asked]))
     run = await conversations.create(store, "World", trigger_key="run:r1", kind="background")
     await _said(store, run, "Headlines.\nThe rain stops on Friday.")
-    await store.write(lambda c: c.execute(
-        "INSERT INTO runs(id, schedule, label, slot, night, state, conversation_id, result, "
-        "created_at) VALUES ('r1', 'world', 'World', '2026-10-30T01:00:00.000+00:00', "
-        "'2026-10-30', 'done', ?, 'Headlines.\nThe rain stops on Friday.\n', 'x'), "
-        "('r0', 'world', 'World', '2026-10-29T01:00:00.000+00:00', '2026-10-29', 'failed', "
-        "NULL, NULL, 'x')", (run,)))
-    await store.write(lambda c: c.execute("UPDATE runs SET error='502' WHERE id='r0'"))
+    def two(c):
+        add_run(c, "r1", "world", slot="2026-10-30T01:00:00.000+00:00", conversation_id=run,
+                result="Headlines.\nThe rain stops on Friday.\n")
+        add_run(c, "r0", "world", slot="2026-10-29T01:00:00.000+00:00", state="failed", error="502")
+    await store.write(two)
     task = await conversations.for_trigger(store, "trigger:new_mail", "new_mail")
     await _put(store, "system:email", f"agent:{task}", "trigger", "A mail came.",
                data={"trigger": "new_mail"})

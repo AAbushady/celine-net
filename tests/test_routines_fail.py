@@ -19,6 +19,7 @@ from celine.schedules.runs import CHECKED, RunClock, Scheduler, view, why_alone
 from celine.settings.files import Invalid
 from chat_fixtures import until
 from fake_backend import FakeBackend
+from runs_fixtures import add_run
 from test_schedules import Clock, Failing, Hanging, _app, _idle, _notices, _runs, \
     _scheduler, _state
 
@@ -196,11 +197,9 @@ async def _row(store, schedule="world", state="failed", night="2026-10-10", slot
     """A run of `night` whose slot is at `slot` on the calendar date `day` (default: the
     night's own date)."""
     rid = new_id()
-    await store.write(lambda c: c.execute(
-        "INSERT INTO runs(id, schedule, label, slot, night, state, created_at, again_of) "
-        "VALUES(?,?,?,?,?,?,?,?)", (rid, schedule, schedule.title(),
-                                    f"{day or night}T{slot}:00+00:00", night, state, now(),
-                                    again_of)))
+    await store.write(lambda c: add_run(c, rid, schedule, slot=f"{day or night}T{slot}:00+00:00",
+                                        night=night, state=state, created_at=now(),
+                                        again_of=again_of))
     return rid
 
 

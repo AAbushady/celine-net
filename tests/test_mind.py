@@ -17,6 +17,7 @@ from celine.conversations import store as conversations, tree
 from celine.skills import Registry, ToolContext
 from celine.skills import mind
 from celine.turns import context, message_context
+from runs_fixtures import add_run
 
 pytestmark = pytest.mark.anyio
 T0 = datetime(2026, 10, 16, 7, 12, tzinfo=timezone.utc)
@@ -251,10 +252,8 @@ async def test_a_status_set_in_a_running_run_stays_through_its_turns_until_it_en
     cid = await conversations.for_trigger(store, "run:r2", "Radar")
     agent = await conversations.create(store, agent_of=cid, kind="agent")
     at = T0.isoformat()
-    await store.write(lambda c: c.execute(
-        "INSERT INTO runs(id, schedule, label, slot, night, state, conversation_id, "
-        "created_at, started_at) VALUES('r2', 'radar', 'Radar', ?, ?, 'running', ?, ?, ?)",
-        (at, at[:10], cid, at, at)))
+    await store.write(lambda c: add_run(c, "r2", "radar", slot=at, state="running",
+                                        conversation_id=cid, started_at=at))
     await mind.store_mood(store, "\U0001f440", cid)
     assert not await mind.clear_after(store, cid)            # its turn, the reviewer's next
     await mind.store_mood(store, "\U0001f50d", agent)

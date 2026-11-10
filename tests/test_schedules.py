@@ -33,6 +33,7 @@ from celine.skills.conversations import PastConversations
 from celine.skills.notebook import Notebook
 from celine.turns.dispatcher import Dispatcher
 from chat_fixtures import until, user_says
+from runs_fixtures import add_run
 
 pytestmark = pytest.mark.anyio
 UTC = timezone.utc
@@ -474,10 +475,8 @@ async def test_time_waiting_for_a_model_does_not_count_against_the_ceiling(store
     clock = Clock(datetime(2026, 10, 10, 2, tzinfo=UTC))
     sched = Scheduler(_app(store, cfg, FakeBackend(echo=True)), clock)
     cid = await conversations.for_trigger(store, "run:r1", "World news")
-    await store.write(lambda c: c.execute(
-        "INSERT INTO runs (id, schedule, label, slot, night, state, conversation_id, "
-        "created_at) VALUES ('r1', 'world', 'World news', ?, '2026-10-09', 'running', ?, ?)",
-        (iso(clock.at), cid, iso(clock.at))))
+    await store.write(lambda c: add_run(c, "r1", "world", label="World news", slot=iso(clock.at),
+                                        night="2026-10-09", state="running", conversation_id=cid))
     sched.current = "r1"
     sched._clock, sched._over = HeldClock(timedelta(minutes=30), clock), "Ran over 30 minutes"
     with paused(None, sched._clock):            # its sub-agent waits for a slot
@@ -501,10 +500,8 @@ async def test_a_run_whose_limit_ends_while_a_request_waits_names_the_request(st
     app = _app(store, cfg, FakeBackend(echo=True))
     sched = Scheduler(app, clock)
     cid = await conversations.for_trigger(store, "run:r1", "World news")
-    await store.write(lambda c: c.execute(
-        "INSERT INTO runs (id, schedule, label, slot, night, state, conversation_id, "
-        "created_at) VALUES ('r1', 'world', 'World news', ?, '2026-10-09', 'running', ?, ?)",
-        (iso(clock.at), cid, iso(clock.at))))
+    await store.write(lambda c: add_run(c, "r1", "world", label="World news", slot=iso(clock.at),
+                                        night="2026-10-09", state="running", conversation_id=cid))
     app.approvals = SimpleNamespace(lapsed=lambda root: ap.ASK_LAPSED.format(
         title="Tink asks to open the vault.") if root == cid else None)
     sched.current = "r1"
@@ -682,10 +679,8 @@ async def test_a_reviewer_and_the_agent_alternate_up_to_the_turns_then_its_answe
                       reviewer_prompt="You are the mentor. Review: {{result:review}}",
                       turns=3, note="diary/{{day_before}}-session.md")}
     night = "2026-10-10"
-    await store.write(lambda c: c.execute(
-        "INSERT INTO runs(id, schedule, label, slot, night, state, result, created_at) VALUES "
-        "('r', 'review', 'Review', '2026-10-10T04:00:00.000+00:00', ?, 'done', 'A good day.', "
-        "'2026-10-10T04:00:00.000+00:00')", (night,)))
+    await store.write(lambda c: add_run(c, "r", "review", slot="2026-10-10T04:00:00.000+00:00",
+                                        night=night, result="A good day."))
     backend = Session()
     async with _scheduler(store, cfg, _app(store, cfg, backend), backend,
                           Clock(datetime(2026, 10, 10, 5, tzinfo=UTC))) as sched:
@@ -1054,10 +1049,8 @@ async def test_routines_list_and_read_tell_a_run_in_the_app_zone(store, cfg):
     cfg.timezone = "Europe/Berlin"
     cfg.schedules = {"world": _s("world")}
     run_cid = await conversations.create(store, "run")
-    await store.write(lambda c: c.execute(
-        "INSERT INTO runs(id, schedule, label, slot, night, state, conversation_id, "
-        "created_at) VALUES('r', 'world', 'World', '2026-10-30T01:00:00.000+00:00', "
-        "'2026-10-30', 'waiting', ?, 'x')", (run_cid,)))
+    await store.write(lambda c: add_run(c, "r", "world", slot="2026-10-30T01:00:00.000+00:00",
+                                        state="waiting", conversation_id=run_cid))
     skill = Routines(cfg)
     skill.app = SimpleNamespace(cfg=cfg)
     ctx = ToolContext(conversation_id="c", turn_id="t", tool_call_id="x", store=store,
@@ -1080,12 +1073,12 @@ async def test_a_later_run_hears_which_of_tonights_notes_are_not_there(store, cf
     (root / "diary" / "2026-10-10-world.md").write_text("news")
     lost = ("The note diary/2026-10-10-review.md was not written: the run ended with a tool call "
             "and no answer after it.")
-    await store.write(lambda c: c.executemany(
-        "INSERT INTO runs(id, schedule, label, slot, night, state, result, error, created_at) "
-        "VALUES(?,?,?,?,?,?,?,?,'x')",
-        [("r1", "review", "Review", "1", "2026-10-10", "done", "Reviewing the night.", lost),
-         ("r2", "world", "World", "2", "2026-10-10", "done", "The news.", None),
-         ("r3", "dream", "Dream", "3", "2026-10-10", "skipped", None, None)]))
+    def three(c):
+        add_run(c, "r1", "review", slot="2026-10-10T01:00:00.000+00:00", result="Reviewing the night.",
+                error=lost)
+        add_run(c, "r2", "world", slot="2026-10-10T02:00:00.000+00:00", result="The news.")
+        add_run(c, "r3", "dream", slot="2026-10-10T03:00:00.000+00:00", state="skipped")
+    await store.write(three)
     res = await store.read(lambda c: runs_mod.results(c, "2026-10-10"))
     assert res["review"] == f"Reviewing the night.\n\n({lost})"
     assert res["world"] == "The news."

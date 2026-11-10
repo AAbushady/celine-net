@@ -20,6 +20,7 @@ from celine.guard.owner import _SEAL, Owner
 from celine.intercom import Intercom
 from celine.intercom import store as rows
 from celine.missions import store as missions
+from runs_fixtures import add_run
 
 pytestmark = pytest.mark.anyio
 
@@ -54,10 +55,9 @@ async def test_an_ask_a_started_chat_a_mission_and_a_lost_login_are_four_items(s
     await store.write(lambda c: missions.set_status_sync(
         c, store, night, "needs_you", "A question for you at step 3: Book the hotel."))
     run = await conversations.for_trigger(store, "run:r1", "Radar")
-    await store.write(lambda c: c.execute(
-        "INSERT INTO runs(id, schedule, label, slot, night, state, reason, conversation_id, "
-        "created_at) VALUES('r1', 'radar', 'Radar', 's', '2026-10-22', 'failed', 'x', ?, "
-        "'2026-10-22T23:00:00+00:00')", (run,)))
+    await store.write(lambda c: add_run(c, "r1", "radar", night="2026-10-22", state="failed",
+                                        reason="x", conversation_id=run,
+                                        created_at="2026-10-22T23:00:00+00:00"))
     await Intercom(store).send(f"agent:{chat}", "user", "I found three flats.\nmore")
     task = asyncio.create_task(a.ask("agent", chat, "change the Persona"))
     await until(lambda: a.waiting)
