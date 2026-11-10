@@ -27,8 +27,8 @@ async def _tree(store) -> dict[str, str]:
             store, agent_of=ids[parent], agent_name="helper", kind="agent")
     await store.write(lambda c: c.execute(
         "INSERT INTO runs(id, schedule, label, slot, night, state, conversation_id, "
-        "created_at) VALUES('r1', 'diary', 'Diary', 's', '2026-10-22', 'done', ?, "
-        "'2026-10-22T23:00:00+00:00')", (ids["run"],)))
+        "created_at) VALUES('r1', 'diary', 'Diary', '2026-10-21T12:00:00+00:00', '2026-10-22', "
+        "'done', ?, '2026-10-22T23:00:00+00:00')", (ids["run"],)))
     await store.write(lambda c: c.execute(
         "UPDATE conversations SET created_at='2026-10-21T10:00:00+00:00' WHERE id=?",
         (ids["task"],)))
@@ -43,9 +43,10 @@ async def test_each_conversation_lives_where_its_root_does(store):
         "chat-agent": {"home": "agent", "link": f"/chat/{ids['chat-agent']}"},
         "mission": {"home": "missions", "link": f"/mission/{ids['mission']}"},
         "mission-agent": {"home": "missions", "link": f"/mission/{ids['mission-agent']}"},
-        "run": {"home": "routines", "link": "/routines/2026-10-22/run/r1"},
+        # a run opens under the calendar day of its slot, here the day before its night
+        "run": {"home": "routines", "link": "/routines/2026-10-21/run/r1"},
         "run-agent": {"home": "routines",
-                      "link": f"/routines/2026-10-22/task/{ids['run-agent']}"},
+                      "link": f"/routines/2026-10-21/task/{ids['run-agent']}"},
         "task": {"home": "routines", "link": f"/routines/2026-10-21/task/{ids['task']}"},
         "task-agent": {"home": "routines",
                        "link": f"/routines/2026-10-21/task/{ids['task-agent']}"},
@@ -61,7 +62,7 @@ async def test_lists_and_senders_carry_the_same_link(store):
     agent = rows[ids["chat"]]["agents"][0]
     assert (agent["home"], agent["link"]) == ("agent", f"/chat/{ids['chat-agent']}")
     every = {a["id"]: a for a in await store.read(lambda c: agents_of(c, own={}))}
-    assert every[ids["run-agent"]]["link"] == f"/routines/2026-10-22/task/{ids['run-agent']}"
+    assert every[ids["run-agent"]]["link"] == f"/routines/2026-10-21/task/{ids['run-agent']}"
     for k, v in ids.items():
         src = await store.read(lambda c, v=v: source_of(c, f"agent:{v}"))
         assert src["link"] == (await store.read(lambda c, v=v: homes.of(c, v)))["link"], k

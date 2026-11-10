@@ -192,12 +192,14 @@ async def _api(tmp_path, monkeypatch, store):
 
 
 async def _row(store, schedule="world", state="failed", night="2026-10-10", slot="02:00",
-               again_of=None) -> str:
+               again_of=None, day=None) -> str:
+    """A run of `night` whose slot is at `slot` on the calendar date `day` (default: the
+    night's own date)."""
     rid = new_id()
     await store.write(lambda c: c.execute(
         "INSERT INTO runs(id, schedule, label, slot, night, state, created_at, again_of) "
         "VALUES(?,?,?,?,?,?,?,?)", (rid, schedule, schedule.title(),
-                                    f"{night}T{slot}:00+00:00", night, state, now(),
+                                    f"{day or night}T{slot}:00+00:00", night, state, now(),
                                     again_of)))
     return rid
 
@@ -273,18 +275,27 @@ async def test_the_schedule_list_gives_its_choices_and_help_and_a_write_keeps_on
 
 # ---- the run page in words --------------------------------------------------------------
 
-async def test_a_night_is_failed_only_when_a_newest_try_failed(tmp_path, monkeypatch, store):
+async def test_a_day_is_failed_only_when_a_newest_try_failed(tmp_path, monkeypatch, store):
     from settings_fixtures import client
     app, cfg = await _api(tmp_path, monkeypatch, store)
-    tonight = runs_mod.night_of(datetime.now(UTC), runs_mod.zone(cfg))
-    a, b = (tonight - timedelta(days=1)).isoformat(), (tonight - timedelta(days=2)).isoformat()
+    cfg.timezone = "UTC"
+    today = datetime.now(UTC).date()
+    a, b = (today - timedelta(days=1)).isoformat(), (today - timedelta(days=2)).isoformat()
     first = await _row(store, night=a)
     await _row(store, state="done", night=a, slot="02:15", again_of=first)
     await _row(store, state="done", night=b)
     await _row(store, schedule="day", night=b, slot="03:00")
+    # 23:30 the evening before `b`: its night is `b`, its calendar day is not
+    await _row(store, schedule="late", night=b, slot="23:30", day=(today - timedelta(days=3)).isoformat())
     async with client(app) as api:
-        nights = {n["night"]: n["failed"] for n in (await api.get("/api/runs")).json()["nights"]}
-    assert (nights[a], nights[b], nights[tonight.isoformat()]) == (False, True, False)
+        got = (await api.get("/api/runs")).json()
+        days = {n["day"]: n["failed"] for n in got["days"]}
+        of_b = (await api.get(f"/api/runs?day={b}")).json()["runs"]
+    assert got["today"] == today.isoformat()
+    assert (days[a], days[b], days[today.isoformat()]) == (False, True, False)
+    assert days[(today - timedelta(days=3)).isoformat()] is True, "the evening run's own day"
+    assert [(r["schedule"], r["at"], r["day"]) for r in of_b] == [
+        ("world", "02:00", b), ("day", "03:00", b)], "midnight to midnight, in clock order"
 
 
 def test_reason_why_leaves_out_the_waiting_its_state_word_says():

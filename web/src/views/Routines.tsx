@@ -1,5 +1,6 @@
 /* Routines: what it does on its own schedule. The place's sidebar holds Runs, Schedules and
-   Triggers with their counts, then the day's runs. Runs: one day as a timeline (the
+   Triggers with their counts, then the day's runs. Runs: one calendar day, midnight to
+   midnight in the app's zone, as a timeline (the
    schedules at their times, a run on each, a run that runs after another drawn as a line to
    it), fourteen days as a row above it (a day whose newest try of a schedule failed in
    the error tone; Earlier and Later step through older ones), the state and the schedule
@@ -28,7 +29,7 @@ import { TreeLine, Work, treeOrder } from './Missions'
 import { isSaveKey, isTyping } from '../lib/keys'
 import { format, useNav, type Route } from '../lib/nav'
 import {
-  ASKED_WORD, FINISHED, RETRIES, RUN_TONE, STATE_WORD, isRunEvent, nightWords, routinesApi, type EventTask, type Night, type OnFail, type Run, type Runs, type RunState,
+  ASKED_WORD, FINISHED, RETRIES, RUN_TONE, STATE_WORD, isRunEvent, dayWords, routinesApi, type EventTask, type Day, type OnFail, type Run, type Runs, type RunState,
   type Schedule, type ScheduleBody, type ScheduleWords, type Trigger,
 } from '../lib/routines'
 import { OFFLINE_TITLE, useOnline } from '../lib/socket'
@@ -61,14 +62,14 @@ type Node = {
   schedule?: Schedule
 }
 type View = 'runs' | 'schedules' | 'triggers'
-type Open = { night?: string; run?: string; schedule?: string; task?: string; edit?: string; history?: boolean }
+type Open = { day?: string; run?: string; schedule?: string; task?: string; edit?: string; history?: boolean }
 
-const weekdayOf = (night: string) => new Date(`${night}T12:00:00`).toLocaleDateString(LOCALE, { weekday: 'short' })
+const weekdayOf = (day: string) => new Date(`${day}T12:00:00`).toLocaleDateString(LOCALE, { weekday: 'short' })
 /** in a row: "Sat 10 Oct" */
-const dayShort = (night: string) => `${weekdayOf(night)} ${shortDate(Date.parse(`${night}T12:00:00`))}`
+const dayShort = (day: string) => `${weekdayOf(day)} ${shortDate(Date.parse(`${day}T12:00:00`))}`
 /** a day `days` after another (before, when negative) */
-const shift = (night: string, days: number) => {
-  const d = new Date(`${night}T12:00:00Z`)
+const shift = (day: string, days: number) => {
+  const d = new Date(`${day}T12:00:00Z`)
   d.setUTCDate(d.getUTCDate() + days)
   return d.toISOString().slice(0, 10)
 }
@@ -109,19 +110,19 @@ export function Routines({ active }: { active: boolean }) {
   const [until, setUntil] = useState<string | undefined>(undefined)
   // the runs of the day the address names; with no day in it the server answers with
   // today's, at every reload, so the page follows the server's clock
-  const runs = useResource(signal => routinesApi.runs(route.night, signal, until), [route.night, until], { events: isRunEvent })
+  const runs = useResource(signal => routinesApi.runs(route.day, signal, until), [route.day, until], { events: isRunEvent })
   const triggers = useResource(signal => routinesApi.triggers(signal), [], { events: ev => ev.type === 'settings.changed' })
   const tasks = useResource(signal => routinesApi.tasks(signal), [], { events: isTaskEvent })
-  const today = runs.data?.tonight ?? schedules.data?.tonight
-  const night = route.night ?? today
+  const today = runs.data?.today ?? schedules.data?.today
+  const day = route.day ?? today
   useEffect(() => {
-    if (night && today && night < shift(until ?? today, -13)) setUntil(night)
-  }, [night, today]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (day && today && day < shift(until ?? today, -13)) setUntil(day)
+  }, [day, today]) // eslint-disable-line react-hooks/exhaustive-deps
   // today's list has no day in its address: the place a rail click comes back to is today's
   const go = (r: Open, replace = false) => {
-    const to = r.night ?? night
+    const to = r.day ?? day
     const page = !!(r.run || r.schedule || r.task)
-    nav.go({ section: 'routines', ...r, night: page || to !== today ? to : undefined }, { replace })
+    nav.go({ section: 'routines', ...r, day: page || to !== today ? to : undefined }, { replace })
   }
   const drafts = useRef(new Map<string, Draft>())
 
@@ -131,9 +132,9 @@ export function Routines({ active }: { active: boolean }) {
       key: r.id, label: r.label, at: r.at, sort: Date.parse(r.slot), state: r.state, reason: r.reason, run: r, schedule: byName.get(r.schedule),
     }))
     // today also shows what is still to come today (the server's next slot and its day)
-    if (night && night === today) {
+    if (day && day === today) {
       for (const s of schedules.data?.schedules ?? []) {
-        if (s.on && s.next && s.next_night === night && !out.some(n => n.run?.schedule === s.name)) {
+        if (s.on && s.next && s.next_day === day && !out.some(n => n.run?.schedule === s.name)) {
           out.push({ key: `s:${s.name}`, label: s.title, at: s.next_at ?? '', sort: Date.parse(s.next), state: 'planned', reason: '', schedule: s })
         }
       }
@@ -144,7 +145,7 @@ export function Routines({ active }: { active: boolean }) {
       return !s || seen.includes(name) ? 0 : Math.max(0, ...s.after.map(a => 1 + depth(a, [...seen, name])))
     }
     return out.sort((a, b) => a.sort - b.sort || depth(a.schedule?.name) - depth(b.schedule?.name))
-  }, [runs.data, schedules.data, byName, night, today])
+  }, [runs.data, schedules.data, byName, day, today])
 
   // the keys of the place, while it is on screen and no dialog is over it
   const save = useRef<(() => void) | null>(null)
@@ -161,11 +162,11 @@ export function Routines({ active }: { active: boolean }) {
         else if (detail && !route.edit) { e.preventDefault(); go({}) }
         return
       }
-      if (isTyping(e.target) || !night || detail) return
-      const days = runs.data?.nights.map(n => n.night).reverse() ?? []
+      if (isTyping(e.target) || !day || detail) return
+      const days = runs.data?.days.map(n => n.day).reverse() ?? []
       if (view === 'runs' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
-        const to = days[days.indexOf(night) + (e.key === 'ArrowLeft' ? -1 : 1)]
-        if (to) { e.preventDefault(); go({ night: to }, true) }
+        const to = days[days.indexOf(day) + (e.key === 'ArrowLeft' ? -1 : 1)]
+        if (to) { e.preventDefault(); go({ day: to }, true) }
       } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         const rows = [...(list.current?.querySelectorAll<HTMLElement>('.list-row') ?? [])]
         if (!rows.length) return
@@ -193,30 +194,30 @@ export function Routines({ active }: { active: boolean }) {
   const page = !schedules.data && schedules.error ? (
       <div className="list-page"><PlaceHead level={1} title="Routines" /><Loaded page res={schedules} icon={History} /></div>
     )
-    : !night || !schedules.data ? <LoadingRow label="Loading" />
+    : !day || !schedules.data ? <LoadingRow label="Loading" />
     : route.schedule && route.edit && (route.schedule === 'new' || s) && route.edit in TEXTS ? (
       <ScheduleText key={`${route.schedule}:${route.edit}:${route.history ? 1 : 0}`} name={route.schedule} s={s} k={route.edit as TextKey}
-                    history={!!route.history} night={night} draft={draft(route.schedule)} variables={schedules.data?.variables ?? []}
+                    history={!!route.history} day={day} draft={draft(route.schedule)} variables={schedules.data?.variables ?? []}
                     onDraft={d => drafts.current.set(route.schedule!, d)}
                     onSaved={() => schedules.reload()} go={go} />
     )
-    : route.run ? <RunPage key={route.run} id={route.run} night={night} go={go} active={active} schedules={byName} />
+    : route.run ? <RunPage key={route.run} id={route.run} day={day} go={go} active={active} schedules={byName} />
     : route.schedule ? (
       route.schedule !== 'new' && !s ? <Missing title="Schedules" onBack={() => go({})} loaded={!!schedules.data} />
         : <SchedulePage key={route.schedule} name={route.schedule} s={s} all={schedules.data?.schedules ?? []} roles={schedules.data?.roles ?? []}
                         words={schedules.data}
-                        night={night} draft={draft(route.schedule)} onDraft={d => drafts.current.set(route.schedule!, d)} save={save}
+                        day={day} draft={draft(route.schedule)} onDraft={d => drafts.current.set(route.schedule!, d)} save={save}
                         onSaved={name => { drafts.current.delete(route.schedule!); schedules.reload(); runs.reload(); go({ schedule: name }, true) }}
                         onDeleted={() => { drafts.current.delete(route.schedule!); schedules.reload(); setView('schedules'); go({}) }} go={go} />
     )
-    : route.task ? <TaskPage key={route.task} id={route.task} night={night} tasks={tasks.data ?? []} active={active} go={go} onBack={() => { setView('triggers'); go({}) }} />
-    : view === 'schedules' ? <SchedulesList list={list} night={night} all={schedules.data?.schedules ?? []} go={go} onChange={schedules.reload} />
-    : view === 'triggers' ? <TriggersList list={list} triggers={triggers} tasks={tasks} night={night} go={go} />
+    : route.task ? <TaskPage key={route.task} id={route.task} day={day} tasks={tasks.data ?? []} active={active} go={go} onBack={() => { setView('triggers'); go({}) }} />
+    : view === 'schedules' ? <SchedulesList list={list} day={day} all={schedules.data?.schedules ?? []} go={go} onChange={schedules.reload} />
+    : view === 'triggers' ? <TriggersList list={list} triggers={triggers} tasks={tasks} day={day} go={go} />
     : (
-      <RunsDay list={list} night={night} today={today ?? night} days={runs.data?.nights ?? []} nodes={nodes} runs={runs}
+      <RunsDay list={list} day={day} today={today ?? day} days={runs.data?.days ?? []} nodes={nodes} runs={runs}
                all={schedules.data?.schedules ?? []} active={active} go={go}
-               onEarlier={() => setUntil(shift(runs.data!.nights.at(-1)!.night, -1))}
-               onLater={() => { const to = shift(runs.data!.nights[0]!.night, 14); setUntil(today && to >= today ? undefined : to) }} />
+               onEarlier={() => setUntil(shift(runs.data!.days.at(-1)!.day, -1))}
+               onLater={() => { const to = shift(runs.data!.days[0]!.day, 14); setUntil(today && to >= today ? undefined : to) }} />
     )
   return (
     <Place title="Routines" current={detail ? null : view}
@@ -242,9 +243,9 @@ function Missing({ title, onBack, loaded }: { title: string; onBack: () => void;
 
 /* ── the runs of one day ── */
 
-function RunsDay({ list, night, today, days, nodes, runs, all, active, go, onEarlier, onLater }: {
+function RunsDay({ list, day, today, days, nodes, runs, all, active, go, onEarlier, onLater }: {
   list: React.RefObject<HTMLDivElement | null>
-  night: string; today: string; days: Night[]; nodes: Node[]; runs: Res<Runs>
+  day: string; today: string; days: Day[]; nodes: Node[]; runs: Res<Runs>
   all: Schedule[]; active: boolean
   go: (r: Open, replace?: boolean) => void
   onEarlier: () => void; onLater: () => void
@@ -264,11 +265,11 @@ function RunsDay({ list, night, today, days, nodes, runs, all, active, go, onEar
   const menu = (n: Node): MenuItem[] => [
     { label: 'Open', icon: ArrowUpRight, onSelect: () => open(n) },
     ...(n.run && LIVE.includes(n.state) ? [{ label: 'Stop', icon: CircleStop, onSelect: () => void act.run(() => routinesApi.stop(n.run!.id)) }]
-      : n.schedule ? [{ label: 'Run now', icon: Play, onSelect: () => void act.run(async () => { const r = await routinesApi.runNow(n.schedule!.name); go({ night: r.run.night, run: r.run.id }) }) }] : []),
+      : n.schedule ? [{ label: 'Run now', icon: Play, onSelect: () => void act.run(async () => { const r = await routinesApi.runNow(n.schedule!.name); go({ day: r.run.day, run: r.run.id }) }) }] : []),
     ...(n.schedule ? ['sep' as const, { label: 'Edit', icon: Pencil, detail: n.schedule.title, onSelect: () => go({ schedule: n.schedule!.name }) }] : []),
   ]
   // the strip: fourteen days, oldest left, a failed one in the error tone
-  const newest = days[0]?.night ?? today
+  const newest = days[0]?.day ?? today
   const strip = useRef<HTMLDivElement>(null)
   // the newest days stay in view while the picked day fits beside them; an older one sits in the middle
   useLayoutEffect(() => {
@@ -278,21 +279,21 @@ function RunsDay({ list, night, today, days, nodes, runs, all, active, go, onEar
     const end = box.scrollWidth - box.clientWidth
     const left = on.getBoundingClientRect().left - box.getBoundingClientRect().left + box.scrollLeft
     box.scrollLeft = left >= end ? end : Math.max(0, left - (box.clientWidth - on.offsetWidth) / 2)
-  }, [night, days])
+  }, [day, days])
   return (
     <div className="list-page" ref={list}>
-      <PlaceHead level={1} title={nightWords(night)} count={ran.length || undefined}
+      <PlaceHead level={1} title={dayWords(day)} count={ran.length || undefined}
                  search={{ value: q, onChange: setQ, placeholder: 'Search runs' }}
                  newLabel="New schedule" onNew={() => go({ schedule: 'new' })} />
       <div className="list-page__top routines-top">
         <div className="routines-days" ref={strip}>
           <IconButton icon={ChevronLeft} size="sm" label="Earlier" onClick={onEarlier} />
-          <Segmented label="Day" className="routines-days__strip" value={night} onChange={d => go({ night: d }, true)}
+          <Segmented label="Day" className="routines-days__strip" value={day} onChange={d => go({ day: d }, true)}
                      options={[...days].reverse().map(n => {
-                       const day = `${weekdayOf(n.night)} ${Number(n.night.slice(8))}`
+                       const name = `${weekdayOf(n.day)} ${Number(n.day.slice(8))}`
                        // the error tone is not the only sign: its name says a run failed
-                       return { value: n.night, title: n.failed ? `${nightWords(n.night)}, a run failed` : nightWords(n.night),
-                                label: n.failed ? <StateWord tone="error">{day}</StateWord> : day }
+                       return { value: n.day, title: n.failed ? `${dayWords(n.day)}, a run failed` : dayWords(n.day),
+                                label: n.failed ? <StateWord tone="error">{name}</StateWord> : name }
                      })} />
           <IconButton icon={ChevronRight} size="sm" label="Later" disabled={newest >= today} onClick={onLater} />
         </div>
@@ -307,11 +308,11 @@ function RunsDay({ list, night, today, days, nodes, runs, all, active, go, onEar
       </div>
       {act.error && <div className="list-page__note"><InlineError compact message={act.error} /></div>}
       <Loaded page res={runs} icon={History} label="Loading runs"
-              empty={nodes.length === 0 ? { title: 'No runs', action: night === today ? <Button variant="primary" icon={Plus} onClick={() => go({ schedule: 'new' })}>New schedule</Button> : undefined }
+              empty={nodes.length === 0 ? { title: 'No runs', action: day === today ? <Button variant="primary" icon={Plus} onClick={() => go({ schedule: 'new' })}>New schedule</Button> : undefined }
                 : shown.length === 0 && { icon: SearchX, title: 'No runs match', action: q && <Button onClick={() => setQ('')}>Clear search</Button> }}>
         {() => (
           <div className="list-page__rows">
-            <VirtualList items={shown} estimate={68} getKey={n => n.key} label="Runs" resetOn={`${night}|${show}|${of}`}
+            <VirtualList items={shown} estimate={68} getKey={n => n.key} label="Runs" resetOn={`${day}|${show}|${of}`}
                          renderRow={n => {
                            const i = shown.indexOf(n)
                            const prev = shown[i - 1]
@@ -326,8 +327,8 @@ function RunsDay({ list, night, today, days, nodes, runs, all, active, go, onEar
                                           ? `Runs after ${label(n.schedule.after[0]!)}` : n.schedule?.every))}
                                       cell={r?.asked ? <StateWord tone="warn">{ASKED_WORD}</StateWord> : <StateWord tone={RUN_TONE[n.state]}>{STATE_WORD[n.state]}</StateWord>}
                                       meta={n.at}
-                                      href={n.run ? format({ section: 'routines', night, run: n.run.id })
-                                        : n.schedule ? format({ section: 'routines', night, schedule: n.schedule.name }) : undefined}
+                                      href={n.run ? format({ section: 'routines', day, run: n.run.id })
+                                        : n.schedule ? format({ section: 'routines', day, schedule: n.schedule.name }) : undefined}
                                       onClick={click(() => open(n))} onContextMenu={e => ctx.open(e, menu(n), n.label)}
                                       trailing={<MenuButton icon={MoreHorizontal} label="More" items={menu(n)} size="sm" />} />
                            )
@@ -359,8 +360,8 @@ function LiveStep({ run, turns, active }: { run: Run; turns: number; active: boo
 
 /* ── the schedules ── */
 
-function SchedulesList({ list, night, all, go, onChange }: {
-  list: React.RefObject<HTMLDivElement | null>; night: string; all: Schedule[]; go: (r: Open) => void; onChange: () => void
+function SchedulesList({ list, day, all, go, onChange }: {
+  list: React.RefObject<HTMLDivElement | null>; day: string; all: Schedule[]; go: (r: Open) => void; onChange: () => void
 }) {
   const ctx = useContextMenu()
   const online = useOnline()
@@ -373,7 +374,7 @@ function SchedulesList({ list, night, all, go, onChange }: {
   const label = (name: string) => all.find(s => s.name === name)?.title ?? name
   const menu = (s: Schedule): MenuItem[] => [
     { label: 'Open', icon: ArrowUpRight, onSelect: () => go({ schedule: s.name }) },
-    { label: 'Run now', icon: Play, onSelect: () => void act.run(async () => { const r = await routinesApi.runNow(s.name); go({ night: r.run.night, run: r.run.id }) }) },
+    { label: 'Run now', icon: Play, onSelect: () => void act.run(async () => { const r = await routinesApi.runNow(s.name); go({ day: r.run.day, run: r.run.id }) }) },
     'sep',
     { label: 'Delete', icon: Trash2, danger: true, detail: s.title, onSelect: () => setDeleting(s) },
   ]
@@ -399,7 +400,7 @@ function SchedulesList({ list, night, all, go, onChange }: {
                        renderRow={s => (
                          <ListRow density="lg" icon={CalendarClock} title={s.title} tooltip={s.title} muted={!s.on}
                                   subtitle={s.after.length ? `${s.every}, runs after ${s.after.map(label).join(', ')}` : s.every}
-                                  href={format({ section: 'routines', night, schedule: s.name })}
+                                  href={format({ section: 'routines', day, schedule: s.name })}
                                   onClick={click(() => go({ schedule: s.name }))} onContextMenu={e => ctx.open(e, menu(s), s.title)}
                                   press={ctx.press(() => menu(s), s.title)}
                                   trailingAlways
@@ -435,9 +436,9 @@ function DeleteSchedule({ s, onClose, onDone }: { s: Schedule; onClose: () => vo
 type TriggerRow = { t: Trigger } | { b: EventTask }
 type Res<T> = ReturnType<typeof useResource<T>>
 
-function TriggersList({ list, triggers, tasks, night, go }: {
+function TriggersList({ list, triggers, tasks, day, go }: {
   list: React.RefObject<HTMLDivElement | null>
-  triggers: Res<Trigger[]>; tasks: Res<EventTask[]>; night: string; go: (r: Open) => void
+  triggers: Res<Trigger[]>; tasks: Res<EventTask[]>; day: string; go: (r: Open) => void
 }) {
   const online = useOnline()
   const ctx = useContextMenu()
@@ -487,7 +488,7 @@ function TriggersList({ list, triggers, tasks, night, go }: {
                                         : r.row.b.working ? <StateWord tone="running">{STATE_WORD.running}</StateWord> : <StateWord tone="success">{STATE_WORD.done}</StateWord>}
                                       meta={listTime(r.row.b.updated_at)}
                                       muted={!r.row.b.working}
-                                      href={format({ section: 'routines', night, task: r.row.b.id })}
+                                      href={format({ section: 'routines', day, task: r.row.b.id })}
                                       onClick={click(() => go({ task: (r.row as { b: { id: string } }).b.id }))}
                                       onContextMenu={e => ctx.open(e, taskMenu((r.row as { b: { id: string } }).b.id))}
                                       trailing={<MenuButton icon={MoreHorizontal} label="More" items={taskMenu(r.row.b.id)} size="sm" />} />
@@ -507,8 +508,8 @@ const isTaskEvent = (ev: { type: string }) => ev.type === 'conversation.created'
 
 /* What a trigger started, or one of its sub-agents: its sub-agents, the talk and a box to
    write in */
-function TaskPage({ id, night, tasks, active, go, onBack }: {
-  id: string; night: string; tasks: { id: string; title: string; trigger: string | null }[]; active: boolean
+function TaskPage({ id, day, tasks, active, go, onBack }: {
+  id: string; day: string; tasks: { id: string; title: string; trigger: string | null }[]; active: boolean
   go: (r: Open) => void; onBack: () => void
 }) {
   const agents = useAgents()
@@ -519,14 +520,14 @@ function TaskPage({ id, night, tasks, active, go, onBack }: {
   const title = t ? t.title || t.trigger || 'Run' : agent?.name ?? convo.conversation?.title ?? ''
   const parent = agent && tasks.find(b => b.id === agent.parent)
   const crumbs: Crumb[] = [{ label: 'Triggers', onClick: e => { e.preventDefault(); onBack() } },
-                           ...(parent ? [{ label: parent.title || parent.trigger || 'Run', href: format({ section: 'routines', night, task: parent.id }) }] : [])]
+                           ...(parent ? [{ label: parent.title || parent.trigger || 'Run', href: format({ section: 'routines', day, task: parent.id }) }] : [])]
   return (
     <div className="routines-page">
       <PlaceHead level={1} crumbs={crumbs} title={title} titleAttr={title} actions={<PlanButton plan={convo.plan} />} />
       {kids.length > 0 && (
         <div className="routines-kids">
           {kids.map(a => (
-            <ListRow key={a.id} icon={Bot} title={a.name} href={format({ section: 'routines', night, task: a.id })} onClick={click(() => go({ task: a.id }))}
+            <ListRow key={a.id} icon={Bot} title={a.name} href={format({ section: 'routines', day, task: a.id })} onClick={click(() => go({ task: a.id }))}
                      subtitle={a.working ? a.step_words ?? STATE_WORD.running : a.report?.text.split('\n')[0] ?? STATE_WORD.done}
                      meta={a.working ? <StateWord tone="running">{STATE_WORD.running}</StateWord> : undefined} />
           ))}
@@ -540,18 +541,18 @@ function TaskPage({ id, night, tasks, active, go, onBack }: {
 /* ── one run ── */
 
 /** a run linked to this one (Retry of, Retried): its time, opening its page */
-function RunLink({ run, night, go }: { run: { id: string; at: string }; night: string; go: (r: Open) => void }) {
-  return <a className="routines-link" href={format({ section: 'routines', night, run: run.id })}
-            onClick={click(() => go({ night, run: run.id }))}>{run.at}</a>
+function RunLink({ run, day, go }: { run: { id: string; at: string }; day: string; go: (r: Open) => void }) {
+  return <a className="routines-link" href={format({ section: 'routines', day, run: run.id })}
+            onClick={click(() => go({ day, run: run.id }))}>{run.at}</a>
 }
 
-function RunPage({ id, night, go, active, schedules }: {
-  id: string; night: string; go: (r: Open, replace?: boolean) => void; active: boolean; schedules: Map<string, Schedule>
+function RunPage({ id, day, go, active, schedules }: {
+  id: string; day: string; go: (r: Open, replace?: boolean) => void; active: boolean; schedules: Map<string, Schedule>
 }) {
   const online = useOnline()
   const nav = useNav()
   const res = useResource(signal => routinesApi.run(id, signal), [id], { events: ev => isRunEvent(ev) && ((ev as { run?: Run }).run)?.id === id })
-  const open = (r: Run) => go({ night: r.night, run: r.id })
+  const open = (r: Run) => go({ day: r.day, run: r.id })
   const again = useAction(async (name: string) => { open((await routinesApi.runNow(name)).run) })
   const retry = useAction(async () => { open((await routinesApi.retry(id)).run) })
   const stop = useAction(async () => { await routinesApi.stop(id); res.reload() })
@@ -563,8 +564,8 @@ function RunPage({ id, night, go, active, schedules }: {
   const tree = useResource(() => agentsApi.tree(cid!), [cid],
                            { enabled: !!cid, events: ev => ev.type === 'agent.state' || ev.type === 'mission.state' })
   const nodes = tree.data ? treeOrder(tree.data.top, tree.data.agents, tree.data.missions) : []
-  const crumbs: Crumb[] = [{ label: dayShort(r?.night ?? night), href: format({ section: 'routines', night: r?.night ?? night }),
-                             onClick: e => { e.preventDefault(); go({ night: r?.night ?? night }) } }]
+  const crumbs: Crumb[] = [{ label: dayShort(r?.day ?? day), href: format({ section: 'routines', day: r?.day ?? day }),
+                             onClick: e => { e.preventDefault(); go({ day: r?.day ?? day }) } }]
   const error = again.error ?? retry.error ?? stop.error
   const offline = online ? undefined : OFFLINE_TITLE
   if (res.missing) return <Missing title="Runs" onBack={() => go({})} loaded />
@@ -598,8 +599,8 @@ function RunPage({ id, night, go, active, schedules }: {
                     <NotebookPen size={ICON.sm} aria-hidden />{d.note}
                   </a>
                 ) }] : []),
-                ...(r.again_of ? [{ label: 'Retry of', value: <RunLink run={r.again_of} night={r.night} go={go} /> }] : []),
-                ...(r.retried ? [{ label: 'Retried', value: <RunLink run={r.retried} night={r.night} go={go} /> }] : []),
+                ...(r.again_of ? [{ label: 'Retry of', value: <RunLink run={r.again_of} day={r.day} go={go} /> }] : []),
+                ...(r.retried ? [{ label: 'Retried', value: <RunLink run={r.retried} day={r.day} go={go} /> }] : []),
               ]} />
             </Section>
             {(s?.reviewer || cid) && (
@@ -671,8 +672,8 @@ function followers(all: Schedule[], name: string | null): Map<string, string> {
   return out
 }
 
-function SchedulePage({ name, s, all, roles, words, night, draft, onDraft, save: saveKey, onSaved, onDeleted, go }: {
-  name: string; s: Schedule | null; all: Schedule[]; roles: { name: string; label: string }[]; words?: ScheduleWords; night: string
+function SchedulePage({ name, s, all, roles, words, day, draft, onDraft, save: saveKey, onSaved, onDeleted, go }: {
+  name: string; s: Schedule | null; all: Schedule[]; roles: { name: string; label: string }[]; words?: ScheduleWords; day: string
   draft: Draft; onDraft: (d: Draft) => void; save: React.MutableRefObject<(() => void) | null>
   onSaved: (name: string) => void; onDeleted: () => void; go: (r: Open) => void
 }) {
@@ -685,8 +686,8 @@ function SchedulePage({ name, s, all, roles, words, night, draft, onDraft, save:
   const id = fresh ? d.key : name
   const body = bodyOf(d)
   const unchanged = !!s && JSON.stringify(body) === JSON.stringify(bodyOf(draftOf(s)))
-  const preview = useResource(signal => routinesApi.preview(night, d.prompt, signal), [night, d.prompt], { enabled: !!d.prompt.trim(), debounce: 400 })
-  const notePath = useResource(signal => routinesApi.preview(night, d.note, signal), [night, d.note], { enabled: !!d.note.trim(), debounce: 400 })
+  const preview = useResource(signal => routinesApi.preview(day, d.prompt, signal), [day, d.prompt], { enabled: !!d.prompt.trim(), debounce: 400 })
+  const notePath = useResource(signal => routinesApi.preview(day, d.note, signal), [day, d.note], { enabled: !!d.note.trim(), debounce: 400 })
   const [field, setField] = useState<string | null>(null)
   const save = useAction(async () => {
     setField(null)
@@ -699,7 +700,7 @@ function SchedulePage({ name, s, all, roles, words, night, draft, onDraft, save:
       throw e
     }
   })
-  const runNow = useAction(async () => { const r = await routinesApi.runNow(name); go({ night: r.run.night, run: r.run.id }) })
+  const runNow = useAction(async () => { const r = await routinesApi.runNow(name); go({ day: r.run.day, run: r.run.id }) })
   const ready = online && !!d.label.trim() && !!d.prompt.trim() && !!id && !unchanged
   saveKey.current = () => { if (ready) void save.run() }
   useEffect(() => () => { saveKey.current = null }, [saveKey])
@@ -800,9 +801,9 @@ function SchedulePage({ name, s, all, roles, words, night, draft, onDraft, save:
               {theirs.length ? (
                 <div className="routines-rows">
                   {theirs.map(r => (
-                    <ListRow key={r.id} density="lg" title={dayShort(r.night)} subtitle={r.reason_why || r.error || undefined}
+                    <ListRow key={r.id} density="lg" title={dayShort(r.day)} subtitle={r.reason_why || r.error || undefined}
                              cell={<StateWord tone={RUN_TONE[r.state]}>{STATE_WORD[r.state]}</StateWord>} meta={r.at}
-                             href={format({ section: 'routines', night: r.night, run: r.id })} onClick={click(() => go({ night: r.night, run: r.id }))} />
+                             href={format({ section: 'routines', day: r.day, run: r.id })} onClick={click(() => go({ day: r.day, run: r.id }))} />
                   ))}
                 </div>
               ) : <p className="routines-prose routines-prose--quiet">No runs</p>}
@@ -818,19 +819,19 @@ function SchedulePage({ name, s, all, roles, words, night, draft, onDraft, save:
 /* A schedule's prompt or reviewer prompt in the large editor, or its History. An existing
    schedule saves it at once (its History keeps each version); a new one keeps it until the
    schedule is saved. */
-function ScheduleText({ name, s, k, history, night, draft, variables, onDraft, onSaved, go }: {
-  name: string; s: Schedule | null; k: TextKey; history: boolean; night: string; draft: Draft; variables: string[]
+function ScheduleText({ name, s, k, history, day, draft, variables, onDraft, onSaved, go }: {
+  name: string; s: Schedule | null; k: TextKey; history: boolean; day: string; draft: Draft; variables: string[]
   onDraft: (d: Draft) => void; onSaved: () => void; go: (r: Open) => void
 }) {
   const t = TEXTS[k]
   const value = draft[t.field]
   const saved = s ? (k === 'prompt' ? s.prompt : s.reviewer_prompt) : ''
   const of = s ? `routine:${s.name}:${k}` : undefined
-  const crumbs: Crumb[] = [{ label: 'Schedules', href: format({ section: 'routines', night }) },
-                           { label: s?.title ?? 'New schedule', href: format({ section: 'routines', night, schedule: name }),
+  const crumbs: Crumb[] = [{ label: 'Schedules', href: format({ section: 'routines', day }) },
+                           { label: s?.title ?? 'New schedule', href: format({ section: 'routines', day, schedule: name }),
                              onClick: e => { e.preventDefault(); go({ schedule: name }) } }]
   if (history && of) {
-    return <TextHistory crumbs={[...crumbs, { label: t.label, href: format({ section: 'routines', night, schedule: name, edit: k }) }]}
+    return <TextHistory crumbs={[...crumbs, { label: t.label, href: format({ section: 'routines', day, schedule: name, edit: k }) }]}
                         source={textHistory(of)} current={value}
                         onRestore={text => { onDraft({ ...draft, [t.field]: text }); go({ schedule: name, edit: k }) }} />
   }
@@ -838,7 +839,7 @@ function ScheduleText({ name, s, k, history, night, draft, variables, onDraft, o
     label: `{{${v}}}`, onSelect: () => copied(`{{${v}}}`),
   }))
   return (
-    <LongEditor crumbs={crumbs} title={t.label} of={of} history={of && format({ section: 'routines', night, schedule: name, edit: k, history: true })}
+    <LongEditor crumbs={crumbs} title={t.label} of={of} history={of && format({ section: 'routines', day, schedule: name, edit: k, history: true })}
                 texts={[{ key: k, label: t.label, value }]} dirty={value !== saved}
                 top={<MenuButton icon={Braces} text="Variables" label="Variables" items={words} size="sm" />}
                 hint="Make it shorter, or add a question"

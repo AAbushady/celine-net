@@ -116,7 +116,7 @@ from ..conversations import store as conversations, tree
 from ..core.ids import iso, new_id, now
 from ..core.states import LIVE_SQL
 from ..skills import ToolContext
-from ..clock import zone
+from ..clock import day_of, zone
 from ..sub_agents.report import asked, last_answer, quiet
 from . import NONE, depth, fill, night_of, run_date, shown
 from ..settings.files import Invalid
@@ -240,7 +240,9 @@ def why_alone(reason: str) -> str:
 
 def view(r: sqlite3.Row | dict, cfg, held: bool = False) -> dict:
     """A run as the API and the feed give it (a ROW): `at` its slot's time of day in the
-    app's zone, `label` its schedule's (the one it kept once the schedule is gone);
+    app's zone and `day` the calendar date that time is on, the day the Routines page lists
+    it under (`night` is the night its dates and results come from, night_of);
+    `label` its schedule's (the one it kept once the schedule is gone);
     `state` waiting and `reason` HELD while it runs and its work waits for a model
     (`held`, its RunClock), `reason_why` its reason without the "Waiting" (why_alone);
     `again_of` the run it runs again and `retried` the run that runs it again, each
@@ -253,6 +255,7 @@ def view(r: sqlite3.Row | dict, cfg, held: bool = False) -> dict:
         return datetime.fromisoformat(slot).astimezone(zone(cfg)).strftime("%H:%M")
     return {"id": r["id"], "schedule": r["schedule"],
             "label": shown(s) if s else r["label"], "slot": r["slot"], "at": at(r["slot"]),
+            "day": day_of(r["slot"], zone(cfg)),
             "night": r["night"], "state": "waiting" if waits else r["state"],
             "reason": reason, "reason_why": why_alone(reason),
             "conversation_id": r["conversation_id"], "result": r["result"],
@@ -339,7 +342,7 @@ def _fail(c: sqlite3.Connection, store, cfg, rid: str, s, error: str, again: boo
     else:
         from ..events import notice
         notice(store, c, "run", out["label"], error or "Failed",
-               homes.run_link(out["night"], rid), f"run:{rid}")
+               homes.run_link(out["day"], rid), f"run:{rid}")
     return out
 
 

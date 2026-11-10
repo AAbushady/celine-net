@@ -8,7 +8,7 @@ import { agentsApi, type Agent } from '../lib/agents'
 import { documentsApi } from '../lib/documents'
 import { listTime, noneMatch, shortDate } from '../lib/format'
 import { intercomApi } from '../lib/intercom'
-import { nightWords, routinesApi } from '../lib/routines'
+import { dayWords, routinesApi } from '../lib/routines'
 import { useNav, type Route } from '../lib/nav'
 import { kindIcon } from './ConversationList'
 import { useResource } from '../lib/useResource'
@@ -29,15 +29,15 @@ async function others(): Promise<Item[]> {
     title: t.subject || t.name, detail: t.subject ? `Intercom with ${t.name}` : 'Intercom', icon: Mail, at: t.last.created_at,
   }) as Item), none)
   const schedules = routinesApi.schedules().then(r => r.schedules.map(s => ({
-    key: `s:${s.name}`, id: s.name, route: { section: 'routines', night: r.tonight, schedule: s.name }, title: s.title,
+    key: `s:${s.name}`, id: s.name, route: { section: 'routines', day: r.today, schedule: s.name }, title: s.title,
     detail: `Schedule, ${s.on ? s.every : 'Off'}`, icon: CalendarClock, at: 0,
   }) as Item), none)
-  const nights = routinesApi.runs().then(r => r.nights.map(n => ({
-    key: `n:${n.night}`, id: n.night, route: { section: 'routines', night: n.night },
-    title: nightWords(n.night),
-    detail: 'Routines', icon: CalendarClock, at: 0, meta: shortDate(new Date(`${n.night}T12:00:00`).getTime()),
+  const days = routinesApi.runs().then(r => r.days.map(n => ({
+    key: `n:${n.day}`, id: n.day, route: { section: 'routines', day: n.day },
+    title: dayWords(n.day),
+    detail: 'Routines', icon: CalendarClock, at: 0, meta: shortDate(new Date(`${n.day}T12:00:00`).getTime()),
   }) as Item), none)
-  return (await Promise.all([docs, threads, schedules, nights])).flat()
+  return (await Promise.all([docs, threads, schedules, days])).flat()
 }
 
 export function Switcher({ onClose }: { onClose: () => void }) {

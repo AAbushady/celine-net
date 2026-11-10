@@ -2,7 +2,7 @@
 schedules/edit.py's, the same as its own (schedules/skill.py)."""
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta
 
 from fastapi import APIRouter, Request
 
@@ -11,13 +11,13 @@ from ..errors import CelineError, NotFound
 from ..settings import files, seed
 from ..settings.files import Invalid
 from ..settings.registry import ROLES
-from ..clock import zone
-from . import VARIABLES, fill, night_of, run_date, run_roles, shown, words
+from ..clock import day_of, zone
+from . import VARIABLES, fill, run_date, run_roles, shown, words
 from .runs import IDLE_MINUTES, ROW, STOPPED, first_slot, results, \
     view as run_view
 
 router = APIRouter(prefix="/api")
-NIGHTS = 14                     # the past nights the page shows
+DAYS = 14                       # the past days the page shows
 # a field's "?" on the schedule page (ui Help): at most two sentences, filled by the server;
 # what runs.py does (_fail, _idle_skip), the period in the Routines page's word (day)
 HELP = {
@@ -42,16 +42,15 @@ def _schedules(request: Request) -> dict:
     return request.app.state.services.cfg.schedules
 
 
-def _tonight(cfg) -> date:
-    """The night the page opens on: the night of this moment."""
-    return night_of(datetime.now(timezone.utc), zone(cfg))
+def _today(cfg) -> date:
+    """The day the page opens on: today's date in the app's zone."""
+    return datetime.now(zone(cfg)).date()
 
 
 def _view(s, cfg) -> dict:
     """`label` as written (its {{username}} and {{name}} kept, so a save keeps them),
     `title` the label filled; `every` its cron in words ("Daily at 02:00", schedules.words);
-    `next_night` the night of the next slot and `next_at` its time
-    of day."""
+    `next_day` the calendar day of the next slot and `next_at` its time of day."""
     from croniter import croniter
     tz = zone(cfg)
     nxt = croniter(s.cron, datetime.now(tz)).get_next(datetime) if s.on else None
@@ -64,7 +63,7 @@ def _view(s, cfg) -> dict:
             "daytime": s.daytime,
             "wall_minutes": s.wall_minutes, "on_fail": s.on_fail,
             "next": iso(nxt) if nxt else None,
-            "next_night": night_of(nxt, tz).isoformat() if nxt else None,
+            "next_day": nxt.date().isoformat() if nxt else None,
             "next_at": f"{nxt:%H:%M}" if nxt else None}
 
 
@@ -79,12 +78,12 @@ def _scheduler(request: Request):
 async def list_schedules(request: Request) -> dict:
     """{schedules: [{name, label, title, summary, cron, time, every, prompt, after, reviewer,
     reviewer_prompt, turns, note, role, on, idle_only, wall_minutes, on_fail, next,
-    next_night, next_at}],
-    roles, variables, tonight, choices, help}: by time of day; `time` "02:00" for a daily one (else
+    next_day, next_at}],
+    roles, variables, today, choices, help}: by time of day; `time` "02:00" for a daily one (else
     null), `every` in words ("Daily at 02:00", "Sundays at 07:00"), `next` the next
-    slot (UTC, null while off), `next_night` its night and `next_at` its time of day,
+    slot (UTC, null while off), `next_day` its calendar day and `next_at` its time of day,
     `roles` the chat roles a schedule can run on,
-    `variables` the words a prompt can hold, `tonight` the night the page opens on,
+    `variables` the words a prompt can hold, `today` the day the page opens on,
     `choices` a field's choices ({on_fail: [{value, label}]}), `help` a field's "?" text
     (on_fail, idle_only, wall_minutes)."""
     cfg = request.app.state.services.cfg
@@ -92,7 +91,7 @@ async def list_schedules(request: Request) -> dict:
     return {"schedules": [_view(s, cfg) for s in rows],
             "roles": [{"name": r, "label": ROLES[r]["label"]} for r in run_roles()],
             "variables": [*VARIABLES, *(f"result:{s.name}" for s in rows)],
-            "tonight": _tonight(cfg).isoformat(), "choices": CHOICES,
+            "today": _today(cfg).isoformat(), "choices": CHOICES,
             "help": {k: cfg.substitute(v) for k, v in HELP.items()}}
 
 
@@ -150,11 +149,11 @@ async def run_schedule(request: Request, name: str) -> dict:
     return {"run": await _scheduler(request).run_now(name, by="user")}
 
 
-def _night(raw) -> date:
+def _date(raw, field: str) -> date:
     try:
         return date.fromisoformat(str(raw))
     except ValueError:
-        raise Invalid("night", "The day is a date, such as 2026-01-10.") from None
+        raise Invalid(field, "The day is a date, such as 2026-01-10.") from None
 
 
 @router.post("/schedules/preview")
@@ -164,7 +163,7 @@ async def preview(request: Request) -> dict:
     others as they are now (schedules/variables.py). -> {text}."""
     from ..api.deps import json_body
     body = await json_body(request, need=("night", "text"), allow=("night", "text"))
-    night = _night(body["night"])
+    night = _date(body["night"], "night")
     if not isinstance(body["text"], str):
         raise Invalid("text", "The text is text.")
     res = await request.app.state.services.store.read(lambda c: results(c, night.isoformat()))
@@ -174,41 +173,50 @@ async def preview(request: Request) -> dict:
 
 
 @router.get("/runs")
-async def list_runs(request: Request, night: str | None = None,
+async def list_runs(request: Request, day: str | None = None,
                     schedule: str | None = None, until: str | None = None) -> dict:
-    """{runs, nights, tonight}: the runs of `night` (default: tonight) or of one
-    `schedule` (its newest 50), oldest slot first; `nights` the NIGHTS nights up to
-    `until` (default and at most tonight), newest first, each {night, failed: the newest
-    try of one of its schedules failed}. A run's `asked`: an approval waits in it or in a
-    sub-agent of it (approvals.asked)."""
+    """{runs, days, today}: the runs whose slot is on `day` (a calendar date in the app's
+    zone, midnight to midnight; default: today) or of one `schedule` (its newest 50),
+    oldest slot first; `days` the DAYS days up to `until` (default and at most today),
+    newest first, each {day, failed: the newest try of one of its schedules on that day
+    failed}. A run's `asked`: an approval waits in it or in a sub-agent of it
+    (approvals.asked)."""
     from ..approvals import asked
     services = request.app.state.services
     cfg, store = services.cfg, services.store
     waits = asked(services)
     held = getattr(services.schedules, "held", None)
-    tonight = _tonight(cfg)
-    which = (_night(night) if night else tonight).isoformat()
-    last = min(_night(until), tonight) if until else tonight
-    first = (last - timedelta(days=NIGHTS - 1)).isoformat()
+    tz = zone(cfg)
+    today = _today(cfg)
+    which = _date(day, "day") if day else today
+    last = min(_date(until, "until"), today) if until else today
+    first = last - timedelta(days=DAYS - 1)
+    # slots between two moments, whatever the precision they were written with
+    between = "datetime(r.slot) >= datetime(?) AND datetime(r.slot) < datetime(?)"
+
+    def start(d: date) -> str:
+        """The first moment of a calendar day in the app's zone."""
+        return iso(datetime.combine(d, time.min, tz))
 
     def fn(c):
         if schedule is not None:
             rows = c.execute(f"{ROW} WHERE r.schedule = ? ORDER BY r.slot DESC LIMIT 50",
                              (schedule,)).fetchall()[::-1]
         else:
-            rows = c.execute(f"{ROW} WHERE r.night = ? ORDER BY r.slot", (which,)).fetchall()
-        # each schedule's newest try of each night (a later slot replaces an earlier one)
+            rows = c.execute(f"{ROW} WHERE {between} ORDER BY r.slot",
+                             (start(which), start(which + timedelta(days=1)))).fetchall()
+        # each schedule's newest try of each day (a later slot replaces an earlier one)
         newest: dict[tuple[str, str], str] = {}
-        for d in c.execute("SELECT night, schedule, state FROM runs WHERE night >= ? AND "
-                           "night <= ? ORDER BY slot", (first, last.isoformat())):
-            newest[(d["night"], d["schedule"])] = d["state"]
+        for d in c.execute(f"SELECT r.slot, r.schedule, r.state FROM runs r WHERE {between} "
+                           "ORDER BY r.slot", (start(first), start(last + timedelta(days=1)))):
+            newest[(day_of(d["slot"], tz), d["schedule"])] = d["state"]
         return [run_view(r, cfg, r["id"] == held) for r in rows], newest
     runs, newest = await store.read(fn)
     failed = {n for (n, _), state in newest.items() if state == "failed"}
-    nights = [{"night": n, "failed": n in failed} for n in
-              ((last - timedelta(days=i)).isoformat() for i in range(NIGHTS))]
+    days = [{"day": n, "failed": n in failed} for n in
+            ((last - timedelta(days=i)).isoformat() for i in range(DAYS))]
     runs = [{**r, "asked": r["conversation_id"] in waits} for r in runs]
-    return {"runs": runs, "nights": nights, "tonight": tonight.isoformat()}
+    return {"runs": runs, "days": days, "today": today.isoformat()}
 
 
 @router.get("/runs/{rid}")

@@ -18,6 +18,12 @@ def zone(cfg) -> ZoneInfo:
         return ZoneInfo("UTC")
 
 
+def day_of(stamp: str, tz=None) -> str:
+    """The calendar date of a stamp ("2026-01-09") in `tz`; without one in the process's
+    zone, which follows the app's (use_zone)."""
+    return datetime.fromisoformat(stamp).astimezone(tz).date().isoformat()
+
+
 def day_label(at: str, tz, now_: datetime) -> str:
     """The day of a stamp in the app's zone, as the Events list names it: Today, Yesterday,
     the weekday, "9 Oct", "October 2025"."""

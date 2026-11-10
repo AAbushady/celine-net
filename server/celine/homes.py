@@ -5,10 +5,14 @@ works it out.
 A conversation's home follows its root, the top of its `agent_of` chain (both fixed at
 creation, so the home is too): a mission's root is under Missions, a background root
 (a run, what an event started) under Routines, anything else with it. A sub-agent opens
-in its root's home: /mission/<id>, /routines/<night>/task/<id> or /chat/<id>."""
+in its root's home: /mission/<id>, /routines/<day>/task/<id> or /chat/<id>. The day
+in a Routines link is a calendar date in the app's zone: a run's is its slot's, what an
+event started its own first day."""
 from __future__ import annotations
 
 import sqlite3
+
+from .clock import day_of
 
 HOMES = ("agent", "missions", "routines")
 _COLS = "id, kind, trigger_key, created_at"
@@ -49,9 +53,9 @@ def run_of(c: sqlite3.Connection, cid: str) -> sqlite3.Row | None:
                      (top["id"],)).fetchone()
 
 
-def run_link(night: str, run_id: str) -> str:
-    """Where a schedule's run opens."""
-    return f"/routines/{night}/run/{run_id}"
+def run_link(day: str, run_id: str) -> str:
+    """Where a schedule's run opens: under the calendar day of its slot."""
+    return f"/routines/{day}/run/{run_id}"
 
 
 def of(c: sqlite3.Connection, cid: str) -> dict:
@@ -64,11 +68,11 @@ def of(c: sqlite3.Connection, cid: str) -> dict:
         return {"home": "missions", "link": f"/mission/{cid}"}
     if top["kind"] == "background":
         key = top["trigger_key"] or ""
-        run = c.execute("SELECT id, night FROM runs WHERE id=?",
+        run = c.execute("SELECT id, slot FROM runs WHERE id=?",
                         (key.split(":")[1],)).fetchone() if key.startswith("run:") else None
-        night = run["night"] if run else top["created_at"][:10]
-        link = run_link(night, run["id"]) if run and top["id"] == cid \
-            else f"/routines/{night}/task/{cid}"
+        day = day_of(run["slot"] if run else top["created_at"])
+        link = run_link(day, run["id"]) if run and top["id"] == cid \
+            else f"/routines/{day}/task/{cid}"
         return {"home": "routines", "link": link}
     return {"home": "agent", "link": f"/chat/{cid}"}
 

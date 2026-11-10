@@ -1575,7 +1575,9 @@ agent's `{{name}}` and `{{pronouns}}`, and `{{username}}`. When the run starts, 
 
 **Runs** (table `runs`): one schedule at one slot, its planned time (UTC); `night` is the
 night of the slot (`night_of`: before 12:00 in the app's zone belongs to that date's
-night, from 12:00 on to the next date's); `state` waiting, running, done, failed, skipped
+night, from 12:00 on to the next date's): its dates and results come from it. The
+Routines page lists a run under the calendar day of its slot, midnight to midnight in
+the app's zone (a run's `day`). `state` waiting, running, done, failed, skipped
 or stopped; `reason` why it waits; `conversation_id` its one conversation; `result`,
 `error`; `started_at`, `finished_at`; `again_of` the run a retry retries; unique
 (schedule, slot). Every change is `run.state {run}` on the global feed; its view adds
@@ -1658,8 +1660,8 @@ its runs.
 **Routes.** `GET /api/schedules`; `PUT /api/schedules/{name}` (the whole schedule; the
 prompts go into their history as `texts` `routine:<name>:prompt`); `DELETE
 /api/schedules/{name}` (refused while another follows it); `POST /api/schedules/{name}/run`;
-`POST /api/schedules/preview {night, text}`; `GET /api/runs?night=&schedule=&until=` (each
-night `{night, failed}`, failed when a schedule's newest try that night failed); `GET
+`POST /api/schedules/preview {night, text}`; `GET /api/runs?day=&schedule=&until=` (each
+day `{day, failed}`, failed when a schedule's newest try that day failed); `GET
 /api/runs/{id}`; `POST /api/runs/{id}/stop`; `POST /api/runs/{id}/retry`. `GET
 /api/schedules` also gives `choices` and `help` for When a run fails, Only when the app
 is idle and Time limit. `GET
@@ -1870,7 +1872,7 @@ is in docs/DEPLOY.md.
 | `GET /jobs/{id}` | one job, the same shape |
 | `GET /triggers`, `PUT /triggers/{name}` | the skills' triggers and the user's state of one  |
 | `GET /schedules`, `PUT`/`DELETE /schedules/{name}`, `POST /schedules/{name}/run`, `POST /schedules/preview` | the schedules (Schedules) |
-| `GET /runs?night=&schedule=&until=`, `GET /runs/{id}`, `POST /runs/{id}/retry`, `POST /runs/{id}/stop` | their runs (Schedules) |
+| `GET /runs?day=&schedule=&until=`, `GET /runs/{id}`, `POST /runs/{id}/retry`, `POST /runs/{id}/stop` | their runs (Schedules) |
 | `GET /background-conversations` | the background conversations (fired triggers and runs), newest activity first: `{background: [{id, title, kind, trigger, working, last_line, updated_at}]}` |
 | `POST /jobs/{id}/stop` | `{cancelled}` |
 | `GET /generation-presets?kind=images\|music` | every preset of the kind as the UI shows it, with its editor's `fields` and `values` and `origin` (shipped, edited, own) |

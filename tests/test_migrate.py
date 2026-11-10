@@ -219,7 +219,8 @@ def test_0004_gives_each_sub_agent_call_the_link_of_its_conversation(tmp_path, m
         c.execute("INSERT INTO conversations(id, kind, agent_of, trigger_key, created_at, "
                   "updated_at) VALUES(?, ?, ?, ?, ?, 'x')", (cid, kind, agent_of, key, at))
     c.execute("INSERT INTO runs(id, schedule, label, slot, night, state, conversation_id, "
-              "created_at) VALUES('r1', 'diary', 'Diary', 's', '2026-10-22', 'done', 'run', 'x')")
+              "created_at) VALUES('r1', 'diary', 'Diary', '2026-10-22T12:00:00+00:00', "
+              "'2026-10-22', 'done', 'run', 'x')")
     c.execute("INSERT INTO messages(id, conversation_id, role, created_at) "
               "VALUES('m', 'chat', 'assistant', 'x')")
     subs = ("s-chat", "s-mis", "s-run", "s-task", "gone")

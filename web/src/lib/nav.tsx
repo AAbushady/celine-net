@@ -5,13 +5,13 @@
    /chat/<conversation id>            one chat; a mission moves to /mission/<id>
    /missions                          Missions: the missions
    /mission/<conversation id>         a mission's page, or one of its sub-agents' transcript
-   /routines  /routines/<night>       Routines: the night's timeline of runs (a date, default
-                                      the server's tonight)
-   /routines/<night>/run/<run id>     the same with a run open beside it
-   /routines/<night>/schedule/<name>  the same with a schedule open to edit; `new` for a new one
-   /routines/<night>/schedule/<name>/edit/<key>[/history]   one of its prompts in the large
+   /routines  /routines/<day>         Routines: a calendar day's runs (a date, default
+                                      the server's today)
+   /routines/<day>/run/<run id>       the same with a run open beside it
+   /routines/<day>/schedule/<name>    the same with a schedule open to edit; `new` for a new one
+   /routines/<day>/schedule/<name>/edit/<key>[/history]   one of its prompts in the large
                                       editor, or its History
-   /routines/<night>/task/<id>        the same with what an event started open (or its sub-agent)
+   /routines/<day>/task/<id>          the same with what an event started open (or its sub-agent)
    /notebook                          the notebook (Notebook), the one notebook;
    …?note=<path>[&edit=1|&history=1]  with that note open (in the large editor, or its History)
    /terminals                         Celine's terminals and yours, the commands log (Terminals)
@@ -58,7 +58,7 @@ export type Section = 'celine' | 'missions' | 'routines' | 'notebook' | 'termina
 export type Route =
   | { section: 'celine'; conversation?: string }
   | { section: 'missions'; conversation?: string }
-  | ({ section: 'routines'; night?: string; run?: string; schedule?: string; task?: string } & Editing)
+  | ({ section: 'routines'; day?: string; run?: string; schedule?: string; task?: string } & Editing)
   | { section: 'notebook'; note?: string; edit?: boolean; history?: boolean }
   | { section: 'terminals'; mission?: string; terminal?: string; reply?: string }
   | { section: 'browser' }
@@ -110,17 +110,17 @@ function parse(pathname: string, search = ''): Parsed {
     case 'mission':
       return a ? { route: { section: 'missions', conversation: a } } : { route: { section: 'missions' }, redirect: true }
     case 'routines': {
-      // a real date, else tonight (the server's)
-      const night = a && realDate(a) ? a : undefined
-      if (!night) return { route: { section: 'routines' }, redirect: !!a }
-      if (b === 'run' && c) return { route: { section: 'routines', night, run: c } }
+      // a real date, else today (the server's)
+      const day = a && realDate(a) ? a : undefined
+      if (!day) return { route: { section: 'routines' }, redirect: !!a }
+      if (b === 'run' && c) return { route: { section: 'routines', day, run: c } }
       if (b === 'schedule' && c) {
         const e = parts[5], h = parts[6]
-        if (d === 'edit' && e) return { route: { section: 'routines', night, schedule: c, ...editing(e, h) }, redirect: !!h && h !== 'history' }
-        return { route: { section: 'routines', night, schedule: c }, redirect: !!d }
+        if (d === 'edit' && e) return { route: { section: 'routines', day, schedule: c, ...editing(e, h) }, redirect: !!h && h !== 'history' }
+        return { route: { section: 'routines', day, schedule: c }, redirect: !!d }
       }
-      if (b === 'task' && c) return { route: { section: 'routines', night, task: c } }
-      return { route: { section: 'routines', night }, redirect: !!b }
+      if (b === 'task' && c) return { route: { section: 'routines', day, task: c } }
+      return { route: { section: 'routines', day }, redirect: !!b }
     }
     case 'notebook': {
       const q = new URLSearchParams(search)
@@ -210,8 +210,8 @@ export function format(r: Route): string {
     case 'missions':
       return r.conversation ? `/mission/${e(r.conversation)}` : '/missions'
     case 'routines':
-      if (!r.night) return '/routines'
-      return `/routines/${r.night}` + (r.run ? `/run/${e(r.run)}` : r.schedule ? `/schedule/${e(r.schedule)}${r.edit ? editPath(r) : ''}`
+      if (!r.day) return '/routines'
+      return `/routines/${r.day}` + (r.run ? `/run/${e(r.run)}` : r.schedule ? `/schedule/${e(r.schedule)}${r.edit ? editPath(r) : ''}`
         : r.task ? `/task/${e(r.task)}` : '')
     case 'notebook':
       return '/notebook' + (r.note ? `?note=${e(r.note)}${r.history ? '&history=1' : r.edit ? '&edit=1' : ''}` : '')

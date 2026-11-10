@@ -270,7 +270,9 @@ async def test_a_moment_before_noon_is_that_dates_night_from_noon_the_next(store
     assert night_start(date(2026, 10, 11), berlin) == datetime(2026, 10, 10, 12, tzinfo=berlin)
     cfg.schedules = {"world": _s("world", "0 23 * * *")}
     sched = Scheduler(_app(store, cfg), Clock(datetime(2026, 10, 10, 14, tzinfo=UTC)))
-    assert (await sched.run_now("world"))["night"] == "2026-10-11", "Run now: tonight"
+    now = await sched.run_now("world")
+    assert (now["night"], now["day"]) == ("2026-10-11", "2026-10-10"), \
+        "Run now: tonight's dates, listed under the calendar day of its slot"
     await store.kv_set(CHECKED, iso(datetime(2026, 10, 10, 14, tzinfo=UTC)))
     sched.now = Clock(datetime(2026, 10, 10, 23, 30, tzinfo=UTC))
     await sched.make_due()
@@ -732,7 +734,7 @@ async def test_the_api_ships_four_schedules_and_edits_previews_runs_and_deletes(
         reflection = by_name["reflection"]
         assert (reflection["time"], reflection["after"]) == ("05:00", ["self-review"])
         assert reflection["every"] == "Daily at 05:00" and reflection["turns"] == 8
-        assert reflection["next_at"] == "05:00" and reflection["next_night"] >= got["tonight"]
+        assert reflection["next_at"] == "05:00" and reflection["next_day"] >= got["today"]
         assert reflection["reviewer"] == "mentor.md" and "neutral and direct" in \
             reflection["reviewer_prompt"]
         day = by_name["user-day"]
@@ -778,11 +780,12 @@ async def test_the_api_ships_four_schedules_and_edits_previews_runs_and_deletes(
 
         run = (await api.post("/api/schedules/morning/run")).json()["run"]
         assert run["state"] == "waiting" and run["label"] == "Morning"
-        listed = (await api.get(f"/api/runs?night={run['night']}")).json()
+        listed = (await api.get(f"/api/runs?day={run['day']}")).json()
         assert [x["id"] for x in listed["runs"]] == [run["id"]]
-        assert len(listed["nights"]) == 14
-        earlier = (await api.get("/api/runs?until=2026-01-20")).json()["nights"]
-        assert [earlier[0]["night"], earlier[-1]["night"]] == ["2026-01-20", "2026-01-07"]
+        assert len(listed["days"]) == 14 and listed["days"][0]["day"] == listed["today"]
+        assert (await api.get("/api/runs?day=Friday")).json()["error"]["detail"]["field"] == "day"
+        earlier = (await api.get("/api/runs?until=2026-01-20")).json()["days"]
+        assert [earlier[0]["day"], earlier[-1]["day"]] == ["2026-01-20", "2026-01-07"]
         one = (await api.get(f"/api/runs/{run['id']}")).json()
         assert one["prompt"] == f"Plan {run['night']}."
 

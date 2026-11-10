@@ -40,8 +40,8 @@ export type Schedule = {
   on_fail: OnFail
   /** the next slot (UTC), null while off */
   next: string | null
-  /** the night of the next slot, and its time of day ("02:00") */
-  next_night: string | null
+  /** the calendar day of the next slot in the app's zone, and its time of day ("02:00") */
+  next_day: string | null
   next_at: string | null
 }
 
@@ -79,7 +79,8 @@ export type Run = {
   slot: string
   /** the slot's time of day in the app's zone */
   at: string
-  night: string
+  /** the calendar day that time is on, the day the page lists it under */
+  day: string
   state: RunState
   /** why it waits or why it was skipped, in words; '' when nothing holds it */
   reason: string
@@ -98,9 +99,9 @@ export type Run = {
 }
 
 /** one of the fourteen days: failed when a schedule's newest try that day failed */
-export type Night = { night: string; failed: boolean }
+export type Day = { day: string; failed: boolean }
 
-export type Runs = { runs: Run[]; nights: Night[]; tonight: string }
+export type Runs = { runs: Run[]; days: Day[]; today: string }
 
 /** GET /schedules: a field's choices and its "?" text, the server's */
 export type ScheduleWords = { choices: { on_fail: { value: OnFail; label: string }[] }; help: Record<'on_fail' | 'idle_only' | 'wall_minutes', string> }
@@ -113,16 +114,17 @@ const enc = encodeURIComponent
 
 export const routinesApi = {
   schedules: (signal?: AbortSignal) =>
-    request<{ schedules: Schedule[]; roles: { name: string; label: string }[]; variables: string[]; tonight: string } & ScheduleWords>('/schedules', { signal }),
+    request<{ schedules: Schedule[]; roles: { name: string; label: string }[]; variables: string[]; today: string } & ScheduleWords>('/schedules', { signal }),
   put: (name: string, body: ScheduleBody) =>
     request<Schedule & { applied: boolean }>(`/schedules/${enc(name)}`, json('PUT', body)),
   remove: (name: string) => del<{ deleted: string }>(`/schedules/${enc(name)}`),
   runNow: (name: string) => post<{ run: Run }>(`/schedules/${enc(name)}/run`),
+  /** `text` filled as a run with the dates of `night` gets it (the page passes the day it shows) */
   preview: (night: string, text: string, signal?: AbortSignal) =>
     request<{ text: string }>('/schedules/preview', { ...json('POST', { night, text }), signal }).then(r => r.text),
-  /** the runs of `night` (default tonight), the 14 nights up to `until` (default tonight) */
-  runs: (night?: string, signal?: AbortSignal, until?: string) => {
-    const q = new URLSearchParams({ ...(night && { night }), ...(until && { until }) }).toString()
+  /** the runs of `day` (default today), the 14 days up to `until` (default today) */
+  runs: (day?: string, signal?: AbortSignal, until?: string) => {
+    const q = new URLSearchParams({ ...(day && { day }), ...(until && { until }) }).toString()
     return request<Runs>(`/runs${q ? `?${q}` : ''}`, { signal })
   },
   /** one schedule's newest runs, oldest first */
@@ -163,8 +165,8 @@ export const FINISHED: (RunState | 'planned')[] = ['done', 'failed', 'skipped', 
 export const RETRIES: RunState[] = ['failed', 'skipped', 'stopped']
 
 /** a day's date as a heading: "Saturday 10 October" */
-export const nightWords = (night: string) =>
-  new Date(`${night}T12:00:00`).toLocaleDateString(LOCALE, { weekday: 'long', day: 'numeric', month: 'long' })
+export const dayWords = (day: string) =>
+  new Date(`${day}T12:00:00`).toLocaleDateString(LOCALE, { weekday: 'long', day: 'numeric', month: 'long' })
 
 /** GET /background: the conversation a fired event started (the runs' are under their days) */
 export type EventTask = {
