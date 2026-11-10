@@ -21,9 +21,10 @@ How:
    queued one by its source until the helper has its title. A failed watch stays in the list
    with its date: it says what happened then. `video__stop` ends one.
 
-YouTube sometimes stops the helper with its bot check. The check comes and goes for the same
-video, so the helper tries once more by itself. When a watch still fails with it, watch it
-again later, or get the video in your box the shell guide's way.
+YouTube sometimes stops the helper with its bot check. The helper then tries once more by
+itself, with the YouTube cookies of your own browser (only YouTube's, for that one download).
+When a watch still fails with it, open YouTube in your browser once and watch it again, or
+get the video in your box the shell guide's way.
 
 Plex: films and shows are on {{username}}'s Plex servers, shared with your own Plex account,
 downloads allowed. Link the account once with `video__link_plex`: open the link it gives in
