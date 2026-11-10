@@ -6,7 +6,7 @@ import json
 import sqlite3
 
 from ..core.event_types import CONVERSATION_ARCHIVED, CONVERSATION_UNARCHIVED, JOB_STATE
-from ..core.states import LIVE_SQL
+from ..core.statuses import LIVE_TURNS_SQL
 from .store import family
 
 
@@ -47,7 +47,7 @@ def catch_up(c: sqlite3.Connection, since: int | None, known: dict[str, int], ow
         r = c.execute(
             "SELECT c.id, c.next_seq - 1 AS seq, c.title, c.archived_at, "
             "(SELECT state FROM turns t WHERE t.conversation_id = c.id AND t.state IN "
-            f"{LIVE_SQL} ORDER BY t.created_at LIMIT 1) AS active_state "
+            f"{LIVE_TURNS_SQL} ORDER BY t.created_at LIMIT 1) AS active_state "
             "FROM conversations c WHERE c.id=? AND c.trashed_at IS NULL", (cid,)).fetchone()
         if r is None:
             gone.append(cid)

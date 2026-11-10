@@ -21,7 +21,7 @@ import sqlite3
 from ..conversations import store as conversations, tree
 from ..plans import store as plans
 from ..core.ids import now
-from ..core.states import LIVE_SQL
+from ..core.statuses import LIVE_TURNS_SQL
 from ..core.event_types import INTERCOM_STATE
 from .store import NAMES, notice_user
 
@@ -56,7 +56,7 @@ def _due(c: sqlite3.Connection, store, cid: str) -> list[sqlite3.Row]:
 
 
 def _live(c: sqlite3.Connection, cid: str) -> bool:
-    return c.execute(f"SELECT 1 FROM turns WHERE conversation_id=? AND state IN {LIVE_SQL} "
+    return c.execute(f"SELECT 1 FROM turns WHERE conversation_id=? AND state IN {LIVE_TURNS_SQL} "
                      "LIMIT 1", (cid,)).fetchone() is not None
 
 

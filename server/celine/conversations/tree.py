@@ -9,7 +9,8 @@ import sqlite3
 from ..core.ids import new_id, now
 from .. import errors
 from ..errors import mask, mask_all
-from ..core.states import LIVE_SQL, QUEUE_ORDER
+from ..core.statuses import LIVE_TURNS_SQL
+from ..core.turn_queue import QUEUE_ORDER
 from .. import attachments as files
 from ..intercom.store import insert as intercom_insert, view
 from ..core.event_types import (
@@ -93,7 +94,7 @@ def keep_time(c: sqlite3.Connection, cid: str, ts: str) -> None:
 
 def refuse_if_live(c: sqlite3.Connection, cid: str) -> None:
     """Nothing outside the runner changes the tree while a turn of it is live."""
-    if c.execute(f"SELECT 1 FROM turns WHERE conversation_id=? AND state IN {LIVE_SQL} "
+    if c.execute(f"SELECT 1 FROM turns WHERE conversation_id=? AND state IN {LIVE_TURNS_SQL} "
                  "LIMIT 1", (cid,)).fetchone():
         raise Busy()
 
@@ -268,7 +269,7 @@ def live_queue(c: sqlite3.Connection, cid: str) -> list[dict]:
     return [{"turn_id": r["id"], "quiet": bool(r["quiet"]), "state": r["state"]}
             for r in c.execute(
         "SELECT t.id, t.quiet, t.state FROM turns t WHERE "
-        f"t.conversation_id=? AND t.state IN {LIVE_SQL} ORDER BY t.state = 'queued', "
+        f"t.conversation_id=? AND t.state IN {LIVE_TURNS_SQL} ORDER BY t.state = 'queued', "
         f"{QUEUE_ORDER}", (cid,))]
 
 
@@ -513,7 +514,7 @@ def unanswered(c: sqlite3.Connection, cid: str) -> dict | None:
     up the reply it said before it failed: view.continuable, and the chat model
     continues a reply in place)}; None when the last message has its answer."""
     from .view import continuable
-    if c.execute(f"SELECT 1 FROM turns WHERE conversation_id=? AND state IN {LIVE_SQL} "
+    if c.execute(f"SELECT 1 FROM turns WHERE conversation_id=? AND state IN {LIVE_TURNS_SQL} "
                  "LIMIT 1", (cid,)).fetchone():
         return None
     found = _no_reply(c, cid)

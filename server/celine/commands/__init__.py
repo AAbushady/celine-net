@@ -16,7 +16,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
-from ..core.states import LIVE_SQL
+from ..core.statuses import LIVE_TURNS_SQL
 from ..errors import Busy, CelineError, NotFound
 
 log = logging.getLogger("celine.commands")
@@ -143,7 +143,7 @@ async def run(services, cid: str, name: str, text: str, wait: bool = False) -> d
     if kind not in cmd.kinds:
         raise CelineError("bad_request", f"/{cmd.name} works in a chat.", 400)
     if cmd.when == "idle" and await store.read(lambda c: c.execute(
-            f"SELECT 1 FROM turns WHERE conversation_id=? AND state IN {LIVE_SQL}",
+            f"SELECT 1 FROM turns WHERE conversation_id=? AND state IN {LIVE_TURNS_SQL}",
             (cid,)).fetchone()):
         # the error handler fills in the name (errors.py)
         raise Busy(f"{{{{name}}}} is still writing. Run /{cmd.name} once the reply is "

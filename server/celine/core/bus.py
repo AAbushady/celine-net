@@ -6,7 +6,7 @@ from collections import defaultdict
 
 import anyio
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
-from .states import TERMINAL
+from .statuses import ENDED_TURNS
 from .event_types import (
     ARTIFACT_UPDATED,
     CONVERSATION_TITLE,
@@ -91,7 +91,7 @@ def lands(ev: dict) -> str | None:
     """The kind of event `ev` adds to Events, or None."""
     t = ev.get("type")
     if t == TURN_STATE:
-        return "turn" if ev.get("state") in TERMINAL else None
+        return "turn" if ev.get("state") in ENDED_TURNS else None
     if t == JOB_STATE:
         return "job" if ev.get("state") != "running" else None
     if t in (TOOL_DONE, TOOL_GATED):

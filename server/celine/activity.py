@@ -1,6 +1,6 @@
 """Whether a conversation is at work: two rules, each asked in one place.
 
-Running: a turn of it executes now. A live turn (core/states.py LIVE) counts, but a
+Running: a turn of it executes now. A live turn (core/statuses.py LIVE_TURNS) counts, but a
 queued one that the hold keeps aside does not (hold.py: frozen, or paused): it has not
 started, and its row says why. What a list shows as Running, a row's step, the
 background list's `working` and the "also working now" of its prompt read this.
@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from .core.states import LIVE_SQL
+from .core.statuses import LIVE_TURNS_SQL
 from .hold import held_sql
 
 
@@ -35,7 +35,7 @@ def queued_sql(conversation: str = "?") -> str:
 def running_sql(models: frozenset[str] | None, t: str = "t", c: str = "c") -> str:
     """SQL, true for a turn `t` of the conversation `c` that executes now: live, and not
     a queued one the hold keeps aside (`models`: hold.answering)."""
-    return f"({t}.state IN {LIVE_SQL} AND NOT ({t}.state = 'queued' AND {held_sql(models, c)}))"
+    return f"({t}.state IN {LIVE_TURNS_SQL} AND NOT ({t}.state = 'queued' AND {held_sql(models, c)}))"
 
 
 def family_running_sql(models: frozenset[str] | None, c: str = "c") -> str:
@@ -60,7 +60,7 @@ def running(c: sqlite3.Connection, cid: str, models: frozenset[str] | None = Non
 # job, a waking message that waits); a queued sub-agent and the sub-agents under one are
 # `busy`'s to add
 OWN_BUSY_SQL = (
-    f"SELECT conversation_id FROM turns WHERE state IN {LIVE_SQL} "
+    f"SELECT conversation_id FROM turns WHERE state IN {LIVE_TURNS_SQL} "
     "UNION SELECT conversation_id FROM jobs WHERE state='running' "
     "UNION SELECT d.conversation_id FROM intercom_deliveries d JOIN intercom i ON i.id = "
     "d.intercom_id WHERE d.state='pending' AND i.wake=1 AND i.cancelled_at IS NULL")
@@ -71,7 +71,7 @@ def busy(c: sqlite3.Connection, cid: str, but: int | None = None) -> bool:
     waking message waiting in it, a sub-agent of it queued, or a sub-agent under it busy.
     `but` is a message in `cid` that does not count (a mission's time limit)."""
     if c.execute(
-        f"SELECT 1 FROM turns WHERE conversation_id=? AND state IN {LIVE_SQL} "
+        f"SELECT 1 FROM turns WHERE conversation_id=? AND state IN {LIVE_TURNS_SQL} "
         "UNION ALL SELECT 1 FROM jobs WHERE conversation_id=? AND state='running' "
         "UNION ALL SELECT 1 FROM intercom_deliveries d JOIN intercom i ON i.id = "
         "d.intercom_id WHERE d.conversation_id=? AND d.state='pending' AND i.wake=1 "

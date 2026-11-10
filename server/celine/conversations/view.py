@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from ..core.states import LIVE, LIVE_SQL, QUEUE_ORDER
+from ..core.statuses import CLAIMED_TURNS, LIVE_TURNS, LIVE_TURNS_SQL
+
+from ..core.turn_queue import QUEUE_ORDER
 from .. import approvals, homes
 from ..guard import mark, store as guard_rows
 from ..plans import store as plans
@@ -49,7 +51,7 @@ async def snapshot(store, cid: str, llm=None) -> dict:
         # the snapshot's turn is the first, else the newest
         cols = ("t.id, t.state, t.reason, t.reason_code, t.cut, t.continues, "
                 "t.root_message_id FROM turns t WHERE t.conversation_id=?")
-        queue = c.execute(f"SELECT {cols} AND t.state IN {LIVE_SQL} ORDER BY {QUEUE_ORDER}",
+        queue = c.execute(f"SELECT {cols} AND t.state IN {LIVE_TURNS_SQL} ORDER BY {QUEUE_ORDER}",
                           (cid,)).fetchall()
         turn = queue[0] if queue else c.execute(
             f"SELECT {cols} ORDER BY t.created_at DESC, t.rowid DESC LIMIT 1",
@@ -91,7 +93,7 @@ async def snapshot(store, cid: str, llm=None) -> dict:
         if turn is not None:
             tdict = dict(turn)
             tdict["continuable"] = continuable(c, cid, turn)
-            if turn["state"] in ("streaming", "preparing", "tools"):
+            if turn["state"] in CLAIMED_TURNS:
                 tdict["live"] = live(c, cid, turn["id"])
         on_path = {m["id"] for m in messages}
         switched: dict[str, dict] = {}
@@ -218,7 +220,7 @@ def continuable(c: sqlite3.Connection, cid: str, turn) -> dict:
     def no(reason: str) -> dict:
         return {"ok": False, "label": label, "reason": reason}
 
-    if state in LIVE:
+    if state in LIVE_TURNS:
         return no("The reply is still being written.")
     latest = c.execute("SELECT id FROM turns WHERE conversation_id=? "
                        "ORDER BY created_at DESC, rowid DESC LIMIT 1",

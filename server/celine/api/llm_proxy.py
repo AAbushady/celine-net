@@ -200,7 +200,7 @@ async def yours(services, lane: str) -> list[str]:
     the box, a drone's on its device) while it works and for APPROVAL_GRACE after it
     started or its last turn ended (opencode's late title and summary calls); the box
     also the ones code__start was approved on (agent_models.granted)."""
-    from ..core.states import LIVE_SQL
+    from ..core.statuses import LIVE_TURNS_SQL
     s = services.cfg.settings
     refs = agent_models.allowed(s)
     box = lane == LANE
@@ -210,7 +210,7 @@ async def yours(services, lane: str) -> list[str]:
     approved = await services.store.read(lambda c: {r[0] for r in c.execute(
         f"SELECT DISTINCT c.model_id FROM conversations c WHERE {where} "
         "AND c.trashed_at IS NULL AND (c.created_at >= ? OR EXISTS (SELECT 1 FROM turns t "
-        f"WHERE t.conversation_id = c.id AND (t.state IN {LIVE_SQL} OR t.finished_at >= ?)))",
+        f"WHERE t.conversation_id = c.id AND (t.state IN {LIVE_TURNS_SQL} OR t.finished_at >= ?)))",
         (since, since) if box else (lane, since, since))} | (agent_models.granted(c) if box
                                                              else set()))
     return [r for r in refs if r in approved or not agent_models.cloud(s, r)

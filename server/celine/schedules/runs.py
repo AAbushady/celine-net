@@ -114,7 +114,7 @@ from ..backends.base import Done, TextDelta, ToolCallDelta
 from ..backends.llm import HeldClock
 from ..conversations import store as conversations, tree
 from ..core.ids import iso, new_id, now
-from ..core.states import LIVE_SQL
+from ..core.statuses import LIVE_TURNS_SQL
 from ..skills import ToolContext
 from ..clock import day_of, zone
 from ..activity import busy
@@ -417,7 +417,7 @@ def waited_on(c: sqlite3.Connection, missions: bool = False,
     skip = f" AND t.conversation_id NOT IN ({','.join('?' * len(parked))})" if parked else ""
     return c.execute(
         f"SELECT 1 FROM turns t JOIN conversations c ON c.id = t.conversation_id "
-        f"WHERE {WAITED_ON.format(mission=mission)} AND t.state IN {LIVE_SQL}{skip} LIMIT 1",
+        f"WHERE {WAITED_ON.format(mission=mission)} AND t.state IN {LIVE_TURNS_SQL}{skip} LIMIT 1",
         tuple(parked)).fetchone() is not None
 
 

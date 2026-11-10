@@ -18,6 +18,7 @@ import logging
 import sqlite3
 
 from ..core.ids import now
+from ..core.statuses import CLAIMED_TURNS_SQL
 from ..events import added
 from . import bastet, learn, store as decisions
 from .owner import must
@@ -80,7 +81,7 @@ async def _stop_all(app) -> None:
         marks = ",".join("?" * len(ids))
         await app.store.write(lambda c: c.execute(
             f"UPDATE turns SET abort_requested=1 WHERE id IN ({marks}) AND state IN "
-            f"('preparing','streaming','tools')", ids))
+            f"{CLAIMED_TURNS_SQL}", ids))
     for t in tokens:
         t.cancel("frozen")
     jobs = getattr(d, "jobs", None)

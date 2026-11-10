@@ -29,7 +29,7 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..core.states import LIVE_SQL
+from ..core.statuses import LIVE_TURNS_SQL
 from ..conversations.samples import PATH as SAMPLES   # carried whole, whatever its size
 from ..skills.notebook import carried_text, inside, load_of, read_note
 
@@ -172,7 +172,7 @@ def place(c: sqlite3.Connection, cid: str, turn_id: str | None = None) -> str:
     from ..skills.places import place_of
     if turn_id is None:
         r = c.execute("SELECT id FROM turns WHERE conversation_id=? AND state IN "
-                      f"{LIVE_SQL} ORDER BY rowid DESC LIMIT 1", (cid,)).fetchone()
+                      f"{LIVE_TURNS_SQL} ORDER BY rowid DESC LIMIT 1", (cid,)).fetchone()
         turn_id = r[0] if r else None
     return place_of(c, cid, turn_id)
 

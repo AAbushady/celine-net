@@ -9,6 +9,7 @@ import anyio
 from .. import metrics, work
 from ..conversations import store as conversations
 from ..core.ids import new_id
+from ..core.statuses import CLAIMED_TURNS
 from ..core.store import Store
 from ..hold import any_held, answering, agent_hold
 from ..intercom import deliver
@@ -188,8 +189,7 @@ class Dispatcher:
             return True
         busy_in_tools = {r["turn_id"] for r in calls}
         # a turn not in a tool is streaming or preparing: it returns on its own soon
-        return any(t not in busy_in_tools and states.get(t) in
-                   ("preparing", "streaming", "tools") for t in ids)
+        return any(t not in busy_in_tools and states.get(t) in CLAIMED_TURNS for t in ids)
 
     async def abort_conversation(self, cid: str) -> str | None:
         """The user's Stop for a whole conversation: its live turn, every job it

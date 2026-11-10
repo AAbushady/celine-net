@@ -13,7 +13,8 @@ import zlib
 from .. import attachments as files
 from ..conversations import tree, view
 from ..core.ids import new_id, now
-from ..core.states import LIVE, LIVE_SQL, QUEUE_ORDER, TERMINAL
+from ..core.statuses import CLAIMED_TURNS_SQL, ENDED_TURNS, LIVE_TURNS, LIVE_TURNS_SQL
+from ..core.turn_queue import QUEUE_ORDER
 from ..errors import mask_all
 from ..guard import mark
 from ..skills import words
@@ -114,15 +115,15 @@ def set_state(c: sqlite3.Connection, store, cid: str, turn_id: str, final: str,
     c.execute("UPDATE turns SET state=?, reason=?, reason_code=?, cut=?, "
               "finished_at=? WHERE id=?",
               (final, reason_, code, cut if final == "done" else None,
-               now() if final in TERMINAL else None, turn_id))
-    if final in TERMINAL:
+               now() if final in ENDED_TURNS else None, turn_id))
+    if final in ENDED_TURNS:
         settle_open_calls(c, store, cid, turn_id, _SETTLE_WHY.get(final, "the turn ended"))
     data: dict = {"reason": reason_}
     if code:
         data["reason_code"] = code
     if cut and final == "done":
         data["cut"] = cut
-    if final in TERMINAL:
+    if final in ENDED_TURNS:
         row = c.execute("SELECT * FROM turns WHERE id=?", (turn_id,)).fetchone()
         data["continuable"] = view.continuable(c, cid, row)
     tree.turn_state(c, store, cid, turn_id, final, **data)
@@ -130,7 +131,7 @@ def set_state(c: sqlite3.Connection, store, cid: str, turn_id: str, final: str,
         _reply_notice(c, store, cid, turn_id)
     # a continued reply: the conversation keeps its place in the list (tree.py)
     keep = c.execute("DELETE FROM kv WHERE k=? RETURNING v", (tree.KEEP_TIME + turn_id,)
-                     ).fetchone() if final in TERMINAL else None
+                     ).fetchone() if final in ENDED_TURNS else None
     if keep:
         tree.keep_time(c, cid, keep[0])
 
@@ -164,7 +165,7 @@ async def claim(store, worker_id: str, models: set[str] | None = None) -> dict |
             "SELECT t.id, t.conversation_id, t.origin FROM turns t "
             "JOIN conversations c ON c.id = t.conversation_id WHERE t.state='queued' "
             "  AND t.conversation_id NOT IN (SELECT conversation_id FROM turns "
-            "    WHERE state IN ('preparing','streaming','tools')) "
+            f"    WHERE state IN {CLAIMED_TURNS_SQL}) "
             f"  AND NOT {held_sql(frozenset(models) if models is not None else None)} "
             f"ORDER BY {QUEUE_ORDER}").fetchall()
         tid = None
@@ -200,7 +201,7 @@ async def transition(store, turn_id: str, cid: str, state: str,
         aborted = bool(c.execute("SELECT abort_requested FROM turns WHERE id=?",
                                  (turn_id,)).fetchone()["abort_requested"])
         final = state
-        if aborted and honor_abort and state in ("done",) + LIVE:
+        if aborted and honor_abort and state in ("done",) + LIVE_TURNS:
             final = "aborted"
         set_state(c, store, cid, turn_id, final, reason, reason_code, cut)
         if final == "done":
@@ -215,7 +216,7 @@ async def fail_if_active(store, turn_id: str, cid: str, reason: str,
     """Terminal 'failed' only if the turn is still live; a turn that finished
     on its own keeps its state."""
     def fn(c: sqlite3.Connection) -> bool:
-        live = c.execute(f"SELECT 1 FROM turns WHERE id=? AND state IN {LIVE_SQL}",
+        live = c.execute(f"SELECT 1 FROM turns WHERE id=? AND state IN {LIVE_TURNS_SQL}",
                          (turn_id,)).fetchone()
         if live:
             set_state(c, store, cid, turn_id, "failed", reason, reason_code)
@@ -235,7 +236,7 @@ async def put_down(store, worker_ids: list[str], reason: str | None = None,
         marks = ",".join("?" * len(worker_ids))
         rows = c.execute(
             f"UPDATE turns SET state='queued', reason=?, reason_code=?, worker_id=NULL "
-            f"WHERE worker_id IN ({marks}) AND state IN ('preparing','streaming','tools') "
+            f"WHERE worker_id IN ({marks}) AND state IN {CLAIMED_TURNS_SQL} "
             f"RETURNING id, conversation_id", (reason, code, *worker_ids)).fetchall()
         for r in rows:
             tree.turn_state(c, store, r["conversation_id"], r["id"], "queued",
@@ -268,7 +269,7 @@ async def interrupt_held(store, worker_ids: list[str], registry=None) -> list[st
         marks = ",".join("?" * len(worker_ids))
         rows = c.execute(
             f"SELECT id, conversation_id FROM turns WHERE worker_id IN ({marks}) AND "
-            f"state IN ('preparing','streaming','tools')", worker_ids).fetchall()
+            f"state IN {CLAIMED_TURNS_SQL}", worker_ids).fetchall()
         _cut(c, store, rows, registry)
         return [r["id"] for r in rows]
 
@@ -281,7 +282,7 @@ async def sweep(store, registry=None) -> dict:
     `interrupted`, and a conversation one of them was cut in gets one notice."""
     def fn(c: sqlite3.Connection) -> dict:
         live = c.execute("SELECT id, conversation_id FROM turns WHERE state IN "
-                         "('preparing','streaming','tools')").fetchall()
+                         f"{CLAIMED_TURNS_SQL}").fetchall()
         _cut(c, store, live, registry)
         c.execute("UPDATE turns SET worker_id=NULL WHERE state='queued'")
         from ..jobs.store import interrupt_running
@@ -309,7 +310,7 @@ async def request_abort(store, cid: str) -> str | None:
     def fn(c: sqlite3.Connection) -> str | None:
         rows = c.execute(
             "UPDATE turns SET abort_requested=1 WHERE conversation_id=? AND "
-            f"state IN {LIVE_SQL} RETURNING id, state, worker_id", (cid,)).fetchall()
+            f"state IN {LIVE_TURNS_SQL} RETURNING id, state, worker_id", (cid,)).fetchall()
         held = None
         for row in rows:
             if row["state"] == "queued" and row["worker_id"] is None:
@@ -339,7 +340,7 @@ async def continue_turn(store, cid: str, turn_id: str, registry=None, *,
                          (turn_id, cid)).fetchone()
         if turn is None:
             raise KeyError(turn_id)
-        if c.execute(f"SELECT 1 FROM turns WHERE conversation_id=? AND state IN {LIVE_SQL}",
+        if c.execute(f"SELECT 1 FROM turns WHERE conversation_id=? AND state IN {LIVE_TURNS_SQL}",
                      (cid,)).fetchone():
             raise tree.Busy()
         verdict = view.continuable(c, cid, turn)

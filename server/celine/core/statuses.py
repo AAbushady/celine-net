@@ -22,6 +22,34 @@ class Tone(StrEnum):
     MUTED = "muted"
 
 
+class TurnState(StrEnum):
+    """Where a turn stands (turns.state)."""
+    QUEUED = "queued"
+    PREPARING = "preparing"
+    STREAMING = "streaming"
+    TOOLS = "tools"
+    DONE = "done"
+    ABORTED = "aborted"
+    FAILED = "failed"
+    INTERRUPTED = "interrupted"
+    CAPPED = "capped"
+
+
+def sql_list(states) -> str:
+    """Statuses as an SQL list for `state IN {...}`: ('queued','preparing')."""
+    return "(" + ",".join(f"'{s.value}'" for s in states) + ")"
+
+
+# a live turn holds its conversation; an ended one is over
+LIVE_TURNS = (TurnState.QUEUED, TurnState.PREPARING, TurnState.STREAMING, TurnState.TOOLS)
+ENDED_TURNS = (TurnState.DONE, TurnState.ABORTED, TurnState.FAILED, TurnState.INTERRUPTED,
+               TurnState.CAPPED)
+# a claimed turn has a worker: live, and no longer waiting in the queue
+CLAIMED_TURNS = (TurnState.PREPARING, TurnState.STREAMING, TurnState.TOOLS)
+LIVE_TURNS_SQL = sql_list(LIVE_TURNS)
+CLAIMED_TURNS_SQL = sql_list(CLAIMED_TURNS)
+
+
 class MissionStatus(StrEnum):
     """Where a mission stands (missions.status)."""
     ACTIVE = "active"

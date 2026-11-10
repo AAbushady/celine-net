@@ -16,7 +16,7 @@ import anyio
 
 from ..backends.base import ORIGIN, BackendError
 from ..backends.queue import Priority
-from ..core.states import LIVE
+from ..core.statuses import LIVE_TURNS
 from . import context
 from .compact import complete
 from .prompt import request_parts
@@ -50,7 +50,7 @@ async def once(services, at: datetime | None = None) -> str | None:
         "WHERE c.kind = 'chat' AND c.agent_of IS NULL ORDER BY t.rowid DESC LIMIT 1"
     ).fetchone())
     since = (at or datetime.now(timezone.utc)) - timedelta(minutes=minutes)
-    if row is None or row["state"] in LIVE or not row["finished_at"] or \
+    if row is None or row["state"] in LIVE_TURNS or not row["finished_at"] or \
             datetime.fromisoformat(row["finished_at"]) < since:
         return None
     cid = row["conversation_id"]

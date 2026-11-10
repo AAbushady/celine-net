@@ -12,7 +12,7 @@ from .. import homes
 from ..activity import family_running_sql, running
 from ..hold import held
 from ..core.ids import iso, new_id, now
-from ..core.states import LIVE_SQL
+from ..core.statuses import LIVE_TURNS_SQL
 from ..kb.chat import fts_candidates, is_query_error
 from . import tree
 from ..core.event_types import (
@@ -384,7 +384,7 @@ def _refuse_busy(c: sqlite3.Connection, ids: list[str], users_only: bool = False
     only while a turn of the user's is live."""
     marks = ",".join("?" * len(ids))
     live = c.execute(f"SELECT 1 FROM turns WHERE conversation_id IN ({marks}) AND "
-                     f"state IN {LIVE_SQL}" + (" AND origin='user'" if users_only else "")
+                     f"state IN {LIVE_TURNS_SQL}" + (" AND origin='user'" if users_only else "")
                      + " LIMIT 1", ids).fetchone()
     if live or not users_only and c.execute(
             f"SELECT 1 FROM jobs WHERE conversation_id IN ({marks}) AND "
@@ -523,7 +523,7 @@ _SUMMARY = (
     "       c.active_leaf_id, "
     "       c.archived_at, c.next_seq - 1 AS seq, "
     "       (SELECT state FROM turns t WHERE t.conversation_id = c.id "
-    f"         AND t.state IN {LIVE_SQL} "
+    f"         AND t.state IN {LIVE_TURNS_SQL} "
     "         ORDER BY t.created_at LIMIT 1) AS active_state, "
     "       mi.name AS mission_name, mi.status AS mission_status "
     "FROM conversations c LEFT JOIN missions mi ON mi.conversation_id = c.id ")
@@ -596,7 +596,7 @@ def _loading(c: sqlite3.Connection, cid: str) -> str | None:
     """"Loading <model>." while the model of its live turn loads: the turn's newest
     llm.queue event, the one its chat shows (Status.tsx waitWords)."""
     r = c.execute("SELECT e.data FROM events e JOIN turns t ON t.conversation_id = "
-                  f"e.conversation_id AND t.state IN {LIVE_SQL} WHERE e.conversation_id = ? "
+                  f"e.conversation_id AND t.state IN {LIVE_TURNS_SQL} WHERE e.conversation_id = ? "
                   "AND e.type = 'llm.queue' AND json_extract(e.data, '$.turn_id') = t.id "
                   "ORDER BY e.seq DESC LIMIT 1", (cid,)).fetchone()
     d = json.loads(r[0]) if r else {}
@@ -623,7 +623,7 @@ def state_of(c: sqlite3.Connection, row: dict, asked: frozenset[str] = frozenset
             r = c.execute(
                 "SELECT tc.name FROM tool_calls tc JOIN messages m ON m.id = tc.message_id "
                 "JOIN turns t ON t.id = m.turn_id WHERE t.conversation_id = ? "
-                f"AND t.state IN {LIVE_SQL} AND tc.state = 'running' "
+                f"AND t.state IN {LIVE_TURNS_SQL} AND tc.state = 'running' "
                 "ORDER BY tc.started_at DESC LIMIT 1", (row["id"],)).fetchone()
             words = (TOOLS.get(r[0], {}).get("label") or humanize(r[0])) if r else "Thinking"
         return {"tone": "running", "words": words}
@@ -847,7 +847,7 @@ async def prune_events(store, keep: int, cid: str | None = None,
             since = datetime.fromisoformat(now()) - timedelta(days=requests_days)
             c.execute("DELETE FROM requests WHERE created_at < ?", (iso(since),))
         sql = ("SELECT id, next_seq FROM conversations WHERE id NOT IN "
-               f"(SELECT conversation_id FROM turns WHERE state IN {LIVE_SQL})")
+               f"(SELECT conversation_id FROM turns WHERE state IN {LIVE_TURNS_SQL})")
         args: list = []
         if cid:
             sql += " AND id=?"

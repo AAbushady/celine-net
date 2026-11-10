@@ -13,7 +13,7 @@ from . import config as config_mod
 from . import keys as keys_mod
 from .attachments import blob_path
 from .conversations import tree
-from .core.states import LIVE_SQL
+from .core.statuses import LIVE_TURNS_SQL
 from .core.store import connect
 from .db.migrate import read_only, schema_version
 from .errors import answered
@@ -46,7 +46,7 @@ def doctor(cfg: config_mod.Config) -> int:
                          "integrity check")
             _say(True, f"schema version {schema_version(c)}")
             n = c.execute("SELECT count(*) FROM conversations").fetchone()[0]
-            live = c.execute(f"SELECT count(*) FROM turns WHERE state IN {LIVE_SQL}"
+            live = c.execute(f"SELECT count(*) FROM turns WHERE state IN {LIVE_TURNS_SQL}"
                              ).fetchone()[0]
             _say(True, f"{n} chats, {live} turns live")
     else:
