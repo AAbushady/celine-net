@@ -359,8 +359,8 @@ async def _live(store, rid) -> bool:
 
 
 async def _quiet(store, cid) -> bool:
-    from celine.sub_agents.report import quiet
-    return await store.read(lambda c: quiet(c, cid))
+    from celine.activity import busy
+    return await store.read(lambda c: not busy(c, cid))
 
 
 async def _idle(sched) -> bool:

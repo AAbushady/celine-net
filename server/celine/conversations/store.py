@@ -9,7 +9,8 @@ from datetime import datetime, timedelta, timezone
 import anyio
 
 from .. import homes
-from ..hold import held, held_sql
+from ..activity import family_running_sql, running
+from ..hold import held
 from ..core.ids import iso, new_id, now
 from ..core.states import LIVE_SQL
 from ..kb.chat import fts_candidates, is_query_error
@@ -529,14 +530,9 @@ _SUMMARY = (
 
 
 def _rank(models: frozenset[str] | None) -> str:
-    """Running first (a live turn in it or in a sub-agent under it, a queued one the
-    hold keeps aside not counted: hold.held_sql), then pinned, then the rest."""
-    return (f"CASE WHEN EXISTS (WITH RECURSIVE fam(id) AS (SELECT c.id UNION ALL SELECT "
-            f"s.id FROM conversations s JOIN fam ON s.agent_of = fam.id) SELECT 1 FROM turns t "
-            f"JOIN fam ON fam.id = t.conversation_id JOIN conversations hc ON "
-            f"hc.id = t.conversation_id WHERE t.state IN {LIVE_SQL} "
-            f"AND NOT (t.state = 'queued' AND {held_sql(models, 'hc')})) "
-            f"THEN 2 WHEN c.pinned THEN 1 ELSE 0 END")
+    """Running first (a turn running in it or in a sub-agent under it: activity.py), then
+    pinned, then the rest."""
+    return f"CASE WHEN {family_running_sql(models)} THEN 2 WHEN c.pinned THEN 1 ELSE 0 END"
 
 
 # the step words of a live turn ('' : the dots); a running tool says its label
@@ -617,8 +613,10 @@ def state_of(c: sqlite3.Connection, row: dict, asked: frozenset[str] = frozenset
     from ..settings.tools_meta import TOOLS, humanize
     if row["id"] in asked:
         return {"tone": "warn", "words": "Waiting for you"}
-    kept = row["active_state"] == "queued" and held(c, row["id"], models)
-    if row["active_state"] and not kept:
+    kept = held(c, row["id"], models) if row["active_state"] == "queued" else None
+    if kept:                    # queued and kept aside: not running, and the row says why
+        return {"tone": "warn", "words": "Frozen" if kept == "frozen" else "Paused"}
+    if row["active_state"]:
         # a model loads before a step's request too, while the turn says streaming
         words = _loading(c, row["id"]) or _STEP.get(row["active_state"])
         if words is None:       # tools: the running call's label
@@ -711,12 +709,12 @@ async def count(store, archived: bool = False, trashed: bool = False,
     ).fetchone()[0])
 
 
-async def background(store) -> list[dict]:
+async def background(store, models: frozenset[str] | None = None) -> list[dict]:
     """The background conversations but the runs' (`run:<id>`, they are in
     Routines), newest activity first: {id, title, kind, trigger (a fired trigger's name,
-    from `trigger:<name>`), working, state (state_of: how its turn stands in the server's
-    words, as a chat's row has it; None when its last turn ended well), last_line,
-    updated_at}."""
+    from `trigger:<name>`), working (a turn of it runs: activity.py), state (state_of: how
+    its turn stands in the server's words, as a chat's row has it; None when its last turn
+    ended well), last_line, updated_at}. `models`: hold.answering."""
     def fn(c: sqlite3.Connection) -> list[dict]:
         rows = c.execute(_SUMMARY + "WHERE c.kind = 'background' AND "
                          "coalesce(c.trigger_key, '') NOT LIKE 'run:%' "
@@ -726,8 +724,8 @@ async def background(store) -> list[dict]:
             kind, _, rest = (r["trigger_key"] or "").partition(":")
             out.append({"id": r["id"], "title": r["title"], "kind": r["kind"],
                         "trigger": rest or None if kind == "trigger" else None,
-                        "working": r["active_state"] is not None,
-                        "state": state_of(c, dict(r)),
+                        "working": running(c, r["id"], models),
+                        "state": state_of(c, dict(r), models=models),
                         "last_line": last_line(c, r["active_leaf_id"]),
                         "updated_at": r["updated_at"]})
         return out

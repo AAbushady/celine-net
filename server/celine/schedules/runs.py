@@ -117,7 +117,8 @@ from ..core.ids import iso, new_id, now
 from ..core.states import LIVE_SQL
 from ..skills import ToolContext
 from ..clock import day_of, zone
-from ..sub_agents.report import asked, last_answer, quiet
+from ..activity import busy
+from ..sub_agents.report import asked, last_answer
 from . import NONE, depth, fill, night_of, run_date, shown
 from ..settings.files import Invalid
 from .variables import FROM_USER, extras
@@ -448,9 +449,9 @@ def binding(c: sqlite3.Connection, cid: str, cfg) -> dict | None:
 
 def finished(c: sqlite3.Connection, cid: str) -> bool:
     """The agent's conversation is quiet, and so is every sub-agent of it, each reported."""
-    if not quiet(c, cid):
+    if busy(c, cid):
         return False
-    return all(quiet(c, s) and asked(c, s, cid) is None for (s,) in c.execute(
+    return all(asked(c, s, cid) is None for (s,) in c.execute(
         "SELECT id FROM conversations WHERE agent_of = ?", (cid,)).fetchall())
 
 

@@ -18,6 +18,7 @@ source_modules =
     celine.plugins
 forbidden_modules =
     celine.__main__
+    celine.activity
     celine.agent
     celine.api
     celine.approvals

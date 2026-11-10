@@ -32,7 +32,7 @@ from typing import Annotated, Literal
 
 import anyio
 
-from .. import homes, metrics, prompts
+from .. import activity, homes, metrics, prompts
 from ..conversations import store as conversations, tree
 from ..core.ids import now
 from ..skills import ToolContext, ToolResult, guide, knob, tool, described
@@ -528,7 +528,7 @@ def max_running(cfg) -> int:
 def agents_of(c: sqlite3.Connection, parent: str | None = None, *,
               agent: str | None = None, own: dict) -> list[dict]:
     """Sub-agents, newest first, as the overview shows them: who, where, its `home` and
-    `link` (homes.of: where it opens), working (report.quiet says), the step at work,
+    `link` (homes.of: where it opens), working (busy: activity.py), the step at work,
     the latest report, its last words. Those of `parent`, the one `agent`, or (neither
     given) every one not in the archive. `own`: the MCP servers' row words (store.tool_words)."""
     if agent:
@@ -617,30 +617,13 @@ def tree_of(c: sqlite3.Connection, cid: str, own: dict) -> dict | None:
             "missions": [n for n in out if n["kind"] == "mission"], "total": total}
 
 
-def queued_sql(conversation: str = "?") -> str:
-    """A queued brief, over intercom i and intercom_deliveries d: landed in
-    `conversation` (a placeholder or a column) without waking its sub-agent, and no turn
-    answers it yet."""
-    return (f"d.conversation_id = {conversation} AND i.kind='brief' AND i.wake=0 AND "
-            "i.cancelled_at IS NULL AND d.state <> 'cancelled' AND d.turn_id IS NULL AND "
-            "d.message_id IS NOT NULL")
-
-
 def drop_queued(c: sqlite3.Connection, cid: str) -> None:
     """Cancel the queued briefs of `cid` and every sub-agent under it, so no release
     starts one."""
     for one in conversations.family(c, cid):
         c.execute("UPDATE intercom SET cancelled_at=? WHERE id IN (SELECT i.id FROM "
                   "intercom i JOIN intercom_deliveries d ON d.intercom_id = i.id "
-                  f"WHERE {queued_sql()})", (now(), one))
-
-
-def waiting(c: sqlite3.Connection, sub: str) -> tuple[int, str] | None:
-    """`sub`'s queued brief: (its intercom id, its message id), or None."""
-    r = c.execute(f"SELECT i.id, d.message_id FROM intercom i JOIN intercom_deliveries d "
-                  f"ON d.intercom_id = i.id WHERE {queued_sql()} ORDER BY i.id LIMIT 1",
-                  (sub,)).fetchone()
-    return (r["id"], r["message_id"]) if r else None
+                  f"WHERE {activity.queued_sql()})", (now(), one))
 
 
 async def release(app, parent: str) -> None:
@@ -651,7 +634,7 @@ async def release(app, parent: str) -> None:
     def fn(c: sqlite3.Connection) -> list[str]:
         mine = agents_of(c, parent, own=app.store.tool_words)
         free = limit - sum(1 for a in mine if a["working"] and not a["queued"])
-        queued = sorted((waiting(c, a["id"]), a["id"]) for a in mine if a["queued"])
+        queued = sorted((activity.queued(c, a["id"]), a["id"]) for a in mine if a["queued"])
         started = []
         for (iid, mid), sub in queued[:max(free, 0)]:
             tid, _ = tree.queue_turn(c, app.store, sub, mid, origin="intercom")
@@ -671,7 +654,7 @@ async def release_all(app) -> None:
     parents = await app.store.read(lambda c: [r[0] for r in c.execute(
         f"SELECT DISTINCT o.agent_of FROM conversations o JOIN intercom_deliveries d ON "
         f"d.conversation_id = o.id JOIN intercom i ON i.id = d.intercom_id WHERE "
-        f"o.agent_of IS NOT NULL AND {queued_sql('o.id')}")])
+        f"o.agent_of IS NOT NULL AND {activity.queued_sql('o.id')}")])
     for parent in parents:
         await release(app, parent)
 
@@ -686,7 +669,7 @@ async def announce(app, sub: str) -> None:
 
 
 def _look(c: sqlite3.Connection, sub: str, own: dict) -> dict:
-    """What `read` shows of sub-agent `sub`: whether it is quiet (report.quiet), the
+    """What `read` shows of sub-agent `sub`: whether it is quiet (not busy: activity.py), the
     tool its live turn runs (a drone's: the one opencode runs, drone.py), its latest
     report and its last words."""
     step = c.execute(
@@ -696,8 +679,8 @@ def _look(c: sqlite3.Connection, sub: str, own: dict) -> dict:
     flown = c.execute("SELECT agent_step FROM conversations WHERE id=?", (sub,)).fetchone()
     rep = c.execute("SELECT id, text FROM intercom WHERE from_addr=? AND kind='report' "
                     "ORDER BY id DESC LIMIT 1", (f"agent:{sub}",)).fetchone()
-    quiet = report.quiet(c, sub)
-    queued = waiting(c, sub) is not None
+    quiet = not activity.busy(c, sub)
+    queued = activity.queued(c, sub) is not None
     # a queued one is working too: it has a brief to do (release)
     flown = flown[0] if flown else None
     last = c.execute("SELECT state, reason FROM turns WHERE conversation_id=? ORDER BY "

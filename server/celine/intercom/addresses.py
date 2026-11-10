@@ -21,7 +21,7 @@ import re
 import sqlite3
 
 from .. import homes
-from ..core.states import LIVE_SQL
+from ..activity import OWN_BUSY_SQL
 
 SHORT = 8           # the shortest id that addresses a conversation: past_conversations shows 8
 HEX = re.compile(r"[0-9a-f]+")
@@ -82,12 +82,11 @@ def _reach(c: sqlite3.Connection, cid: str, me: sqlite3.Row | None) -> None:
 
 
 def _working(c: sqlite3.Connection) -> list[str]:
-    """Every conversation with a live turn or a running job, and every active mission;
-    nothing locked."""
+    """Every conversation with work of its own still to come (busy: activity.py), and
+    every active mission; nothing locked."""
     from ..conversations.store import locked_sql
     return [r[0] for r in c.execute(
-        f"SELECT conversation_id FROM turns WHERE state IN {LIVE_SQL} "
-        "UNION SELECT conversation_id FROM jobs WHERE state='running' "
+        f"{OWN_BUSY_SQL} "
         "UNION SELECT conversation_id FROM missions WHERE status='active' "
         f"EXCEPT SELECT id FROM conversations c WHERE {locked_sql()}")]
 

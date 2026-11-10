@@ -2,7 +2,7 @@
 
 When a turn of a mission ends while its status is still active and nothing will wake it
 again (no live or queued turn, no running job, no message waiting to land, there or in
-its sub-agents: sub_agents/report.quiet; the time limit's notice does not count) and it
+its sub-agents: not busy, activity.py; the time limit's notice does not count) and it
 is not locked (conversations/store.locked), its plan (plans/) decides:
 - a step is open, or it has no plan yet: one `notice` starts its next turn
   (KEEP_GOING). When the turn that line started called no tool, or the turn ended
@@ -68,11 +68,10 @@ OVER = ("The time limit has passed. Deliver what you have and close the mission 
 def stuck(c: sqlite3.Connection, cid: str) -> bool:
     """Nothing will start another turn of mission `cid`: it and its sub-agents are
     quiet. The time limit's notice is not a wake: it may be hours away."""
-    from ..conversations.store import family
-    from ..sub_agents.report import quiet
+    from ..activity import busy
     r = c.execute("SELECT wake_id FROM missions WHERE conversation_id=?", (cid,)).fetchone()
     limit = int(r[0]) if r and r[0] else None
-    return all(quiet(c, one, limit if one == cid else None) for one in family(c, cid))
+    return not busy(c, cid, limit)          # its sub-agents at every depth are busy's to ask
 
 
 def _cut(c: sqlite3.Connection, turn_id: str | None) -> str | None:

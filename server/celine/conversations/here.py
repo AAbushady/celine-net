@@ -10,7 +10,7 @@ from __future__ import annotations
 import sqlite3
 
 from .. import homes
-from ..core.states import LIVE_SQL
+from ..activity import running_sql
 from ..intercom.store import OPENING
 
 OTHERS_MAX = 6
@@ -92,11 +92,11 @@ def where(c: sqlite3.Connection, cid: str, role: str | None = None) -> str | Non
 
 
 def busy(c: sqlite3.Connection, cid: str) -> str | None:
-    """The other conversations working now, None when none is."""
+    """The other conversations with a turn running now (activity.py), None when none is."""
     others = c.execute(
         f"SELECT DISTINCT c.id, c.kind, c.title, c.trigger_key, c.agent_name, c.agent_of "
         f"FROM turns t JOIN conversations c ON c.id = t.conversation_id "
-        f"WHERE t.state IN {LIVE_SQL} AND c.id != ? AND c.trashed_at IS NULL "
+        f"WHERE {running_sql(None)} AND c.id != ? AND c.trashed_at IS NULL "
         f"ORDER BY t.created_at LIMIT ?", (cid, OTHERS_MAX)).fetchall()
     return "[also working now] " + "; ".join(_what(c, o) for o in others) + "." \
         if others else None

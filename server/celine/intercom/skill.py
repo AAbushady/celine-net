@@ -469,9 +469,9 @@ def _here(c, cid: str, turn: str | None) -> dict | None:
 
 def _team_of(c, cid: str) -> list[dict]:
     """This conversation's own sub-agents, newest first, whether each is working (not
-    quiet: sub_agents/report.py, the one definition), and a drone's device and step."""
-    from ..sub_agents.report import quiet
-    return [{"name": r["agent_name"], "working": not quiet(c, r["id"]),
+    busy: activity.py), and a drone's device and step."""
+    from .. import activity
+    return [{"name": r["agent_name"], "working": activity.busy(c, r["id"]),
              "device": r["agent_device"], "step": r["agent_step"]} for r in c.execute(
         "SELECT id, agent_name, agent_device, agent_step FROM conversations "
         "WHERE agent_of=? ORDER BY created_at DESC", (cid,)).fetchall()]

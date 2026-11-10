@@ -25,7 +25,7 @@ TWO_WAY = {
     ("conversations", "sub_agents"), ("conversations", "turns"), ("events", "guard"),
     ("events", "intercom"), ("guard", "intercom"), ("guard", "settings"),
     ("guard", "skills"), ("guard", "turns"), ("intercom", "missions"),
-    ("intercom", "sub_agents"), ("jobs", "turns"), ("missions", "plans"),
+    ("jobs", "turns"), ("missions", "plans"),
     ("settings", "skills"), ("skills", "turns"),
     ("skills", "vault"), ("sub_agents", "turns"),
 }

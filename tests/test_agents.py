@@ -527,7 +527,8 @@ async def test_only_a_cloud_model_the_agent_picked_itself_asks_the_user_first(st
 
 
 async def test_a_stop_drops_the_queued_briefs_all_the_way_down(store, cfg):
-    from celine.sub_agents.skill import release, waiting
+    from celine.activity import queued
+    from celine.sub_agents.skill import release
 
     reg = _registry(cfg)
     agents = reg.skills["sub_agents"]
@@ -539,9 +540,9 @@ async def test_a_stop_drops_the_queued_briefs_all_the_way_down(store, cfg):
     scout = await conversations.create(store, "scout", agent_of=parent, agent_name="scout")
     kid = await conversations.create(store, "kid", agent_of=scout, agent_name="kid")
     await app.intercom.send(f"agent:{scout}", f"agent:{kid}", "dig", kind="brief", wake=False)
-    assert await store.read(lambda c: waiting(c, kid)), "queued"
+    assert await store.read(lambda c: queued(c, kid)), "queued"
     await agents.stop_agent(scout)
-    assert await store.read(lambda c: waiting(c, kid)) is None, "the kid's brief went too"
+    assert await store.read(lambda c: queued(c, kid)) is None, "the kid's brief went too"
     await release(app, scout)
     assert not await store.read(lambda c: c.execute(
         "SELECT 1 FROM turns WHERE conversation_id=?", (kid,)).fetchone()), "nothing starts"
@@ -549,7 +550,7 @@ async def test_a_stop_drops_the_queued_briefs_all_the_way_down(store, cfg):
     await app.intercom.send(f"agent:{parent}", f"agent:{sibling}", "go", kind="brief",
                             wake=False)
     await dispatcher.abort_conversation(parent)
-    assert await store.read(lambda c: waiting(c, sibling)) is None, \
+    assert await store.read(lambda c: queued(c, sibling)) is None, \
         "a Stop on the parent drops its children's queued briefs"
     await release(app, parent)
     assert not await store.read(lambda c: c.execute(

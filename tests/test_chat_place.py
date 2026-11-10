@@ -102,7 +102,8 @@ async def test_the_list_runs_first_then_pinned_and_every_row_says_its_state(c, s
     await store.write(lambda c: c.execute("INSERT INTO kv(k, v) VALUES('frozen', '1')"))
     rows = {r["id"]: r for r in (await c.get("/api/conversations",
                                              params={"place": "celine"})).json()["conversations"]}
-    assert rows[running]["group"] != "Running" and rows[running]["state"] is None
+    assert rows[running]["group"] != "Running"
+    assert rows[running]["state"] == {"tone": "warn", "words": "Frozen"}, "its row says why it waits"
 
 
 async def test_a_running_row_says_loading_while_its_model_loads(c, store):

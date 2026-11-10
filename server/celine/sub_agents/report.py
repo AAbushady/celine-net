@@ -21,9 +21,8 @@ from __future__ import annotations
 
 import sqlite3
 
-from .. import homes, metrics
+from .. import activity, homes, metrics
 from ..conversations.tree import final_words
-from ..core.states import LIVE_SQL
 from ..guard.sources import agent_read_outside
 from ..intercom.store import name_of
 from ..turns import tokens
@@ -33,23 +32,6 @@ REASON_TOKENS = 300     # a failure's reason in a report: a provider's error bod
 CUT = "[cut: the rest is in its conversation]"
 CHANGES = ("notebook__write", "notebook__edit", "notebook__delete", "notebook__move")
 FILES_SHOWN = 10        # notes named in a report's head, the rest a count
-
-
-def quiet(c: sqlite3.Connection, cid: str, but: int | None = None) -> bool:
-    """No live turn, running job or waking message waiting in `cid`, and every sub-agent
-    of it quiet and not queued; `but` is a message in `cid` that does not count (a
-    mission's time limit)."""
-    if c.execute(
-        f"SELECT 1 FROM turns WHERE conversation_id=? AND state IN {LIVE_SQL} "
-        "UNION ALL SELECT 1 FROM jobs WHERE conversation_id=? AND state='running' "
-        "UNION ALL SELECT 1 FROM intercom_deliveries d JOIN intercom i ON i.id = "
-        "d.intercom_id WHERE d.conversation_id=? AND d.state='pending' AND i.wake=1 "
-        "AND i.cancelled_at IS NULL AND i.id IS NOT ? LIMIT 1",
-        (cid, cid, cid, but)).fetchone():
-        return False
-    from .skill import waiting
-    return all(waiting(c, s) is None and quiet(c, s) for (s,) in c.execute(
-        "SELECT id FROM conversations WHERE agent_of=?", (cid,)).fetchall())
 
 
 def asked(c: sqlite3.Connection, cid: str, parent: str) -> int | None:
@@ -148,7 +130,7 @@ def _facts(c: sqlite3.Connection, cid: str) -> dict | None:
         return None
     parent = sub["agent_of"]
     reply_to = asked(c, cid, parent)
-    if reply_to is None or not quiet(c, cid):
+    if reply_to is None or activity.busy(c, cid):
         return {"reply_to": None}           # nothing asked, or not done yet
     turn = c.execute("SELECT state, reason FROM turns WHERE conversation_id=? "
                      "ORDER BY created_at DESC LIMIT 1", (cid,)).fetchone()
@@ -179,13 +161,13 @@ async def on_end(services, cid: str) -> None:
         "SELECT agent_of FROM conversations WHERE id=?", (cid,)).fetchone())
     if up is not None and up[0]:
         await _report(services, up[0])
-    from .skill import queued_sql, release
+    from .skill import release
     # a queued sibling (skill.release) starts when this one is done
     row = await services.store.read(lambda c: c.execute(
         f"SELECT s.agent_of FROM conversations s WHERE s.id=? AND EXISTS (SELECT 1 FROM "
         f"conversations o JOIN intercom_deliveries d ON d.conversation_id = o.id JOIN "
         f"intercom i ON i.id = d.intercom_id WHERE o.agent_of = s.agent_of AND "
-        f"{queued_sql('o.id')})",
+        f"{activity.queued_sql('o.id')})",
         (cid,)).fetchone())
     if row is not None:
         await release(services, row["agent_of"])
@@ -219,6 +201,6 @@ async def _report(services, cid: str) -> None:
         reply_to=f["reply_to"], data={"state": f["state"], "work": f["work"], **({"outside": {
             "source": f"sub-agent {f['name'] or ''}".strip(), "by": None}}
             if f["outside"] else {})}, wake=f["wake"],
-        only_if=lambda c: quiet(c, cid) and asked(c, cid, f["parent"]) == f["reply_to"])
+        only_if=lambda c: not activity.busy(c, cid) and asked(c, cid, f["parent"]) == f["reply_to"])
     if sent is not None:
         metrics.SUB_AGENTS_FINISHED.labels(f["state"]).inc()

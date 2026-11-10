@@ -54,11 +54,15 @@ async def put_trigger(request: Request, name: str) -> dict:
 async def background(request: Request) -> dict:
     """{background: [{id, title, kind, trigger, working, last_line, updated_at}]}: the
     background tasks (not the runs, which Routines lists), newest activity first;
-    `trigger` the trigger's name, `working` while a turn runs there, `last_line` its
+    `trigger` the trigger's name, `working` while a turn runs there (not one the hold
+    keeps aside: activity.py), `state` how its turn stands in words, `last_line` its
     newest line (its log line when it ended quietly), `asked` while an approval waits in
     it or in a sub-agent of it (approvals.asked)."""
     from ..approvals import asked
     from ..conversations.store import background as rows
-    waits = asked(request.app.state.services)
+    from ..hold import answering
+    services = request.app.state.services
+    waits = asked(services)
+    models = answering(getattr(services, "llm", None))
     return {"background": [{**r, "asked": r["id"] in waits}
-                           for r in await rows(request.app.state.services.store)]}
+                           for r in await rows(services.store, models)]}
