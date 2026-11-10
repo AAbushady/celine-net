@@ -256,6 +256,23 @@ async def _state(store, rid, state) -> bool:
     return r["state"] == state
 
 
+async def test_a_renamed_routine_renames_its_runs_and_a_deleted_one_keeps_the_last_name(store, cfg):
+    cfg.schedules = {"world": _s("world", label="World news")}
+    sched = Scheduler(_app(store, cfg), Clock(datetime(2026, 10, 10, 14, tzinfo=UTC)))
+    run = await sched.run_now("world")
+
+    async def stored() -> str:
+        return await store.read(lambda c: c.execute(
+            "SELECT label FROM runs WHERE id = ?", (run["id"],)).fetchone()[0])
+    assert await stored() == "World news"
+    cfg.schedules = {"world": _s("world", label="The world")}
+    await sched.make_due()
+    assert await stored() == "The world", "Events, crumbs and approvals read the row's label"
+    cfg.schedules = {}
+    await sched.make_due()
+    assert await stored() == "The world", "a run whose schedule is gone keeps the last one"
+
+
 def test_today_lists_every_slot_still_to_come(cfg):
     from zoneinfo import ZoneInfo
 

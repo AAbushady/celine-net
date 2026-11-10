@@ -584,7 +584,8 @@ class Scheduler:
     # -- making runs
 
     async def make_due(self) -> None:
-        """The runs of every slot that came due since the last look (module docstring)."""
+        """The runs of every slot that came due since the last look (module docstring), and
+        every run's label as its schedule reads now."""
         at, tz, schedules, store = self.now(), zone(self.app.cfg), self.schedules, \
             self.app.store
         since = await store.kv_get(CHECKED)
@@ -593,6 +594,11 @@ class Scheduler:
         def fn(c: sqlite3.Connection) -> None:
             horizon, checked = at - timedelta(days=CATCH_UP_DAYS), at
             for s in schedules.values():
+                # a run's label is its schedule's as it reads now (a rename, a new name
+                # filled into it): every reader takes the row's, and this look keeps it so.
+                # A run whose schedule is gone keeps the last one.
+                c.execute("UPDATE runs SET label = ? WHERE schedule = ? AND label <> ?",
+                          (shown(s), s.name, shown(s)))
                 if not s.on:
                     continue
                 it = croniter(s.cron, start.astimezone(tz))
