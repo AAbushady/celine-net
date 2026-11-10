@@ -50,7 +50,7 @@ def provider(s, pid: str, router) -> dict[str, Any]:
         ms = router.model_state(ref)
         models.append({"name": name, "ref": ref, **m,
                        # the context the server says it runs with: turns budget with
-                       # it over `context` (turns/tokens.py); null when no server says
+                       # it over `context` (backends/tokens.py); null when no server says
                        "server_context": router.server_context(pid, name, m.get("context")),
                        # the caps the server states (its tools and vision count over
                        # `caps`, settings/kinds.py caps_of); null when it states none

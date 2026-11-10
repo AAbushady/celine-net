@@ -17,7 +17,8 @@ from ..skills import tool_rows
 from ..skills.gating import overrides_for
 from ..intercom import deliver
 from ..plans import flow as plan_flow
-from . import context, loads, message_context, prompt, reply, tokens, waiting
+from . import context, loads, message_context, prompt, reply, waiting
+from ..backends import tokens
 from . import store as turns
 from .compact import SummaryFailed, closing, stoppable
 from .tools import run_tool_calls
@@ -36,7 +37,7 @@ async def run_turn(turn: dict, store: Store, cfg, backend, bus,
     after everything older was shortened (`context_full`), one more step says where the
     work stands (no call runs in it): its words end the turn `done`, with the limit as its
     reason_code; without words it ends `capped`."""
-    from .cancel import Token
+    from ..core.cancel import Token
     tid = turn["id"]
     token = token if token is not None else Token(tid)
     if clock is None:
@@ -92,7 +93,7 @@ async def _run_turn(turn: dict, store: Store, cfg, backend, bus,
     win = tokens.window(backend)
     tool_turn = {"id": tid, "conversation_id": cid, "origin": turn.get("origin") or "user",
                  "root_message_id": turn["root_message_id"],
-                 "max_output_tokens": tokens.result_cap(win, cfg), "read_only": read_only,
+                 "max_output_tokens": loads.result_cap(win, cfg), "read_only": read_only,
                  "time_left": time_left, "carried": carried,
                  "offered": frozenset(specs), "notes": _carried_notes(carried),
                  "guides": {}}     # the skills whose guide it reads, tools._with_guide

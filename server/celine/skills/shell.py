@@ -37,7 +37,7 @@ from ..errors import (CelineError, ToolRefused, TooLarge, answered, bad_key, age
 from .. import devices, shares, shellbox, vision
 from ..settings import services as services_mod
 from ..guard import sources
-from ..turns.cancel import until_set
+from ..core.cancel import until_set
 
 # ---- numbers --------------------------------------------------------------------------
 RUN_MAX = 3000         # seconds one shell__run waits at most (the shellbox's RUN_MAX)

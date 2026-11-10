@@ -20,7 +20,7 @@ from celine.plans.skill import Plan
 from celine.skills import Registry, ToolContext, ToolResult, tool
 from celine.skills.meta import Skills
 from celine.turns import store as turns
-from celine.turns.cancel import Token
+from celine.core.cancel import Token
 from celine.turns.runner import run_turn
 
 pytestmark = pytest.mark.anyio

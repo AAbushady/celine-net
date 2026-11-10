@@ -13,7 +13,7 @@ from celine.core.bus import EventBus
 from celine.intercom import Intercom
 from celine.missions import store as missions
 from celine.turns import store as turns
-from celine.turns.cancel import Token
+from celine.core.cancel import Token
 from celine.turns.runner import run_turn
 from celine.skills import Registry
 

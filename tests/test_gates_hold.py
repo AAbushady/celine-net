@@ -32,7 +32,7 @@ from celine.guard.owner import Owner
 from celine.settings.files import Invalid
 from celine.skills import Registry, ToolResult, tool
 from celine.turns import store as turns
-from celine.turns.cancel import Token
+from celine.core.cancel import Token
 from celine.turns.runner import run_turn
 
 pytestmark = pytest.mark.anyio

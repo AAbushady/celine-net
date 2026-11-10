@@ -15,7 +15,7 @@ with the real numbers (shellbox/agents/opencode.py writes them as opencode's
 `limit.context` and `limit.output`), and leaves out what it does not know:
 
     context_length      the tokens one request may hold: the window its own turns
-                        budget with (turns/tokens.py known_window: the server's /props
+                        budget with (backends/tokens.py known_window: the server's /props
                         or model list, else the context in Settings, Models)
     max_output_tokens   the most one answer may take: Max tokens in Settings, else what
                         the provider's model list states (OpenRouter, Anthropic)
@@ -56,7 +56,7 @@ from ..core.ids import iso, reached
 from ..settings import agent_models
 from ..settings.kinds import headers as provider_headers, server_output
 from ..settings.registry import backend_config
-from ..turns import tokens
+from ..backends import tokens
 from .deps import LLM_PROXY
 
 log = logging.getLogger("celine.llm_proxy")

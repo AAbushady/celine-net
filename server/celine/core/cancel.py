@@ -112,22 +112,3 @@ async def until_stop(fn, token: Token, *, shutdown_stops: bool = True):
     if raised is not None:
         raise raised
     return stopped, out
-
-
-async def until_stopped(events, token):
-    """Yields from `events`; a Stop ends the wait for the next event at once (the
-    pending step of `events` is cancelled) and raises QueueCancelled."""
-    from ..backends.queue import QueueCancelled
-    try:
-        while True:
-            try:
-                stopped, ev = await until_stop(events.__anext__, token)
-            except StopAsyncIteration:
-                return
-            if stopped:
-                raise QueueCancelled("stopped")
-            yield ev
-    finally:
-        aclose = getattr(events, "aclose", None)
-        if aclose is not None:
-            await aclose()

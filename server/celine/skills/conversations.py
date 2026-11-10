@@ -206,7 +206,7 @@ class PastConversations:
                 line += f", {r['ended']}"
             out += [line, f"  first: {r['first_line']}", f"  last: {r['last_line']}"]
         text = "\n".join(out)
-        from ..turns import tokens
+        from ..backends import tokens
         budget = int(ctx.max_output_tokens or READ_TOKENS)
         cut, shown, total = tokens.cut_to(text, budget, "prose")
         if shown < total:
@@ -334,7 +334,7 @@ class PastConversations:
         """Read one earlier conversation in order: {{username}}'s messages, your answers,
         and the tools you used. A long one comes in slices: `earlier:` and `later:` lines
         read on. A tool call's id reads it raw with past_conversations__read_tool_call."""
-        from ..turns import tokens
+        from ..backends import tokens
         conv, wrong = await self._find(ctx, conversation)
         if wrong:
             return wrong

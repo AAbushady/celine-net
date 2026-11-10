@@ -21,7 +21,7 @@ from celine.settings.files import Invalid
 from celine.settings.registry import Settings, backend_config, validate_provider
 from celine.skills import Registry, ToolResult, tool
 from celine.turns import context, store as turns
-from celine.turns.cancel import Token
+from celine.core.cancel import Token
 from celine.turns.runner import run_turn
 from chat_fixtures import user_says
 

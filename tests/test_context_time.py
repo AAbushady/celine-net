@@ -87,7 +87,7 @@ async def test_the_agents_tail_starts_with_today_in_the_app_zone(store):
 async def test_the_agents_request_tells_it_now_and_the_zone_of_every_time(store, monkeypatch):
     from celine import clock
     from celine.core.bus import EventBus
-    from celine.turns.cancel import Token
+    from celine.core.cancel import Token
     from celine.turns.runner import run_turn
     cfg = load()
     cfg.timezone = "Europe/Berlin"

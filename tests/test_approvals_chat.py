@@ -21,7 +21,7 @@ from celine.guard.owner import _SEAL, Owner
 from celine.skills import ToolContext
 from celine.skills.shell import Shell
 from celine.turns import waiting
-from celine.turns.cancel import Token, until_stop
+from celine.core.cancel import Token, until_stop
 
 pytestmark = pytest.mark.anyio
 OWNER = Owner("test", _SEAL)

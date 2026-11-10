@@ -212,7 +212,7 @@ async def test_detect_tries_v1_when_the_address_has_no_path():
 async def test_a_provider_view_says_the_context_the_server_runs_with(api):
     """Settings, Models shows the server's number beside the written one (`context`),
     so a stale number in providers.toml is seen, never a silent wrong limit."""
-    from celine.turns import tokens
+    from celine.backends import tokens
     view = (await api.get("/api/providers/main")).json()
     big = next(m for m in view["models"] if m["name"] == "big")
     assert big["server_context"] is None and "context" not in big

@@ -13,7 +13,7 @@ from celine.conversations import store as conversations, view
 from celine.core.bus import EventBus
 from celine.jobs.jobs import Jobs
 from celine.skills import Registry, ToolResult, tool
-from celine.turns.cancel import Token
+from celine.core.cancel import Token
 from celine.turns.runner import run_turn
 from celine.turns import store as turns
 from celine.jobs import store as job_rows

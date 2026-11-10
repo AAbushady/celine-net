@@ -17,7 +17,7 @@ from celine.core.store import Store
 from celine.core.bus import EventBus
 from celine.jobs.jobs import Jobs
 from celine.skills import Registry, ToolResult, tool
-from celine.turns.cancel import Token
+from celine.core.cancel import Token
 from celine.turns.dispatcher import Dispatcher
 from celine.turns.runner import run_turn
 from celine.turns import store as turns

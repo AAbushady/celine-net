@@ -19,7 +19,7 @@ from celine.core.bus import EventBus
 from celine.intercom import Intercom
 from celine.intercom.skill import IntercomSkill
 from celine.skills import Registry, ToolContext, ToolResult, tool
-from celine.turns.cancel import Token
+from celine.core.cancel import Token
 from celine.turns.runner import run_turn
 from celine.turns import store as turns
 

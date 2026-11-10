@@ -14,7 +14,8 @@ from ..core.store import Store
 from ..hold import any_held, answering, agent_hold
 from ..intercom import deliver
 from ..settings import roles
-from . import cancel as cancel_mod, store as turns
+from . import store as turns
+from ..core import cancel as cancel_mod
 from .runner import run_turn
 from .title import make as make_title
 from ..core.event_types import LLM_QUEUE

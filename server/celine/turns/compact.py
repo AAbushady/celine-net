@@ -15,7 +15,8 @@ import anyio
 
 from .. import prompts
 from ..backends.base import BackendError, Done, TextDelta
-from . import tokens
+from ..backends import tokens
+from ..core.cancel import until_stop
 from .verify import MSG_REF
 
 log = logging.getLogger("celine.compact")
@@ -332,8 +333,26 @@ def stoppable(backend, messages, tools=(), token=None):
     events = backend.stream(messages, list(tools))
     if hasattr(backend, "for_message") or token is None:
         return events
-    from .cancel import until_stopped
-    return until_stopped(events, token)
+    return _until_stopped(events, token)
+
+
+async def _until_stopped(events, token):
+    """Yields from `events`; a Stop ends the wait for the next event at once (the
+    pending step of `events` is cancelled) and raises QueueCancelled."""
+    from ..backends.queue import QueueCancelled
+    try:
+        while True:
+            try:
+                stopped, ev = await until_stop(events.__anext__, token)
+            except StopAsyncIteration:
+                return
+            if stopped:
+                raise QueueCancelled("stopped")
+            yield ev
+    finally:
+        aclose = getattr(events, "aclose", None)
+        if aclose is not None:
+            await aclose()
 
 
 @asynccontextmanager

@@ -18,7 +18,7 @@ from ..guard import page as guard_page, passes as guard_passes, sources
 from ..skills import CORE, META, ToolContext, ToolResult
 from ..skills.gating import (OFF, READ_ONLY_REFUSAL, down_sentence, is_enabled,
                              read_mode_has)
-from .cancel import until_stop
+from ..core.cancel import until_stop
 from . import compact, store as turns
 
 log = logging.getLogger("celine.tools")
@@ -98,7 +98,7 @@ async def _with_guide(result: ToolResult, turn, call: dict, store, cfg, registry
     "guide", after the result as it reads it (mark.shown, outside any wrapper), in the
     room the result (`shown`) left of the cap, so one tool message stays inside it.
     `turn["guides"]` holds what it has for the whole turn ({"had": skills}), read once."""
-    from . import tokens
+    from ..backends import tokens
     from ..skills.meta import had
     meta = registry.skills.get(META) if registry is not None else None
     spec = registry.get(call["name"]) if meta is not None else None
@@ -175,7 +175,7 @@ def _capped(result: ToolResult, turn) -> ToolResult:
     cap = turn.get("max_output_tokens")
     if not cap or not result.content:
         return result
-    from . import tokens
+    from ..backends import tokens
     head, tail, shown, total = tokens.cut_middle(result.content, int(cap))
     if not tail:
         return result

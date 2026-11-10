@@ -224,7 +224,8 @@ async def _usage(services, cid: str, text: str, *, wait: bool = False) -> dict:
     """Token use and what is in the context: the next request as it would be built now
     (nothing is changed, no model is called), the last request as it went out with its
     real numbers (or the next one, before any was kept), and the totals still in the log."""
-    from ..turns import context, tokens
+    from ..turns import context
+    from ..backends import tokens
     from ..turns.prompt import last_request
     store = services.store
     backend, blocks, tools, _ = await turn_parts(services, cid)

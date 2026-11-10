@@ -18,7 +18,7 @@ CONTRACTS = ROOT / ".importlinter"
 TWO_WAY = {
     ("api", "conversations"), ("api", "guard"), ("api", "terminals"),
     ("attachments", "conversations"), ("backends", "kb"), ("backends", "settings"),
-    ("backends", "turns"), ("browser", "skills"),
+    ("browser", "skills"),
     ("comfyui", "image_catalog"), ("comfyui", "settings"),
     ("conversations", "guard"), ("conversations", "intercom"),
     ("conversations", "settings"), ("conversations", "skills"),
@@ -27,7 +27,7 @@ TWO_WAY = {
     ("guard", "skills"), ("guard", "turns"), ("intercom", "missions"),
     ("jobs", "turns"), ("missions", "plans"),
     ("settings", "skills"), ("skills", "turns"),
-    ("skills", "vault"), ("sub_agents", "turns"),
+    ("skills", "vault"),
 }
 
 

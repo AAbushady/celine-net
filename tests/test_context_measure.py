@@ -53,10 +53,11 @@ def test_cached_tokens_read_from_openai_and_llama_cpp_shapes():
 def test_a_result_is_capped_absolutely_and_keeps_its_start_and_end():
     from types import SimpleNamespace
     from celine.skills import ToolResult
-    from celine.turns import tokens, tools
-    assert tokens.result_cap(65_536) == 9_830, "15 % of the window, under 10,000"
-    assert tokens.result_cap(262_144) == 10_000, "the absolute cap on a large window"
-    assert tokens.result_cap(262_144, SimpleNamespace(context={"result_tokens": 4000})) \
+    from celine.backends import tokens
+    from celine.turns import loads, tools
+    assert loads.result_cap(65_536) == 9_830, "15 % of the window, under 10,000"
+    assert loads.result_cap(262_144) == 10_000, "the absolute cap on a large window"
+    assert loads.result_cap(262_144, SimpleNamespace(context={"result_tokens": 4000})) \
         == 4000, "the owner's number in context.toml"
     text = "".join(f"line {i} of the build log\n" for i in range(2000))
     out = tools._capped(ToolResult(content=text, images=["a1"]), {"max_output_tokens": 500})

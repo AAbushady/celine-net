@@ -316,7 +316,7 @@ class Notebook:
         end = len(lines) if to_line is None else min(len(lines), to_line)
         body = "\n".join(numbered(lines, first, end))
         if ctx.max_output_tokens:
-            from ..turns import tokens
+            from ..backends import tokens
             cut, shown, total = tokens.cut_to(body, max(500, int(ctx.max_output_tokens) - 200))
             if shown < total:
                 last = first + cut.count("\n")

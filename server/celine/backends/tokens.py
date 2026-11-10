@@ -28,7 +28,6 @@ log = logging.getLogger("celine.tokens")
 RATIO = {"tool": 2.2, "prose": 3.0, "schema": 3.8}
 PER_MESSAGE = 6                  # chat-template overhead per message
 FALLBACK_WINDOW = 32_768
-RESULT_SHARE = 0.15              # one tool result takes at most this much of the window
 MARGIN = 0.05                    # estimate error below the exact band
 
 
@@ -222,14 +221,6 @@ def max_output(backend) -> int:
 def reserve(backend) -> int:
     """What a request leaves free in the window: its reply's room and the margin."""
     return max_output(backend) + int(window(backend) * MARGIN)
-
-
-def result_cap(win: int, cfg=None) -> int:
-    """The most one tool result may take, in tokens: `result_tokens` of context.toml
-    (turns/loads.py, 10,000 by default) or RESULT_SHARE of the live window, the smaller,
-    as coding agents cap theirs (an absolute number, not a share alone)."""
-    from .loads import shares
-    return max(1000, min(int(shares(cfg)["result_tokens"]), int(win * RESULT_SHARE)))
 
 
 def cut_middle(text: str, max_tokens: int, kind: str = "tool"

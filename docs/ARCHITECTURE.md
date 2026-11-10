@@ -463,7 +463,7 @@ pending.
 
 ### Token accounting
 
-`turns/tokens.py` is the only place that turns text into tokens: characters per token by
+`backends/tokens.py` is the only place that turns text into tokens: characters per token by
 kind, times a per-model correction learned from every call's `usage.prompt_tokens`. The
 window is what the server says (`/upstream/<model>/props` `n_ctx`, an overflow error
 body, else the provider's model list, `Router.discover`); the model's context size in

@@ -172,7 +172,7 @@ async def test_a_replys_raw_response_is_kept_and_served(c, store):
     from celine.backends.openai import OpenAIBackend
     from celine.core.bus import EventBus
     from celine.turns import store as turns
-    from celine.turns.cancel import Token
+    from celine.core.cancel import Token
     from celine.turns.runner import run_turn
     sse = ('data: {"id":"g1","model":"m","provider":"P","choices":[{"delta":'
            '{"reasoning":"hmm"}}]}\n\n'

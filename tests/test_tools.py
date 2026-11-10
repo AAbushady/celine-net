@@ -13,7 +13,7 @@ from celine.core.bus import EventBus
 from celine.skills import Registry, ToolContext
 from celine.skills.gating import is_enabled
 from celine.skills.notebook import Notebook, build_index_fragment
-from celine.turns.cancel import Token
+from celine.core.cancel import Token
 from celine.turns.runner import run_turn
 from celine.turns import store as turns
 from celine.skills import notebook_index

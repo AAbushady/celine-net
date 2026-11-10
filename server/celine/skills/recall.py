@@ -158,7 +158,8 @@ async def block(cfg, store, cid: str, tid: str, message: dict
     from ..kb.embed import SemanticError, cosine
     from . import notebook, notebook_index
     from .places import offered
-    from ..turns import loads, tokens
+    from ..turns import loads
+    from ..backends import tokens
     from ..turns.message_context import history_limit
     s = loads.shares(cfg)
     f = await store.read(lambda c: _facts(c, cid, tid, message["id"], history_limit(cfg)))

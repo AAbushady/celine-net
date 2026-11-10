@@ -1,4 +1,4 @@
-"""A message from the user ends a wait in the agent's turn (turns/cancel.Token.user_wrote): the
+"""A message from the user ends a wait in the agent's turn (core/cancel.Token.user_wrote): the
 call returns at once and the message lands at the next step. Through the real runner,
 Intercom and the dispatcher's hook."""
 from __future__ import annotations
@@ -15,7 +15,7 @@ from celine.core.bus import EventBus
 from celine.intercom import Intercom
 from celine.skills import Registry, ToolResult, tool
 from celine.turns import store as turns
-from celine.turns.cancel import until_set
+from celine.core.cancel import until_set
 from celine.turns.dispatcher import Dispatcher
 from celine.turns.runner import run_turn
 from fake_backend import FakeBackend, _text

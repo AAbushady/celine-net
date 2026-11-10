@@ -8,7 +8,7 @@ Principles:
   so edits happen rarely, in large steps, and are persisted (`context_state`,
   `compactions`): the same prompt is rebuilt after a restart, byte for byte.
 - Decisions are made on the whole request estimate (system + tool schemas + history)
-  as a share of the loaded model's window (turns/tokens.py).
+  as a share of the loaded model's window (backends/tokens.py).
 
 The order of what is sent, most stable first:
   system = persona + skill fragments + ["Earlier in this conversation" summary]
@@ -60,7 +60,8 @@ from ..guard import mark, sources
 from ..intercom.render import header
 from ..intercom.store import OPENING
 from ..clock import zone
-from . import compact, compactions, tokens
+from . import compact, compactions
+from ..backends import tokens
 from ..core.event_types import CONTEXT_COMPACTING, CONTEXT_COMPACT_FAILED
 
 log = logging.getLogger("celine.context")

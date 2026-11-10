@@ -16,7 +16,7 @@ from celine.conversations import store as conversations, tree
 from celine.core.bus import EventBus
 from celine.intercom.store import insert as intercom_insert
 from celine.turns import store as turns
-from celine.turns.cancel import Token
+from celine.core.cancel import Token
 from celine.turns.runner import run_turn
 from settings_fixtures import client, make_app, scratch
 

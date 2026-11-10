@@ -358,7 +358,7 @@ def image_size(data: bytes) -> tuple[int, int] | None:
 
 def image_size_of(path) -> tuple[int, int] | None:
     """(width, height) from the file's header (PNG, JPEG), once per blob: the token
-    estimate counts an image by its size (turns/tokens.py)."""
+    estimate counts an image by its size (backends/tokens.py)."""
     try:
         return _image_size_of(str(path))
     except OSError:          # not cached: the file may come back

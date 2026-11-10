@@ -346,9 +346,9 @@ class Router:
             return self._providers.get(pid) or ProviderState()
 
     def server_context(self, pid: str, model: str, pinned: int | None) -> int | None:
-        """The context the server says `model` runs with (turns/tokens.py); None when
+        """The context the server says `model` runs with (backends/tokens.py); None when
         no server says."""
-        from ..turns import tokens
+        from . import tokens
         return tokens.server_window(str((self.provider(pid) or {}).get("base_url") or ""),
                                     model, pinned)
 
@@ -508,8 +508,8 @@ class Router:
         """The context each loaded model runs with: a llama-swap model's /props, asked
         only for a model /running lists as loaded (/props of an unloaded one would load
         it), Ollama's /api/ps. A --fit load sizes its context by the VRAM free at the
-        time, so only the server itself can say (turns/tokens.py)."""
-        from ..turns import tokens
+        time, so only the server itself can say (backends/tokens.py)."""
+        from . import tokens
         tokens.running_windows(str((self.provider(pid) or {}).get("base_url", "")).rstrip("/"),
                                windows)
 
@@ -617,7 +617,7 @@ class Router:
         """The provider's own model list (settings/kinds.py), read now: Check provider,
         and once each time it comes back (`_came_back`); a read already in flight is
         shared. The context it states for each model is the window turns budget with
-        (turns/tokens.py), over the number in Settings; not Ollama's (Settings is its
+        (backends/tokens.py), over the number in Settings; not Ollama's (Settings is its
         num_ctx, the list says the model's most: /api/ps says what a loaded one runs
         with). The caps it states are the model's tools and vision (settings/kinds.py
         caps_of), over the saved ones. None when its kind has no list or it did not
@@ -627,7 +627,7 @@ class Router:
     async def _discover(self, pid: str) -> list[dict[str, Any]] | None:
         from ..settings import kinds
         from ..settings.registry import provider_key
-        from ..turns import tokens
+        from . import tokens
         p = self.provider(pid)
         if p is None or not p.get("base_url") or \
                 not (kinds.KINDS.get(p.get("kind")) or {}).get("lists"):

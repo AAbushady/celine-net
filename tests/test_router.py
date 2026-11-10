@@ -142,7 +142,7 @@ def test_cmd_window_reads_the_command_line():
 
 async def test_a_running_model_teaches_its_real_window(tmp_path, monkeypatch):
     from types import SimpleNamespace
-    from celine.turns import tokens
+    from celine.backends import tokens
     scratch(tmp_path, monkeypatch, providers=PROVIDERS)
     running = [{"model": "big", "state": "ready", "cmd": CMD}]
     asked: list[str] = []
@@ -175,7 +175,7 @@ async def test_the_context_the_server_reports_wins_over_settings(tmp_path, monke
     read again on Check provider, never on a timer."""
     import asyncio
     from types import SimpleNamespace
-    from celine.turns import tokens
+    from celine.backends import tokens
     providers = {**PROVIDERS, "swap": {**PROVIDERS["swap"], "models": {
         "big": {"caps": ["chat"], "context": 131072}}},
         "oll": {**PROVIDERS["oll"], "models": {"small": {"caps": ["chat"], "context": 8192}}}}
@@ -251,7 +251,7 @@ async def test_the_loaded_view_says_what_is_loaded_and_what_a_swap_took(tmp_path
 
 def test_the_window_and_counter_follow_the_model_that_answered():
     from types import SimpleNamespace
-    from celine.turns import tokens
+    from celine.backends import tokens
     head = SimpleNamespace(model="big", cfg=SimpleNamespace(base_url="http://swap:1/v1",
                                                             raw={"context": 100000}))
     other = SimpleNamespace(model="small", cfg=SimpleNamespace(base_url="http://b:1/v1",

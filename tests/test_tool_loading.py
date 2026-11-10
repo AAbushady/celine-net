@@ -160,7 +160,7 @@ async def test_a_skill_loads_with_its_part_and_note_and_a_big_one_by_name(store,
 
 
 async def test_a_load_counts_everything_it_holds_against_one_result(store, tmp_path):
-    from celine.turns import tokens
+    from celine.backends import tokens
     cfg = notes_cfg(tmp_path)
     reg = _registry(cfg)
     cid = await conversations.create(store)
@@ -259,7 +259,7 @@ async def test_a_guide_aged_or_summarised_away_comes_again(store):
 
 
 async def test_the_load_fits_in_the_room_the_result_left(store):
-    from celine.turns import tokens
+    from celine.backends import tokens
     cfg = load()
     reg = _guided(cfg)
     cid = await conversations.create(store)

@@ -165,7 +165,7 @@ def _offline_router(monkeypatch):
 
     from celine.backends import router as router_mod
     from celine.kb import embed as embed_mod
-    from celine.turns import tokens
+    from celine.backends import tokens
 
     def client(cls):
         def make(*a, transport=None, **kw):

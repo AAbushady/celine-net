@@ -29,7 +29,7 @@ from celine.skills import Registry, ToolContext, build as build_registry
 from celine.skills.images import ImageGenerator
 from celine.skills.music import MusicGenerator
 from celine.turns import store as turns
-from celine.turns.cancel import Token
+from celine.core.cancel import Token
 from celine.turns.runner import run_turn
 from celine import attachments
 from settings_fixtures import client, scratch

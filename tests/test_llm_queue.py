@@ -18,7 +18,7 @@ from celine.backends.llm import LLM
 from celine.backends.queue import Priority, QueueCancelled, QueueTimeout, Scheduler, Ticket
 from celine.boot import load
 from celine.core.bus import EventBus
-from celine.turns.cancel import Token
+from celine.core.cancel import Token
 from celine.turns import store as turns
 
 pytestmark = pytest.mark.anyio

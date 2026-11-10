@@ -638,7 +638,7 @@ class Web:
                      f"web__read_page(url=\"web:<n>\")")
         text = "\n".join(lines)
         if ctx.max_output_tokens:
-            from ..turns import tokens
+            from ..backends import tokens
             text, _, _ = tokens.cut_to(text, int(ctx.max_output_tokens))
         return ToolResult(content=text, display={"query": q, "results": shown_rows})
 

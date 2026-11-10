@@ -241,7 +241,7 @@ def model_facts(backend) -> list[str]:
     (the live one, or its setting), whether it sees images and whether it calls tools
     (its caps: what its server states, else its settings; settings/kinds.py caps_of).
     A fact not known is not said."""
-    from . import tokens
+    from ..backends import tokens
     if backend is None:
         return []
     out = []

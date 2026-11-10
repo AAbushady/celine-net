@@ -6,7 +6,7 @@ to edit or send."""
 from __future__ import annotations
 
 from ..backends.base import Done, TextDelta
-from ..turns import tokens
+from ..backends import tokens
 from . import tree
 
 PROMPT = ("Write {{username}}'s next message in this conversation, as {{username}} writes "

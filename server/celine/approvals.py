@@ -312,7 +312,7 @@ class Approvals:
         a turn); STOPPED: its turn ended (a Stop, a time limit, a shutdown) before they
         answered. Inside a turn (`turn`) it waits for them, and the turn's clock and the
         tool's time are held (backends/llm.paused); a Stop cancels the wait
-        (turns/cancel.until_stop)."""
+        (core/cancel.until_stop)."""
         if turn is None:
             try:
                 return await asyncio.wait_for(asyncio.shield(ask.answer), ASK_FOR)

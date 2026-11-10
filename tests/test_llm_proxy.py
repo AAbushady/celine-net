@@ -131,7 +131,7 @@ async def test_models_carry_the_sizes_the_app_knows(proxy):
     the context in Settings); max_output_tokens what the provider's list states; a size
     nobody knows is left out."""
     from celine.settings import kinds
-    from celine.turns import tokens
+    from celine.backends import tokens
     s = proxy.cfg.settings
     s.providers["main"]["models"]["small"]["context"] = 65536
     tokens.running_windows("http://main:8080/v1", {"big": 262144})

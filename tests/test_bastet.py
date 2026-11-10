@@ -28,7 +28,7 @@ from celine.guard import store as decisions
 from celine.settings.files import Invalid
 from celine.skills import Registry, ToolResult, tool
 from celine.turns import store as turns
-from celine.turns.cancel import Token
+from celine.core.cancel import Token
 from celine.turns.runner import run_turn
 
 from celine.guard.owner import _SEAL, Owner

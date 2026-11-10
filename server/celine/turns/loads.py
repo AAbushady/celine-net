@@ -46,6 +46,16 @@ def shares(cfg) -> dict:
     return {**DEFAULTS, **(getattr(cfg, "context", None) or {})}
 
 
+RESULT_SHARE = 0.15              # one tool result takes at most this much of the window
+
+
+def result_cap(win: int, cfg=None) -> int:
+    """The most one tool result may take, in tokens: `result_tokens` of context.toml
+    (10,000 by default) or RESULT_SHARE of the live window, the smaller, as coding agents
+    cap theirs (an absolute number, not a share alone)."""
+    return max(1000, min(int(shares(cfg)["result_tokens"]), int(win * RESULT_SHARE)))
+
+
 def read_shares(path: Path, problems: list) -> dict:
     """context.toml, checked: a bad value is one Problem and keeps its default."""
     from ..config import ConfigError, Problem, shown_path
@@ -234,7 +244,7 @@ async def _skills(store, cfg, registry, cid: str) -> tuple[list[str], dict[str, 
 
 async def select(store, cfg, registry, cid: str, backend) -> Carried:
     """What it carries now."""
-    from . import tokens
+    from ..backends import tokens
     conv = await store.read(lambda c: c.execute(
         "SELECT notebook_folder, notes_off FROM conversations WHERE id=?",
         (cid,)).fetchone())

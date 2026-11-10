@@ -30,7 +30,7 @@ def _cap(ctx: ToolContext, n: int) -> int:
 
 
 def _estimate(text: str) -> int:
-    from ..turns import tokens
+    from ..backends import tokens
     return tokens.estimate(text, "tool")
 
 
@@ -139,7 +139,7 @@ class UserDocuments:
             args = (f"folder=\"{f}\", " if f else "") + (f"sort=\"{how}\", " if sort else "")
             lines.append(f"more: user_documents__list({args}offset={off + len(res['items'])})")
         text = "\n".join(lines)
-        from ..turns import tokens
+        from ..backends import tokens
         text, _, _ = tokens.cut_to(text, _cap(ctx, 12000))
         return ToolResult(content=text, display={"folder": here["path"],
                                                  "folders": len(subs),
@@ -259,7 +259,7 @@ class UserDocuments:
         out.append(f"\nRead with user_documents__read(ref=\"{k.id}:<id>\") or "
                    f"user_documents__read(document=<id>).")
         text = "\n".join(out)
-        from ..turns import tokens
+        from ..backends import tokens
         text, _, _ = tokens.cut_to(text, _cap(ctx, 8000))
         return ToolResult(content=text, display={"items": len(order),
                                                  "hits": lit["total_hits"]})

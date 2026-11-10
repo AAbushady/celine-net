@@ -14,8 +14,9 @@ import pytest
 from celine.conversations import store as conversations, tree, view
 from celine.boot import load
 from celine.core.bus import EventBus
-from celine.turns import compact, context, tokens
-from celine.turns.cancel import Token
+from celine.turns import compact, context
+from celine.backends import tokens
+from celine.core.cancel import Token
 from celine.turns.runner import run_turn
 from celine.turns import store as turns
 from celine.turns import compactions

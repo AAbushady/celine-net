@@ -17,7 +17,7 @@ from celine.core.services import Services
 from celine.skills import Registry, ToolContext, ToolResult, build, guide, tool
 from celine.skills.gating import set_override
 from celine.skills.meta import Skills
-from celine.turns.cancel import Token
+from celine.core.cancel import Token
 from celine.turns.runner import run_turn
 from celine.turns import store as turns
 

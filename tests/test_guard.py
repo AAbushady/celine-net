@@ -27,7 +27,7 @@ from celine.guard.small_role import Unavailable
 from celine.skills import Registry, ToolResult, tool
 from celine.skills.shell import Shell
 from celine.turns import store as turns
-from celine.turns.cancel import Token
+from celine.core.cancel import Token
 from celine.turns.runner import run_turn
 
 pytestmark = pytest.mark.anyio

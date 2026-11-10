@@ -20,7 +20,7 @@ from celine.core.bus import EventBus
 from celine.core.services import Services
 from celine.errors import install_error_handler
 from celine.turns import store as turns
-from celine.turns.cancel import Token
+from celine.core.cancel import Token
 from celine.turns.runner import run_turn
 
 pytestmark = pytest.mark.anyio

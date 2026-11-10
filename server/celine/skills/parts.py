@@ -7,7 +7,7 @@ max_output_tokens) is smaller, counted as a tool result is: the result backstop
 with it, so every part passes the backstop whole. The room is ROOM, or what the lines
 take when they take more: a head that changes a little from one read to the next (a
 mail's "(was unread)") leaves the parts where they were. The parts joined are the text.
-The parts are cut by the calibrated estimate (turns/tokens.py), which moves as the
+The parts are cut by the calibrated estimate (backends/tokens.py), which moves as the
 model's answers are counted, so a read after such a move may cut a few lines earlier or
 later than the read before it. A text of more than one part reads:
 
@@ -33,7 +33,7 @@ MIN_PART = 200          # the least a part holds, however long its head lines ar
 def split(text: str, part_tokens: int) -> list[str]:
     """`text` in parts of at most part_tokens, cut after a paragraph where possible,
     else after a line; the parts joined are the text."""
-    from ..turns import tokens
+    from ..backends import tokens
     total = tokens.estimate(text, "tool")
     if total <= part_tokens:
         return [text]
@@ -66,7 +66,7 @@ def fit(text: str, ctx, *, head: Sequence[str] = (), call: str, after: Sequence[
     them."""
     budget = cap
     if ctx is not None and getattr(ctx, "max_output_tokens", None):
-        from ..turns import tokens
+        from ..backends import tokens
         around = "\n".join([*head, "part 99998 of 99999", "", "", tail(99998, 99999, call),
                             *after])
         room = max(ROOM, tokens.estimate(around, "tool"))

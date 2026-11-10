@@ -16,7 +16,7 @@ from celine.conversations import store as conversations
 from celine.core.bus import EventBus
 from celine.turns import compact, context
 from celine.turns import store as turns
-from celine.turns.cancel import Token
+from celine.core.cancel import Token
 from celine.turns.context import malformed, origin
 from celine.turns.runner import run_turn
 

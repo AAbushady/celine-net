@@ -152,7 +152,7 @@ class Skills:
         estimate turns/tools._capped cuts by, so a load is never cut): a skill or a tool
         past that room says so instead, and loads on its own; a skill over the room even
         alone gives its part of the prompt and names a tool to load by name."""
-        from ..turns import tokens
+        from ..backends import tokens
         from .gating import down_why, is_enabled, overrides_for, reason
         here = await self._here(ctx)
         overrides = await overrides_for(ctx.store, ctx.conversation_id)
@@ -246,7 +246,7 @@ class Skills:
         comes_with_calls says no, or the skill does not load (down, off, no room)."""
         from dataclasses import replace
 
-        from ..turns import tokens
+        from ..backends import tokens
         if not self.comes_with_calls(skill):
             return None
         head = f"{CALL_HEAD}\n"

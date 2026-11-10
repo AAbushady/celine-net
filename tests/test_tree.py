@@ -13,7 +13,7 @@ from fake_backend import FakeBackend
 from celine.boot import load
 from celine.core.ids import new_id
 from celine.core.bus import EventBus
-from celine.turns.cancel import Token
+from celine.core.cancel import Token
 from celine.turns.runner import run_turn
 from celine.turns import store as turns
 from celine.skills import Registry, ToolResult, tool

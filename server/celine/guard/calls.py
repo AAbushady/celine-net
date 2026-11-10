@@ -118,7 +118,7 @@ async def _ask(turn, call, store, cfg, registry, token, progress):
     """On: -> the lines its result gains (the call runs), the refusal, or None on a
     shutdown while Bastet was asked. A Stop ends the wait, for the judge and for the
     owner's answer to a confirm."""
-    from ..turns.cancel import until_stop
+    from ..core.cancel import until_stop
     app = getattr(registry, "app", None)
 
     async def ask():

@@ -167,6 +167,6 @@ def render(ep: Episode, n: int | None = None, *, kb_title: str = "") -> str:
 
 def tokens(text: str) -> int:
     """Real tokens, estimated: archive text runs ~2.2 characters per token (measured on
-    the Qwen tokenizer), calibrated from the backend's usage. turns/tokens.py."""
-    from ...turns import tokens as T
+    the Qwen tokenizer), calibrated from the backend's usage. backends/tokens.py."""
+    from ...backends import tokens as T
     return T.estimate(text, "tool") + 1

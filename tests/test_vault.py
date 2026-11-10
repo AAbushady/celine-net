@@ -14,7 +14,7 @@ from celine.core.bus import EventBus
 from celine.errors import redact
 from celine.skills import Registry, ToolResult, tool
 from celine.turns import store as turns
-from celine.turns.cancel import Token
+from celine.core.cancel import Token
 from celine.turns.runner import run_turn
 from chat_fixtures import Script, until, user_says
 from vault_fixtures import CLIENT_SECRET, FORM, MASTER, by_hand, ctx_for, fake_bw, vault_app  # noqa: F401
