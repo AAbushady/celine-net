@@ -107,7 +107,7 @@ async def test_a_mission_that_wrote_to_the_user_waits_in_every_list(store):
     assert await store.read(rows.missions_asking) == {night}
     got = await waits.items(SimpleNamespace(store=store, approvals=None, connectors=None))
     assert [(i["kind"], i["id"]) for i in got] == [("mission", night)]
-    listed = {r["id"]: r["state"] for r in await conversations.list(store)}
+    listed = {r["id"]: r["display"] for r in await conversations.list(store)}
     assert listed[night] == {"tone": "warn", "words": "Waiting for you"}, "the chat list says so too"
     await store.write(lambda c: rows.read_from(c, f"agent:{night}"))
     assert await store.read(rows.missions_asking) == frozenset(), "read: it waits no more"
