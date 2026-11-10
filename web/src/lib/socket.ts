@@ -69,7 +69,6 @@ export type Changes = {
   /** the given ids that no longer exist */
   gone: string[]
   jobs: { id: string; conversation_id: string; tool: string; state: string; finished_at: string }[]
-  agents: Record<string, unknown>[]
 }
 
 export const changesApi = {

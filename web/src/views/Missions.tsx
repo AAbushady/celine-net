@@ -8,14 +8,14 @@
    opens on its conversation, its result and details one switch away. What an event
    started and the runs of the schedules are in Routines.
    URL: /missions, /mission/<id>. */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Archive, ArrowLeftRight, ArrowUpRight, Bot, CheckCheck, CircleStop, FileText, Flag, History, ListChecks, MessagesSquare, MoreHorizontal, Pencil, Plus, Reply,
   RotateCcw, SearchX, SquareTerminal, Trash2,
 } from 'lucide-react'
 import { api, conversationApi, request } from '../lib/api'
 import { AUTO_CONTEXT, AUTO_CONTEXT_TIP, contextApi } from '../lib/context'
-import { AGENT_STATE, agentsApi, useAgents, type Agent, type TreeAgent, type TreeMission } from '../lib/agents'
+import { AgentsContext, agentsApi, useAgents, type Agent, type Agents, type TreeAgent, type TreeMission } from '../lib/agents'
 import { artifactRef } from '../lib/artifacts'
 import { count, errorText, fullDate, listTime, stamp } from '../lib/format'
 import { intercomApi, isIntercomEvent, type IntercomMessage } from '../lib/intercom'
@@ -40,16 +40,12 @@ import { LongEditor, TextHistory, textHistory } from '../components/editor'
 import {
   Button, ComposerBox, ConfirmDialog, Dialog, EmptyState, Facts, Field, GroupHead, ICON, IconButton, InlineError, Input, ListRow,
   Loaded, LoadingRow, MenuButton, PageIndex, Place, PlaceHead, Section, SelectBar, ShelfRow, Switch, TextArea, Toolbar,
-  StateWord, Step, coarse, useContextMenu, usePicker, VirtualList, type MenuItem, type Shelf, type WordTone,
+  StateWord, Step, coarse, useContextMenu, usePicker, VirtualList, type MenuItem, type Shelf,
 } from '../ui'
 import './Missions.css'
 
 const firstLine = (text: string) => text.trim().split('\n')[0] ?? ''
 
-/** a state of the tree (a sub-agent's, a mission's) as its word and the word's tone */
-const TREE_STATE: Record<TreeAgent['state'] | TreeMission['state'], [string, WordTone]> = {
-  ...AGENT_STATE, active: [STATE_WORD.active, 'running'], needs_you: [STATE_WORD.needs_you, 'warn'],
-}
 type TreeNode = (TreeAgent & { kind: 'agent' }) | (TreeMission & { kind: 'mission' })
 
 /** the tree's sub-agents and missions in its order: each before its own, siblings oldest first */
@@ -64,9 +60,6 @@ export function treeOrder(top: string, agents: TreeAgent[], missions: TreeMissio
 }
 const missionsNoun = (n: number) => count(n, 'mission')
 const agentsNoun = (n: number) => count(n, 'sub-agent')
-
-/** a sub-agent as GET /agents sends it: its model and agent CLI too */
-type AgentRow = Agent & { model?: string | null; cli?: string | null; device?: string | null; last?: string }
 
 type Show = 'all' | MissionStatus
 const SHOW: { value: Show; label: string }[] = [
@@ -89,12 +82,12 @@ export function Missions({ active }: { active: boolean }) {
   const archived = useResource(() => missionsApi.list('archived'), [], { events: isMissionEvent })
   const trashed = useResource(() => missionsApi.list('trashed'), [], { enabled: shelf === 'trash' || !!selected, events: isMissionEvent })
   const reload = () => { missions.reload(); archived.reload(); trashed.reload() }
-  const agents = useAgents() as AgentRow[]
+  const agents = useContext(AgentsContext)
+  // the missions' own sub-agents: the ones whose home is here, the server's list with its State options
+  const theirs = useAgents('missions')
   const every = useMemo(() => [...missions.data?.missions ?? [], ...archived.data?.missions ?? [], ...trashed.data?.missions ?? []],
                         [missions.data, archived.data, trashed.data])
   const ids = useMemo(() => new Set(every.map(m => m.conversation_id)), [every])
-  // the missions' own sub-agents: the ones whose home is here (the server's word)
-  const theirs = useMemo(() => agents.filter(a => a.home === 'missions'), [agents])
   const counts = missions.data?.counts
   const mission = every.find(m => m.conversation_id === selected)
   const agent = agents.find(a => a.id === selected)
@@ -109,7 +102,7 @@ export function Missions({ active }: { active: boolean }) {
     <Place title="Missions" current={selected ? null : view}
            sections={[
              { id: 'missions', label: 'Missions', count: counts?.all, onSelect: () => toList('missions') },
-             { id: 'agents', label: 'Sub-agents', count: loaded ? theirs.length : undefined, onSelect: () => toList('agents') },
+             { id: 'agents', label: 'Sub-agents', count: loaded ? theirs.agents.length : undefined, onSelect: () => toList('agents') },
            ]}>
       {selected ? (
         mission ? <MissionPage key={mission.conversation_id} m={mission} agents={agents.filter(a => a.parent === mission.conversation_id)}
@@ -118,7 +111,7 @@ export function Missions({ active }: { active: boolean }) {
                                                        active={active} />
           : loaded ? <ShelvedAgent key={selected} cid={selected} active={active} />
           : <LoadingRow label="Loading the mission" />
-      ) : view === 'agents' ? <AgentsList agents={theirs} missions={every} />
+      ) : view === 'agents' ? <AgentsList agents={theirs.agents} filters={theirs.filters} missions={every} />
         : <MissionsList shelf={shelf} setShelf={setShelf} lists={{ list: missions, archive: archived, trash: trashed }}
                         agents={agents} onNew={() => setStarting(true)} onChange={reload} />}
       {starting && <NewMission onClose={() => setStarting(false)}
@@ -134,7 +127,7 @@ type Row = { key: string; head: string; n: number } | { key: string; m: Mission 
 function MissionsList({ shelf, setShelf, lists, agents, onNew, onChange }: {
   shelf: Shelf; setShelf: (s: Shelf) => void
   lists: Record<Shelf, MissionsRes>
-  agents: AgentRow[]
+  agents: Agent[]
   onNew: () => void
   onChange: () => void
 }) {
@@ -317,7 +310,7 @@ function NewMission({ onClose, onStarted }: { onClose: () => void; onStarted: (c
 
 /* a mission: one scroll with a side index; its Work (the conversation) is a page of its own
    under it, as its instructions' editor is */
-function MissionPage({ m, agents, active, onChange }: { m: Mission; agents: AgentRow[]; active: boolean; onChange: () => void }) {
+function MissionPage({ m, agents, active, onChange }: { m: Mission; agents: Agent[]; active: boolean; onChange: () => void }) {
   const nav = useNav()
   const [work, setWork] = useState(false)
   const [stopping, setStopping] = useState(false)
@@ -483,8 +476,8 @@ function Steps({ m }: { m: Mission }) {
 }
 
 /** a sub-agent's state as the server gives it: failed, stopped and paused are no "Done" */
-const agentWord = (a: AgentRow) => <StateWord tone={AGENT_STATE[a.state][1]}>{AGENT_STATE[a.state][0]}</StateWord>
-const agentLine = (a: AgentRow) => (a.working ? a.step_words ?? AGENT_STATE[a.state][0]
+const agentWord = (a: Agent) => <StateWord tone={a.display.tone}>{a.display.words}</StateWord>
+const agentLine = (a: Agent) => (a.working ? a.step_words ?? a.display.words
   : a.state !== 'done' && a.reason ? a.reason : a.report ? firstLine(a.report.text) : a.last ?? '')
 
 /* one sub-agent under the mission (any depth), or a mission one of them started: its state
@@ -492,7 +485,6 @@ const agentLine = (a: AgentRow) => (a.working ? a.step_words ?? AGENT_STATE[a.st
 export function TreeLine({ n }: { n: TreeNode }) {
   const nav = useNav()
   const stop = useAction(() => agentsApi.stop(n.id))
-  const [word, tone] = TREE_STATE[n.state]
   const working = n.kind === 'agent' && (n.state === 'working' || n.state === 'queued')
   const items: MenuItem[] = [
     { label: 'Open', icon: ArrowUpRight, onSelect: () => nav.goPath(n.link) },
@@ -501,7 +493,7 @@ export function TreeLine({ n }: { n: TreeNode }) {
   return (
     <ListRow density="lg" depth={n.depth - 1} icon={n.kind === 'mission' ? Flag : Bot} title={n.name} tooltip={stop.error ?? n.name}
              subtitle={n.reason ?? (n.kind === 'agent' && working ? n.step_words : null) ?? undefined}
-             aside={n.model ?? undefined} meta={<StateWord tone={tone}>{word}</StateWord>} muted={!working && n.kind === 'agent'}
+             aside={n.model ?? undefined} meta={<StateWord tone={n.display.tone}>{n.display.words}</StateWord>} muted={!working && n.kind === 'agent'}
              href={n.link} onClick={click(() => nav.goPath(n.link))}
              trailing={<MenuButton icon={MoreHorizontal} label="More" items={items} size="sm" />} />
   )
@@ -559,7 +551,7 @@ function ShelvedAgent({ cid, active }: { cid: string; active: boolean }) {
   )
 }
 
-function AgentPage({ a, mission, active }: { a: AgentRow; mission: Mission; active: boolean }) {
+function AgentPage({ a, mission, active }: { a: Agent; mission: Mission; active: boolean }) {
   const nav = useNav()
   const [result, setResult] = useState(false)
   const convo = useConversation(a.id)
@@ -583,7 +575,7 @@ function AgentPage({ a, mission, active }: { a: AgentRow; mission: Mission; acti
         <div className="page"><div className="page__col page__col--prose">
           <Section>
             {a.report ? <div className="prose"><Markdown text={a.report.text} /></div>
-              : <p className="missions-prose missions-prose--quiet">{a.working ? a.step_words ?? STATE_WORD.active : 'No result'}</p>}
+              : <p className="missions-prose missions-prose--quiet">{a.working ? a.step_words ?? a.display.words : 'No result'}</p>}
             <Facts grid items={[
               { label: 'Model', value: a.model ?? 'Default' },
               ...(a.cli ? [{ label: 'Agent CLI', value: a.cli }] : []),
@@ -600,7 +592,7 @@ function AgentPage({ a, mission, active }: { a: AgentRow; mission: Mission; acti
 }
 
 /* every sub-agent of every mission */
-function AgentsList({ agents, missions }: { agents: AgentRow[]; missions: Mission[] }) {
+function AgentsList({ agents, filters, missions }: { agents: Agent[]; filters: Agents['filters']; missions: Mission[] }) {
   const nav = useNav()
   const ctx = useContextMenu()
   const [q, setQ] = useState('')
@@ -610,13 +602,13 @@ function AgentsList({ agents, missions }: { agents: AgentRow[]; missions: Missio
   const name = useMemo(() => new Map(missions.map(m => [m.conversation_id, m.name])), [missions])
   const list = useMemo(() => {
     const s = q.trim().toLowerCase()
-    const out = agents.filter(a => (show === 'all' || (show === 'running' ? a.working : a.state === show)) && (!of || a.parent === of)
+    const out = agents.filter(a => (show === 'all' || a.filter === show) && (!of || a.parent === of)
       && (!s || [a.name, agentLine(a), name.get(a.parent) ?? ''].some(x => x.toLowerCase().includes(s))))
     return sort === 'Name' ? [...out].sort((a, b) => a.name.localeCompare(b.name))
       : sort === 'Created' ? [...out].sort((a, b) => b.created_at.localeCompare(a.created_at))
       : [...out].sort((a, b) => b.updated_at.localeCompare(a.updated_at))
   }, [agents, show, of, q, sort, name])
-  const menu = (a: AgentRow): MenuItem[] => [
+  const menu = (a: Agent): MenuItem[] => [
     { label: 'Open', icon: ArrowUpRight, onSelect: () => nav.go({ section: 'missions', conversation: a.id }) },
     ...(name.has(a.parent) ? [{ label: 'Open mission', icon: Flag, onSelect: () => nav.go({ section: 'missions', conversation: a.parent }) }] : []),
     ...(a.working ? ['sep' as const, { label: 'Stop', icon: CircleStop, onSelect: () => void agentsApi.stop(a.id) }] : []),
@@ -627,11 +619,7 @@ function AgentsList({ agents, missions }: { agents: AgentRow[]; missions: Missio
       <PlaceHead level={1} title="Sub-agents" count={agents.length || undefined} search={{ value: q, onChange: setQ, placeholder: 'Search sub-agents' }} />
       {agents.length > 0 && (
         <div className="list-page__top">
-          <Toolbar state={{ label: 'State', value: show, onChange: setShow, options: [
-                     { value: 'all', label: 'All', count: agents.length },
-                     { value: 'running', label: STATE_WORD.active, count: agents.filter(a => a.working).length },
-                     { value: 'failed', label: AGENT_STATE.failed[0], count: agents.filter(a => a.state === 'failed').length },
-                     { value: 'done', label: STATE_WORD.done, count: agents.filter(a => a.state === 'done').length }] }}
+          <Toolbar state={{ label: 'State', value: show, onChange: setShow, options: filters }}
                    filters={parents.length === 0 ? [] : [{ label: 'Mission', icon: Flag, picked: of ? name.get(of) : undefined, onClear: () => setOf(null),
                                items: parents.map(p => ({ label: name.get(p) ?? p, current: p === of, onSelect: () => setOf(p) })) }]}
                    sort={{ label: 'Sort', value: sort, onChange: setSort, options: SORTS.map(v => ({ value: v, label: v })) }} />

@@ -16,14 +16,14 @@
    URL: /routines (today's runs), /routines/<day> (another day's), /routines/<day>/run/<id>,
    /routines/<day>/schedule/<name>,
    /routines/<day>/schedule/<name>/edit/<key>[/history], /routines/<day>/task/<id>. */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowUpRight, Bot, Braces, CalendarClock, ChevronLeft, ChevronRight, CircleStop, History, MoreHorizontal, NotebookPen, Pencil,
   Play, Plus, RotateCcw, SearchX, Trash2, Zap,
 } from 'lucide-react'
 import type { Display, Message as ChatMessage } from '../lib/api'
 import { LOCALE, listTime, shortDate, turnStep } from '../lib/format'
-import { AGENT_STATE, agentsApi, useAgents } from '../lib/agents'
+import { AgentsContext, agentsApi } from '../lib/agents'
 import { click } from '../components/ConversationList'
 import { TreeLine, Work, treeOrder } from './Missions'
 import { isSaveKey, isTyping } from '../lib/keys'
@@ -505,7 +505,7 @@ function TaskPage({ id, day, tasks, active, go, onBack }: {
   id: string; day: string; tasks: { id: string; title: string; trigger: string | null }[]; active: boolean
   go: (r: Open) => void; onBack: () => void
 }) {
-  const agents = useAgents()
+  const agents = useContext(AgentsContext)
   const convo = useConversation(id)
   const t = tasks.find(b => b.id === id)
   const agent = agents.find(a => a.id === id)
@@ -521,9 +521,9 @@ function TaskPage({ id, day, tasks, active, go, onBack }: {
         <div className="routines-kids">
           {kids.map(a => (
             <ListRow key={a.id} icon={Bot} title={a.name} href={format({ section: 'routines', day, task: a.id })} onClick={click(() => go({ task: a.id }))}
-                     subtitle={a.working ? a.step_words ?? AGENT_STATE[a.state][0]
-                       : a.state !== 'done' && a.reason ? a.reason : a.report?.text.split('\n')[0] ?? AGENT_STATE[a.state][0]}
-                     meta={a.state !== 'done' ? <StateWord tone={AGENT_STATE[a.state][1]}>{AGENT_STATE[a.state][0]}</StateWord> : undefined} />
+                     subtitle={a.working ? a.step_words ?? a.display.words
+                       : a.state !== 'done' && a.reason ? a.reason : a.report?.text.split('\n')[0] ?? a.display.words}
+                     meta={a.state !== 'done' ? <StateWord tone={a.display.tone}>{a.display.words}</StateWord> : undefined} />
           ))}
         </div>
       )}

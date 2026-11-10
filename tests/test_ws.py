@@ -168,7 +168,7 @@ def test_changes_says_what_moved_while_away(db_path):
             "since": since, "conversations": f"{a}:0,{b}:0"}).json()
         assert [(r["id"], r["title"]) for r in out["conversations"]] == [(a, "a")]
         assert out["gone"] == [b] and out["global"] > since and not out["resync"]
-        assert out["jobs"] == [] and out["agents"] == []
+        assert out["jobs"] == []
 
 
 def test_changes_names_an_archive_and_a_job_after_a_pruned_since(db_path):
@@ -184,7 +184,6 @@ def test_changes_names_an_archive_and_a_job_after_a_pruned_since(db_path):
         sub = client.portal.call(make_sub)
         since = client.portal.call(store.read, lambda c: c.execute(
             "SELECT max(id) FROM global_events").fetchone()[0])
-        assert [r["id"] for r in client.get("/api/changes").json()["agents"]] == [sub]
 
         def away(c):
             c.execute("INSERT INTO jobs(id, conversation_id, tool_name, state, "
@@ -201,5 +200,4 @@ def test_changes_names_an_archive_and_a_job_after_a_pruned_since(db_path):
         assert not out["resync"] and [j["id"] for j in out["jobs"]] == ["j1"]
         got = {r["id"]: r["archived_at"] for r in out["conversations"]}
         assert set(got) == {a, sub} and all(got.values())
-        assert out["agents"] == [], "an archived sub-agent is history, not a change"
         assert client.get("/api/changes", params={"since": since - 1}).json()["resync"]

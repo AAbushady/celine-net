@@ -275,7 +275,7 @@ function useView(call: ToolCall): View {
     icon: refused ? CircleSlash : call.state === 'error' ? AlertTriangle : ICONS[skill] ?? Wrench,
     words: rowWords(call),
     tone: working ? 'running' : agentState ? AGENT_TONE[agentState] ?? null : refused ? 'muted' : toneOf(call),
-    meta: working ? agent!.step_words ?? 'Running' : outcome(call) ?? took(call),
+    meta: working ? agent!.step_words ?? agent!.display.words : outcome(call) ?? took(call),
     actions: (working || link || jobId) && <>
       {working && (
         <Button size="sm" variant="ghost" aria-label={`Stop the sub-agent ${agent!.name}`}

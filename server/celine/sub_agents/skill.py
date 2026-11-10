@@ -45,6 +45,7 @@ from ..turns.cancel import until_set
 from .cli import CLIS
 from ..devices import devices as all_devices
 from ..core.event_types import AGENT_STATE
+from ..core.statuses import AGENT_ENDED, AgentState, MissionStatus
 
 MIN_NAME = 5
 MAX_NAME = 60
@@ -178,7 +179,8 @@ class SubAgents:
         wait: Annotated[int, "Seconds to wait for it to be done, at most 600. 0 looks "
                              "at once."] = 0,
     ) -> ToolResult:
-        """Look at one of your sub-agents: working or done, the step it is on, and its
+        """Look at one of your sub-agents: how it stands (queued, working, done, failed,
+        stopped or paused), the step it is on, and its
         latest report (or, before one, its last words). With wait, first wait until it
         is done, the seconds run out or {{username}} writes."""
         sub, refusal = await _find(ctx, name)
@@ -199,9 +201,8 @@ class SubAgents:
         wrote, _ = await until_set(looks, ctx.user_wrote)
         f = await ctx.store.read(lambda c: _look(c, sub["id"], ctx.store.tool_words))
         outside = await ctx.store.read(lambda c: agent_read_outside(c, sub["id"]))
-        working = f["working"]
-        state = "queued" if f["queued"] else "working" if working else "done"
-        lines = [f"{sub['name']}: {state}."]
+        working, state = f["working"], f["state"]
+        lines = [f"{sub['name']}: {state}." + (f" {f['reason']}" if f["reason"] else "")]
         if limit:
             lines.append(f"It finished after {waited} s of waiting." if not working else
                          f"The wait ended after {waited} s: {self.cfg.user} wrote."
@@ -553,16 +554,12 @@ def labelled(settings, agents: list[dict]) -> list[dict]:
     return [{**a, "model": label(settings, a["model"]) or None} for a in agents]
 
 
-ENDED = {"aborted": "stopped", "failed": "failed", "interrupted": "failed",
-         "capped": "paused"}     # how a done one's last turn ended, in the tree's words
-
-
 def tree_of(c: sqlite3.Connection, cid: str, own: dict) -> dict | None:
     """Everything under the top of `cid`'s chain, each before its own and siblings
     oldest first: `agents`, its sub-agents, and `missions`, the missions it or they
     started (their sub-agents in `agents`, under them). Each: id, kind (agent, mission),
-    parent, depth, name, state (queued, working, done, stopped, failed, paused; a
-    mission's status: active, needs_you, done, stopped), reason (why it failed, stopped
+    parent, depth, name, state (an AgentState; a mission's MissionStatus), display (that
+    state as the page shows it, its words and tone), reason (why it failed, stopped
     or paused; a mission's note), step_words, model (the newest that answered, else its
     own), what all its turns took (report.work) and link. `origin`: where the top came
     from (homes.path above it: the run that started a mission); `total`: tokens and
@@ -578,12 +575,13 @@ def tree_of(c: sqlite3.Connection, cid: str, own: dict) -> dict | None:
         for k in total:
             total[k] += w[k]
 
-    def node(r, parent: str, depth: int, kind: str, name: str, state: str,
-             reason: str | None, step: str | None) -> None:
+    def node(r, parent: str, depth: int, kind: str, name: str,
+             state: AgentState | MissionStatus, reason: str | None, step: str | None) -> None:
         w = report.work(c, r["id"], whole=True)
         add(w)
         out.append({"id": r["id"], "kind": kind, "parent": parent, "depth": depth,
-                    "name": name, "state": state, "reason": reason, "step_words": step,
+                    "name": name, "state": state, "display": state.display,
+                    "reason": reason, "step_words": step,
                     "model": (w["models"] or [r["model_id"]])[-1],
                     "prompt_tokens": w["prompt_tokens"],
                     "completion_tokens": w["completion_tokens"],
@@ -607,9 +605,10 @@ def tree_of(c: sqlite3.Connection, cid: str, own: dict) -> dict | None:
             if r["id"] in seen:
                 continue
             seen.add(r["id"])
-            node(r, parent, depth, "mission", r["name"], r["status"],
-                 _first_line(r["note"]) if r["status"] in ("needs_you", "stopped") else None,
-                 None)
+            status = MissionStatus(r["status"])
+            node(r, parent, depth, "mission", r["name"], status,
+                 _first_line(r["note"])
+                 if status in (MissionStatus.NEEDS_YOU, MissionStatus.STOPPED) else None, None)
     add(report.work(c, top["id"], whole=True))
     walk(top["id"], 1)
     return {"top": top["id"], "origin": homes.path(c, top["id"])[:-1],
@@ -669,8 +668,9 @@ async def announce(app, sub: str) -> None:
 
 
 def _look(c: sqlite3.Connection, sub: str, own: dict) -> dict:
-    """What `read` shows of sub-agent `sub`: whether it is quiet (not busy: activity.py), the
-    tool its live turn runs (a drone's: the one opencode runs, drone.py), its latest
+    """What `read` shows of sub-agent `sub`: whether it is quiet (not busy: activity.py),
+    its `state` (AgentState) with the `display` the page shows and the `reason` it
+    failed, stopped or paused for, the tool its live turn runs (a drone's: the one opencode runs, drone.py), its latest
     report and its last words."""
     step = c.execute(
         "SELECT tc.name FROM tool_calls tc JOIN messages m ON m.id = tc.message_id "
@@ -685,12 +685,13 @@ def _look(c: sqlite3.Connection, sub: str, own: dict) -> dict:
     flown = flown[0] if flown else None
     last = c.execute("SELECT state, reason FROM turns WHERE conversation_id=? ORDER BY "
                      "created_at DESC LIMIT 1", (sub,)).fetchone()
-    state = "queued" if queued else "working" if not quiet else \
-        ENDED.get(last["state"] if last else "", "done")
+    state = AgentState.QUEUED if queued else AgentState.WORKING if not quiet else \
+        AGENT_ENDED.get(last["state"] if last else "", AgentState.DONE)
     top = homes.root(c, sub)
     return {"quiet": quiet, "queued": queued, "working": queued or not quiet,
-            "state": state, "reason": _first_line(last["reason"])
-            if last and state in ("failed", "stopped", "paused") else None,
+            "state": state, "display": state.display,
+            "reason": _first_line(last["reason"])
+            if last and state in AGENT_ENDED.values() else None,
             "root": top["id"] if top is not None else None,
             "step": step["name"] if step else flown,
             "step_words": words.step(step["name"], own) if step else flown,

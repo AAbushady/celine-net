@@ -1,5 +1,5 @@
 """What changed for a client coming back (GET /api/changes, api/ws.py): the global feed's
-bounds, and since a global id, the conversations, jobs and sub-agents it needs again."""
+bounds, and since a global id, the conversations and jobs it needs again."""
 from __future__ import annotations
 
 import json
@@ -20,12 +20,8 @@ def behind(lo: int | None, after: int) -> bool:
     return lo is not None and after < lo - 1
 
 
-def catch_up(c: sqlite3.Connection, since: int | None, known: dict[str, int], own: dict,
-             settings) -> dict:
-    """`known`: {conversation id: the seq the client has}; `own` the MCP servers' row
-    words (store.tool_words); `settings` label the
-    sub-agents' models."""
-    from ..sub_agents.skill import agents_of, labelled
+def catch_up(c: sqlite3.Connection, since: int | None, known: dict[str, int]) -> dict:
+    """`known`: {conversation id: the seq the client has}."""
     lo, hi = bounds(c)
     stale = since is not None and behind(lo, since)
     named: set[str] = set()        # conversations the feed names after `since`
@@ -59,4 +55,4 @@ def catch_up(c: sqlite3.Connection, since: int | None, known: dict[str, int], ow
         f"WHERE id IN ({marks}) AND finished_at IS NOT NULL ORDER BY finished_at",
         sorted(job_ids))] if job_ids else []
     return {"global": hi, "resync": stale, "conversations": moved, "gone": gone,
-            "jobs": jobs, "agents": labelled(settings, agents_of(c, own=own))}
+            "jobs": jobs}

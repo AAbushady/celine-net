@@ -1,9 +1,8 @@
-/* The agent's sub-agents across every conversation: GET /api/sub-agents once, then each
-   `agent.state` on the feed replaces its row, and `changes` (after a reconnect) brings
-   them all again. Stop is POST /api/sub-agents/{id}/stop. */
-import { createContext, useState } from 'react'
-import { post, request, type Crumb, type Home } from './api'
-import { useServerEvents } from './bus'
+/* The agent's sub-agents across every conversation: GET /api/sub-agents, again on each
+   `agent.state` of the feed. App fetches the whole list once and shares it (AgentsContext).
+   Stop is POST /api/sub-agents/{id}/stop. */
+import { createContext } from 'react'
+import { post, request, type Crumb, type Display, type Home } from './api'
 import { useResource } from './useResource'
 
 export type Agent = {
@@ -16,9 +15,19 @@ export type Agent = {
   folder: string | null
   /** at work (its last turn has not reported) */
   working: boolean
-  /** where it stands, the server's (sub_agents/skill.py `_look`), and why it failed, stopped or paused */
+  /** where it stands (server/celine/core/statuses.py AgentState), that state as the page
+      shows it, and why it failed, stopped or paused */
   state: AgentState
+  display: Display
   reason: string | null
+  /** the State option of a list it falls under (GET /api/sub-agents `filters`) */
+  filter: string
+  /** its model's label, its agent CLI, the device it runs on */
+  model: string | null
+  cli: string | null
+  device: string | null
+  /** its last words, before a report */
+  last: string | null
   /** the tool its live turn runs, null between steps */
   step: string | null
   /** that step in words, the server's ("Reading the note") */
@@ -32,13 +41,10 @@ export type Agent = {
   link: string
 }
 
-/** where a sub-agent stands, the server's word for it */
+/** where a sub-agent stands, the server's value for it */
 export type AgentState = 'queued' | 'working' | 'done' | 'stopped' | 'failed' | 'paused'
-/** each state as the word and the tone every list and page shows it in */
-export const AGENT_STATE: Record<AgentState, [string, 'muted' | 'warn' | 'error' | 'success' | 'running']> = {
-  queued: ['Queued', 'running'], working: ['Running', 'running'], done: ['Done', 'success'],
-  stopped: ['Stopped', 'muted'], failed: ['Failed', 'error'], paused: ['Paused', 'warn'],
-}
+/** a sub-agents list: its rows and the State options with their labels and counts, the server's */
+export type Agents = { agents: Agent[]; filters: { value: string; label: string; count: number }[] }
 
 /** one sub-agent in the tree under a conversation's top (GET /api/conversations/{id}/sub-agents,
     server/celine/sub_agents/skill.py tree_of) */
@@ -49,6 +55,8 @@ export type TreeAgent = {
   depth: number
   name: string
   state: AgentState
+  /** that state as the page shows it */
+  display: Display
   /** why it failed, stopped or paused, the server's words */
   reason: string | null
   step_words: string | null
@@ -66,7 +74,8 @@ export type TreeMission = Omit<TreeAgent, 'state' | 'step_words'> & {
 }
 
 export const agentsApi = {
-  list: () => request<{ agents: Agent[] }>('/sub-agents').then(r => r.agents),
+  /** every one not in the archive, or with `home` those that live there (`missions`) */
+  list: (home?: string) => request<Agents>(`/sub-agents${home ? `?home=${encodeURIComponent(home)}` : ''}`),
   /** `origin`: where the top came from (the run that started a mission); `total`: what the
       top and everything under it took */
   tree: (cid: string) => request<{
@@ -76,25 +85,12 @@ export const agentsApi = {
   stop: (id: string) => post<{ stopped: boolean }>(`/sub-agents/${encodeURIComponent(id)}/stop`),
 }
 
-export function useAgents(): Agent[] {
-  const res = useResource(() => agentsApi.list(), [])
-  const [live, setLive] = useState<Map<string, Agent>>(new Map())
-  useServerEvents(ev => {
-    if (ev.type === 'agent.state' && typeof ev.id === 'string') {
-      const a = ev as unknown as Agent
-      setLive(m => new Map(m).set(a.id, a))
-    }
-    if (ev.type === 'changes' && Array.isArray(ev.agents)) {
-      setLive(new Map())
-      res.set(ev.agents as Agent[])
-    }
-    if (ev.type === 'open') res.reload()
-  })
-  const base = res.data ?? []
-  const merged = base.map(a => live.get(a.id) ?? a)
-  for (const a of live.values()) if (!base.some(b => b.id === a.id)) merged.unshift(a)
-  return merged
+const NONE: Agents = { agents: [], filters: [] }
+
+/** a sub-agents list as the server has it now: fetched, and again when a sub-agent's state changes */
+export function useAgents(home?: string): Agents {
+  return useResource(() => agentsApi.list(home), [home], { events: ev => ev.type === 'agent.state' }).data ?? NONE
 }
 
-/** the sub-agents as useAgents has them, for the tool rows that started them */
+/** every sub-agent, App's one list: for the tool rows that started them and the pages that show them */
 export const AgentsContext = createContext<Agent[]>([])

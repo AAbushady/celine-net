@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..core.statuses import AgentState
 from ..errors import CelineError, NotFound
 from .skill import agents_of, labelled, tree_of
 
@@ -30,14 +31,27 @@ def _skill(request: Request):
     return skill
 
 
+# the State options of a sub-agents list: a row at work (queued too) falls under Running
+FILTERS = (AgentState.WORKING, AgentState.FAILED, AgentState.DONE)
+
+
 @router.get("/sub-agents")
-async def list_agents(request: Request, conversation: str | None = None) -> dict:
+async def list_agents(request: Request, conversation: str | None = None,
+                      home: str | None = None) -> dict:
     """The sub-agents of one conversation, or every one not in the archive, newest
-    first: id, parent, name, access, folder, model, cli, device, working, the step at
-    work, the latest report, its last words."""
+    first, with `home` only those that live there (homes.py: `missions`): id, parent,
+    name, access, folder, model, cli, device, working, state and its display, the step
+    at work, the latest report, its last words, and `filter`, the State option it falls
+    under. `filters`: those options, each {value, label, count} over the rows sent."""
     services = request.app.state.services
     rows = await services.store.read(lambda c: agents_of(c, conversation, own=services.store.tool_words))
-    return {"agents": labelled(getattr(services.cfg, "settings", None), rows)}
+    rows = [{**a, "filter": AgentState.WORKING if a["working"] else a["state"]}
+            for a in rows if home is None or a["home"] == home]
+    filters = [{"value": "all", "label": "All", "count": len(rows)},
+               *({"value": s.value, "label": s.display["words"],
+                  "count": sum(1 for a in rows if a["filter"] == s)} for s in FILTERS)]
+    return {"agents": labelled(getattr(services.cfg, "settings", None), rows),
+            "filters": filters}
 
 
 @router.get("/conversations/{cid}/sub-agents")

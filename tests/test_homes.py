@@ -188,6 +188,9 @@ async def test_the_tree_holds_a_runs_sub_agents_and_missions_their_reasons_and_t
     assert [(m["name"], m["parent"], m["depth"], m["state"]) for m in got["missions"]] == [
         ("Night", deep, 3, "active")]
     assert got["agents"][1]["reason"] == "5090 returned 503: busy."
+    assert [n["display"] for n in (*got["agents"], *got["missions"])] == [
+        {"words": "Done", "tone": "success"}, {"words": "Failed", "tone": "error"},
+        {"words": "Running", "tone": "running"}], "each node carries what the page shows"
     assert got["total"] == {"prompt_tokens": 200, "completion_tokens": 20, "seconds": 20}
     under = await store.read(lambda c: tree_of(c, mission, {}))
     assert [x["kind"] for x in under["origin"]] == ["run", "agent", "agent"]

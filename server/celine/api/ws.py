@@ -221,13 +221,11 @@ async def changes(request: Request, since: int | None = None,
     resync (since is below what the feed keeps, as on the socket: refetch everything),
     conversations (those whose seq moved, and those the feed names after `since`, such as
     an archive: id, seq, title, archived_at, active_state), gone (ids deleted or that no
-    longer exist), jobs (finished since: id, conversation_id, tool, state, finished_at), agents (every sub-agent not in the archive,
-    as GET /sub-agents)}."""
+    longer exist), jobs (finished since: id, conversation_id, tool, state, finished_at)}."""
     known: dict[str, int] = {}
     for part in conversations.split(","):
         cid, _, seq = part.strip().partition(":")
         if cid:
             known[cid] = int(seq) if seq.isdigit() else 0
-    services = request.app.state.services
-    settings = getattr(services.cfg, "settings", None)
-    return await services.store.read(lambda c: changes_mod.catch_up(c, since, known, services.store.tool_words, settings))
+    store = request.app.state.services.store
+    return await store.read(lambda c: changes_mod.catch_up(c, since, known))

@@ -105,7 +105,18 @@ async def test_agents_and_missions_are_managed_over_http_with_events(db_path, mo
             got = (await c.get(f"/api/sub-agents?conversation={parent}")).json()["agents"]
             assert [(a["id"], a["name"], a["parent"], a["working"], a["access"])
                     for a in got] == [(sub, "car scout", parent, True, "read")]
-            assert (await c.get("/api/sub-agents")).json()["agents"][0]["id"] == sub
+            every = (await c.get("/api/sub-agents")).json()
+            assert every["agents"][0]["id"] == sub
+            assert (got[0]["state"], got[0]["display"], got[0]["filter"]) == (
+                "working", {"words": "Running", "tone": "running"}, "working")
+            assert every["filters"] == [
+                {"value": "all", "label": "All", "count": 1},
+                {"value": "working", "label": "Running", "count": 1},
+                {"value": "failed", "label": "Failed", "count": 0},
+                {"value": "done", "label": "Done", "count": 0}], "the page's State options"
+            elsewhere = (await c.get("/api/sub-agents?home=missions")).json()
+            assert elsewhere["agents"] == [], "a chat's sub-agent does not live in Missions"
+            assert elsewhere["filters"][0]["count"] == 0
 
             snap = (await c.get(f"/api/conversations/{sub}")).json()["conversation"]
             assert (snap["agent_of"], snap["agent_name"], snap["access"]) == \

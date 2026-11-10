@@ -42,7 +42,7 @@ async function others(): Promise<Item[]> {
 
 export function Switcher({ onClose }: { onClose: () => void }) {
   const nav = useNav()
-  const data = useResource(() => Promise.all([api.listConversations(), agentsApi.list().catch(() => [] as Agent[]), others()]), [])
+  const data = useResource(() => Promise.all([api.listConversations(), agentsApi.list().then(r => r.agents).catch(() => [] as Agent[]), others()]), [])
   const [q, setQ] = useState('')
   const [at, setAt] = useState(0)
   const items = useMemo<Item[]>(() => {

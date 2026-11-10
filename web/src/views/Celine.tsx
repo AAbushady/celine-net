@@ -23,7 +23,6 @@ import { useAgent, type Agent } from '../lib/agent'
 import { count, errorText } from '../lib/format'
 import { useNav } from '../lib/nav'
 import { setPageName } from '../lib/title'
-import { AgentsContext, useAgents } from '../lib/agents'
 import { fileUrl } from '../lib/media'
 import { FirstRun } from './settings/FirstRun'
 import { ConversationReminders, remindersApi } from '../lib/reminders'
@@ -160,7 +159,6 @@ export function Celine({ active, status, sidebarOpen, onSidebar }: {
   }, [])
   const transcript = useRef<HTMLDivElement>(null)
   const jumpRef = useRef<(opts?: unknown) => void>(() => {})
-  const agents = useAgents()
   // this conversation's background jobs: the head's count and the panel's list, again on a
   // job's state and on what a running one says it is doing
   const jobs: Resource<Job[]> = useResource(
@@ -417,7 +415,6 @@ export function Celine({ active, status, sidebarOpen, onSidebar }: {
 
   return (
     <ShowArtifact.Provider value={showArtifact}>
-    <AgentsContext.Provider value={agents}>
     <Place title={placeName} label="Chats" open={sidebarOpen} onOpen={onSidebar} fold="celine" head={listHead} side={listBody}>
       <div className="chat">
         <main className={cx('chat-main', dragging && 'chat-main--drop')} style={{ '--acts': headActs } as CSSProperties}
@@ -547,7 +544,6 @@ export function Celine({ active, status, sidebarOpen, onSidebar }: {
                      onNext={galleryIndex < galleryImages.length - 1 ? () => setGalleryIndex(galleryIndex + 1) : undefined}
                      index={galleryIndex} total={galleryImages.length} />
       )}
-    </AgentsContext.Provider>
     </ShowArtifact.Provider>
   )
 }

@@ -10,6 +10,7 @@ import { useFocusHandback, useGlobalKeys, useWindowTitle } from './lib/shell'
 import { useNotices } from './lib/notify'
 import { knowBuild } from './lib/health'
 import { AgentContext } from './lib/agent'
+import { AgentsContext, useAgents } from './lib/agents'
 import { NameContext } from './lib/name'
 import { AppearanceContext, useAppearanceSettings } from './lib/appearance'
 import { SpeechProvider } from './components/Speech'
@@ -122,6 +123,7 @@ function Shell() {
   // the window's title. `unread`: the Intercom's threads with something unread, the count
   // on its rail item and on its Waiting for you; they are news and no item of the sheet
   const waits = useWaits()
+  const agents = useAgents().agents
   const waiting = waits.data?.count ?? 0
   const unread = waits.data?.unread ?? null
 
@@ -217,6 +219,7 @@ function Shell() {
 
   return (
     <AgentContext.Provider value={status?.owner ?? null}>
+    <AgentsContext.Provider value={agents}>
     <NameContext.Provider value={name}>
     <AppearanceContext.Provider value={appearance}>
     <WaitingCount.Provider value={unread}>
@@ -357,6 +360,7 @@ function Shell() {
     </WaitingCount.Provider>
     </AppearanceContext.Provider>
     </NameContext.Provider>
+    </AgentsContext.Provider>
     </AgentContext.Provider>
   )
 }

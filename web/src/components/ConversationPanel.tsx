@@ -23,7 +23,7 @@ import { ArrowLeftRight, Bot } from 'lucide-react'
 import { conversationApi, request, type ContextView, type Job, type NewConversationSettings } from '../lib/api'
 import { AUTO_CONTEXT, AUTO_CONTEXT_TIP, contextApi } from '../lib/context'
 import { duration, errorText, num } from '../lib/format'
-import { AGENT_STATE, agentsApi, type TreeAgent } from '../lib/agents'
+import { agentsApi, type TreeAgent } from '../lib/agents'
 import { OFFLINE_TITLE, useOnline } from '../lib/socket'
 import { useFeatureOn } from '../lib/features'
 import { format } from '../lib/nav'
@@ -109,7 +109,7 @@ function AgentsTab({ agents, here }: { agents: TreeAgent[]; here: string | null 
     <div className="chat-panel" role="list" aria-label="Sub-agents">
       {agents.map(a => (
         <ListRow key={a.id} density="md" depth={a.depth - 1} running={a.state === 'working' || a.state === 'queued'} icon={Bot} title={a.name}
-                 subtitle={a.state === 'working' ? a.step_words ?? AGENT_STATE.working[0] : <StateWord tone={AGENT_STATE[a.state][1]}>{AGENT_STATE[a.state][0]}</StateWord>}
+                 subtitle={a.state === 'working' ? a.step_words ?? a.display.words : <StateWord tone={a.display.tone}>{a.display.words}</StateWord>}
                  meta={duration(a.seconds * 1000)} aside={a.model ?? undefined}
                  detail={`${num(a.prompt_tokens)} tokens in, ${num(a.completion_tokens)} out`}
                  muted={a.state !== 'working' && a.state !== 'queued'} selected={a.id === here} href={a.link} />

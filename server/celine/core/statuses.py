@@ -50,7 +50,17 @@ LIVE_TURNS_SQL = sql_list(LIVE_TURNS)
 CLAIMED_TURNS_SQL = sql_list(CLAIMED_TURNS)
 
 
-class RunState(StrEnum):
+class Shown(StrEnum):
+    """A status set the page shows: every member has a display."""
+
+    @property
+    def display(self) -> dict:
+        """{words, tone}: this status as a row carries it for the page."""
+        words, tone = _DISPLAYS[type(self)][self]
+        return {"words": words, "tone": tone.value}
+
+
+class RunState(Shown):
     """Where a routine's run stands (runs.state)."""
     WAITING = "waiting"
     RUNNING = "running"
@@ -59,14 +69,8 @@ class RunState(StrEnum):
     SKIPPED = "skipped"
     STOPPED = "stopped"
 
-    @property
-    def display(self) -> dict:
-        """{words, tone}: this state as a row carries it for the page."""
-        words, tone = _RUN[self]
-        return {"words": words, "tone": tone.value}
 
-
-_RUN = {
+_RUN_SHOWN = {
     RunState.WAITING: ("Queued", Tone.MUTED),
     RunState.RUNNING: ("Running", Tone.RUNNING),
     RunState.DONE: ("Done", Tone.SUCCESS),
@@ -80,23 +84,48 @@ WAITING_FOR_YOU = {"words": "Waiting for you", "tone": Tone.WARN.value}
 SCHEDULED = {"words": "Scheduled", "tone": Tone.MUTED.value}
 
 
-class MissionStatus(StrEnum):
+class MissionStatus(Shown):
     """Where a mission stands (missions.status)."""
     ACTIVE = "active"
     NEEDS_YOU = "needs_you"
     DONE = "done"
     STOPPED = "stopped"
 
-    @property
-    def display(self) -> dict:
-        """{words, tone}: this status as a row carries it for the page."""
-        words, tone = _MISSION[self]
-        return {"words": words, "tone": tone.value}
 
-
-_MISSION = {
+_MISSION_SHOWN = {
     MissionStatus.ACTIVE: ("Running", Tone.RUNNING),
     MissionStatus.NEEDS_YOU: ("Waiting for you", Tone.WARN),
     MissionStatus.DONE: ("Done", Tone.SUCCESS),
     MissionStatus.STOPPED: ("Stopped", Tone.MUTED),
 }
+
+
+class AgentState(Shown):
+    """Where a sub-agent stands (sub_agents/skill.py `_look` works it out; nothing stores it)."""
+    QUEUED = "queued"
+    WORKING = "working"
+    DONE = "done"
+    STOPPED = "stopped"
+    FAILED = "failed"
+    PAUSED = "paused"
+
+
+_AGENT_SHOWN = {
+    AgentState.QUEUED: ("Queued", Tone.MUTED),
+    AgentState.WORKING: ("Running", Tone.RUNNING),
+    AgentState.DONE: ("Done", Tone.SUCCESS),
+    AgentState.STOPPED: ("Stopped", Tone.MUTED),
+    AgentState.FAILED: ("Failed", Tone.ERROR),
+    AgentState.PAUSED: ("Paused", Tone.WARN),
+}
+# how a sub-agent with nothing left to come stands, by the state its last turn ended in
+AGENT_ENDED = {
+    TurnState.ABORTED: AgentState.STOPPED,
+    TurnState.FAILED: AgentState.FAILED,
+    TurnState.INTERRUPTED: AgentState.FAILED,
+    TurnState.CAPPED: AgentState.PAUSED,
+}
+
+# each shown set's members as (words, tone); one table per set, since a member equals its
+# string and "done" of one set would be "done" of another in a shared table
+_DISPLAYS = {RunState: _RUN_SHOWN, MissionStatus: _MISSION_SHOWN, AgentState: _AGENT_SHOWN}

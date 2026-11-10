@@ -67,7 +67,8 @@ Then its report comes back to you as a message ("Report from trip finder"), job 
 included, also after a restart. The report is a head (its name, how it ended, the
 models, tokens and seconds its work took, the notes it changed) and its final answer,
 nothing it said on the way, cut at about 3 % of your context window; the rest stays in
-its conversation. `sub_agents__read(name)` looks at one: working or done, the step it is on,
+its conversation. `sub_agents__read(name)` looks at one: how it stands (queued, working,
+done, failed, stopped or paused, with the reason for the last three), the step it is on,
 and its latest report (before one, its last words). `sub_agents__read(name, wait=120)`
 first waits up to that many seconds (600 at most) for it to be done, and says whether it
 finished or the wait ran out. Or end your turn: its report starts your next one.
