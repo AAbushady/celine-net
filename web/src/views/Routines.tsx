@@ -12,9 +12,10 @@
    Every state, reason and time is the server's.
    Keys: Esc closes, Left and Right the day, Up and Down the run, N a new schedule, Ctrl+S
    saves the schedule.
-   URL: /routines, /routines/<day>, /routines/<day>/run/<id>, /routines/<day>/schedule/<name>,
+   URL: /routines (today's runs), /routines/<day> (another day's), /routines/<day>/run/<id>,
+   /routines/<day>/schedule/<name>,
    /routines/<day>/schedule/<name>/edit/<key>[/history], /routines/<day>/task/<id>. */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowUpRight, Bot, Braces, CalendarClock, ChevronLeft, ChevronRight, CircleStop, History, MoreHorizontal, NotebookPen, Pencil,
   Play, Plus, RotateCcw, SearchX, Trash2, Zap,
@@ -104,17 +105,24 @@ export function Routines({ active }: { active: boolean }) {
   const route = last.current
   const [view, setView] = useState<View>('runs')
   const schedules = useResource(signal => routinesApi.schedules(signal), [], { events: ev => ev.type === 'settings.changed' })
-  const night = route.night ?? schedules.data?.tonight
   // the strip's last day: today, or an older one after Earlier (or a link to an old day)
   const [until, setUntil] = useState<string | undefined>(undefined)
-  const runs = useResource(signal => routinesApi.runs(night, signal, until), [night, until], { events: isRunEvent })
+  // the runs of the day the address names; with no day in it the server answers with
+  // today's, at every reload, so the page follows the server's clock
+  const runs = useResource(signal => routinesApi.runs(route.night, signal, until), [route.night, until], { events: isRunEvent })
   const triggers = useResource(signal => routinesApi.triggers(signal), [], { events: ev => ev.type === 'settings.changed' })
   const tasks = useResource(signal => routinesApi.tasks(signal), [], { events: isTaskEvent })
   const today = runs.data?.tonight ?? schedules.data?.tonight
+  const night = route.night ?? today
   useEffect(() => {
     if (night && today && night < shift(until ?? today, -13)) setUntil(night)
   }, [night, today]) // eslint-disable-line react-hooks/exhaustive-deps
-  const go = (r: Open, replace = false) => nav.go({ section: 'routines', night: r.night ?? night, ...r }, { replace })
+  // today's list has no day in its address: the place a rail click comes back to is today's
+  const go = (r: Open, replace = false) => {
+    const to = r.night ?? night
+    const page = !!(r.run || r.schedule || r.task)
+    nav.go({ section: 'routines', ...r, night: page || to !== today ? to : undefined }, { replace })
+  }
   const drafts = useRef(new Map<string, Draft>())
 
   const byName = useMemo(() => new Map((schedules.data?.schedules ?? []).map(s => [s.name, s])), [schedules.data])
@@ -262,7 +270,15 @@ function RunsDay({ list, night, today, days, nodes, runs, all, active, go, onEar
   // the strip: fourteen days, oldest left, a failed one in the error tone
   const newest = days[0]?.night ?? today
   const strip = useRef<HTMLDivElement>(null)
-  useEffect(() => { strip.current?.querySelector('[aria-checked="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }) }, [night, days])
+  // the newest days stay in view while the picked day fits beside them; an older one sits in the middle
+  useLayoutEffect(() => {
+    const box = strip.current?.querySelector<HTMLElement>('.routines-days__strip')
+    const on = box?.querySelector<HTMLElement>('[aria-checked="true"]')
+    if (!box || !on) return
+    const end = box.scrollWidth - box.clientWidth
+    const left = on.getBoundingClientRect().left - box.getBoundingClientRect().left + box.scrollLeft
+    box.scrollLeft = left >= end ? end : Math.max(0, left - (box.clientWidth - on.offsetWidth) / 2)
+  }, [night, days])
   return (
     <div className="list-page" ref={list}>
       <PlaceHead level={1} title={nightWords(night)} count={ran.length || undefined}
