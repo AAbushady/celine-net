@@ -174,6 +174,8 @@ export type EventTask = {
   /** the event's name */
   trigger: string | null
   working: boolean
+  /** how its turn stands, the server's words and tone (as a chat's row); null: its last turn ended well */
+  state: { tone: 'running' | 'error' | 'warn'; words: string } | null
   last_line: string
   updated_at: string
   /** an approval waits in it or in a sub-agent of it */

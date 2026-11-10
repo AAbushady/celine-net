@@ -714,7 +714,9 @@ async def count(store, archived: bool = False, trashed: bool = False,
 async def background(store) -> list[dict]:
     """The background conversations but the runs' (`run:<id>`, they are in
     Routines), newest activity first: {id, title, kind, trigger (a fired trigger's name,
-    from `trigger:<name>`), working, last_line, updated_at}."""
+    from `trigger:<name>`), working, state (state_of: how its turn stands in the server's
+    words, as a chat's row has it; None when its last turn ended well), last_line,
+    updated_at}."""
     def fn(c: sqlite3.Connection) -> list[dict]:
         rows = c.execute(_SUMMARY + "WHERE c.kind = 'background' AND "
                          "coalesce(c.trigger_key, '') NOT LIKE 'run:%' "
@@ -725,6 +727,7 @@ async def background(store) -> list[dict]:
             out.append({"id": r["id"], "title": r["title"], "kind": r["kind"],
                         "trigger": rest or None if kind == "trigger" else None,
                         "working": r["active_state"] is not None,
+                        "state": state_of(c, dict(r)),
                         "last_line": last_line(c, r["active_leaf_id"]),
                         "updated_at": r["updated_at"]})
         return out

@@ -482,7 +482,8 @@ function TriggersList({ list, triggers, tasks, day, go }: {
                              <ListRow density="lg" title={taskTitle(r.row.b)}
                                       subtitle={r.row.b.last_line || undefined} column={byName(r.row.b.trigger) === taskTitle(r.row.b) ? '' : byName(r.row.b.trigger)}
                                       cell={r.row.b.asked ? <StateWord tone="warn">{ASKED_WORD}</StateWord>
-                                        : r.row.b.working ? <StateWord tone="running">{STATE_WORD.running}</StateWord> : <StateWord tone="success">{STATE_WORD.done}</StateWord>}
+                                        : r.row.b.state ? <StateWord tone={r.row.b.state.tone}>{r.row.b.state.words || STATE_WORD.running}</StateWord>
+                                          : <StateWord tone="success">{STATE_WORD.done}</StateWord>}
                                       meta={listTime(r.row.b.updated_at)}
                                       muted={!r.row.b.working}
                                       href={format({ section: 'routines', day, task: r.row.b.id })}
