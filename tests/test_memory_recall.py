@@ -161,7 +161,7 @@ async def test_an_embedding_model_that_does_not_answer_is_said(store, tmp_path,
     await write_notes(store, cfg, {"people/noor.md": NOOR})
     cid = await conversations.create(store)
     text, report = await _say(store, cfg, cid, "noor")
-    assert text == f"{recall.HEAD} not available now: No embedding model is set."
+    assert text == f"{recall.HEAD} no notes came with this message: No embedding model is set."
     assert report["error"] and len(report["candidates"]) == 3
 
 
@@ -199,7 +199,7 @@ async def test_a_message_that_stops_waiting_leaves_the_vectors_to_the_next(
     await write_notes(store, cfg, {"people/noor.md": NOOR})
     cid = await conversations.create(store)
     text, report = await _say(store, cfg, cid, "noor climbing")
-    assert text == f"{recall.HEAD} not available now: {recall.LATE}"
+    assert text == f"{recall.HEAD} no notes came with this message: {recall.LATE}"
     assert recall._late, "the call goes on"
     go.set()
     await until(lambda: not recall._late)

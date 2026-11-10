@@ -400,10 +400,22 @@ class _Plan:
         c = self.compaction
         parts = [base] if base else []
         if c is not None and c["text"]:
+            # its address: which messages it stands for, in the numbers
+            # past_conversations__read gives them, and how to read them (a summary is a
+            # model's text: what it says can be checked against its messages)
+            calls = self.view["calls"]
+            last = sum(1 for m in self.chain[:self.start]
+                       if m["role"] in ("user", "assistant") and (
+                           (m["content"] or "").strip()
+                           or (m["role"] == "assistant" and calls.get(m["id"]))))
+            head = (f"a summary of its messages #1 to #{last}, which a model wrote; the "
+                    f"messages themselves are kept, {{{{username}}}} can still see them and "
+                    f"past_conversations__read(conversation=\"{self.cid[:8]}\", start=1, "
+                    f"end={last}) reads them" if last else
+                    f"a summary of {c['covers_messages']} older messages; {{{{username}}}} "
+                    f"can still see the messages themselves")
             parts.append(self.cfg.substitute(
-                f"Earlier in this conversation (a summary of {c['covers_messages']} "
-                f"older messages; {{{{username}}}} can still see the messages "
-                f"themselves):\n{c['text']}"))
+                f"Earlier in this conversation ({head}):\n{c['text']}"))
         return "\n\n".join(parts)
 
     def messages(self, base: str) -> list[dict]:

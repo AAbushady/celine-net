@@ -391,6 +391,110 @@ class PastConversations:
         return "\n".join(out)
 
     @tool()
+    async def find_sent(
+        self,
+        ctx: ToolContext,
+        text: Annotated[str, "A piece of the text in its exact words, a line or a few "
+                             "words. Capitals and spacing do not matter."],
+        conversation: Annotated[str | None, "Left out: this conversation. Else as "
+                                            "past_conversations__read takes it."] = None,
+    ) -> ToolResult:
+        """Check whether a text was ever sent to you. The app keeps every request it
+        sent to your model word for word, and everything you wrote. Use it when you
+        remember something that you cannot find in the messages, before you treat it as
+        something that happened or as something the app put in front of you.
+        Example: past_conversations__find_sent(text="can't you even remember the evening")
+        Returns: where the text first reached you from (a message, the block the app put
+        under it, a tool's result, the summary, your instructions) and when, or that
+        nothing sent to you holds it, and where you first wrote it yourself."""
+        from ..turns import sent as record
+        text = " ".join(str(text or "").split())
+        if len(text) < record.MIN:
+            return ToolResult(content=f"That is too short to tell apart. Give at least "
+                                      f"{record.MIN} characters of the text, in its exact "
+                                      f"words.", is_error=True)
+        cid = ctx.conversation_id
+        if conversation:
+            conv, wrong = await self._find(ctx, conversation)
+            if wrong:
+                return wrong
+            cid = conv["id"]
+        got = await record.first_sent(ctx.store, cid, text)
+        own, part = await ctx.store.read(lambda c: (record.own_first(c, cid, text),
+                                                    record.message_part(c, cid, text)))
+        at = lambda iso_: self._at(iso_, "%a %-d %b %H:%M")     # noqa: E731
+        quoted = f'"{text}"' if len(text) <= 80 else f'"{text[:77]}..."'
+        wrote = None
+        if own is not None:
+            how = {"reply": "your reply", "thinking": "your thinking",
+                   "call": f"the arguments of your call {own['name']}"}[own["kind"]]
+            wrote = f"at {at(own['at'])}, in {how}"
+        first = got["first"]
+        origin = first["kinds"][0] if first else None      # the earliest piece that held it
+        mine = origin is not None and origin[0] in ("own", "call")
+        if not got["searched"]:
+            lines = [f"What was sent to you cannot be checked for {quoted}."
+                     + (f" You wrote it yourself, first {wrote}." if wrote else "")]
+        elif first is None:
+            lines = [f"Nothing the app sent you holds {quoted}. You wrote it yourself, first "
+                     f"{wrote}." if wrote else
+                     f"Nothing the app sent you in this conversation holds {quoted}, and "
+                     f"nothing you wrote here does. The match needs the exact words: try a "
+                     f"shorter piece if the wording may be off."]
+        else:
+            still = ("It is still in what is sent to you now." if got["now"] else
+                     "It is no longer in what is sent to you.")
+            if mine:
+                lines = [(f"You wrote {quoted} first yourself: {wrote}. Nothing the app sent "
+                          f"you before that holds it." if wrote else
+                          f"{quoted} first reached you as your own earlier words, and the "
+                          f"reply that wrote it is no longer on this conversation's path."),
+                         f"From {at(first['at'])} on the app sent it back to you as your "
+                         f"own earlier words. {still}"]
+            else:
+                lines = [f"The app sent you {quoted}. It first reached you in "
+                         f"{self._source(origin, part, at(first['at']), at)}.", still]
+                if origin[0] == "summary":
+                    lines.append("A summary can be wrong: past_conversations__read reads the "
+                                 "messages it stands for.")
+        if not got["searched"]:
+            lines.append("The app keeps no request of this conversation any more.")
+        else:
+            lines.append(f"{got['searched']} requests of this conversation were searched, "
+                         f"the oldest from {at(got['oldest'])}."
+                         + (f" {got['skipped']} older ones were not." if got["skipped"] else ""))
+        return ToolResult(content="\n".join(lines), display={
+            "conversation": cid, "sent": first is not None and not mine,
+            "own": own is not None})
+
+    def _source(self, kind: tuple[str, str | None], part: dict | None, by: str, at) -> str:
+        """Where a text reached it from, in a sentence's words: a piece of a request
+        (turns/sent.py find) with the time that request ended (`by`), and for a message
+        the stored part that held it, with the message's own time."""
+        what, name = kind
+        if what == "instructions":
+            return f"your instructions (your persona and the skill texts), by {by}"
+        if what == "summary":
+            return (f"the summary of earlier messages in your instructions, which a model "
+                    f"wrote, by {by}")
+        if what == "result":
+            return f"the result of {name}, by {by}" if name else f"a tool's result, by {by}"
+        if part is None:
+            return f"a message to you, by {by}"
+        of = f"the message of {at(part['at'])}"
+        if part["part"] == "text":
+            return (f"the message {self.cfg.user} wrote at {at(part['at'])}"
+                    if part["author"] == "user" else
+                    f"a message that came to you through the intercom at {at(part['at'])}")
+        if part["part"] == "block":
+            note = f", from your note {part['note']}" if part["note"] else ""
+            return (f"the [{part['label']}] block the app put under {of}{note}"
+                    if part["label"] else f"what the app put under {of}")
+        return (f"the [{part['label']}] line the app put under {of}" if part["label"] else
+                f"the app's own lines under {of} (the time, where else you work, your "
+                f"plan, your notebook's index)")
+
+    @tool()
     async def read_tool_call(
         self,
         ctx: ToolContext,

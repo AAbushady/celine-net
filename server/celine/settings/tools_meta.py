@@ -151,6 +151,10 @@ TOOLS: dict[str, dict[str, str]] = {
     "past_conversations__read_tool_call": {"label": "Past chats: read a tool call",
                                       "summary": "Reads one tool call of an earlier "
                                                  "chat exactly as it ran."},
+    "past_conversations__find_sent": {"label": "Past chats: check what was sent",
+                                 "summary": "Says whether a text was ever sent to {{name}} "
+                                            "in a chat and from where, or where {{name}} "
+                                            "first wrote it."},
     "shell__run": {"label": "Terminals: run a command",
                    "summary": "Runs a command in one of {{name}}'s terminals, waits until it "
                               "finishes and shows its exit status, duration, output and log."},

@@ -8,6 +8,7 @@ from compaction_fixtures import (SUMMARY, Arch, Model, arch_registry, archive_te
                                  seed_exchange)
 
 import json
+import re
 
 import pytest
 
@@ -99,6 +100,19 @@ async def test_compaction_summarises_and_an_edit_above_the_cut_undoes_it(store, 
     paired(built.messages)
     sys = built.messages[0]["content"]
     assert sys.startswith("PERSONA") and SUMMARY in sys
+    # the summary's address: the messages it stands for, numbered as
+    # past_conversations__read numbers them, and the call that reads them
+    head = re.search(r"Earlier in this conversation \(a summary of its messages #1 to #(\d+), "
+                     r"which a model wrote; .*past_conversations__read\(conversation=\"(\w{8})\", "
+                     r"start=1, end=(\d+)\) reads them\):", sys)
+    assert head and head.group(2) == cid[:8] and head.group(1) == head.group(3)
+    from celine.skills.conversations import _items
+    numbered = await store.read(lambda c: _items(c, cid))
+    through = (await view.snapshot(store, cid))["compactions"][-1]["through_message_id"]
+    chain = [m["id"] for m in (await compactions.context_view(store, cid))["chain"]]
+    covered = set(chain[:chain.index(through) + 1])
+    assert int(head.group(1)) == sum(1 for i in numbered if i["message"]["id"] in covered), \
+        "the last message it covers"
     users = [m["content"] for m in built.messages if m["role"] == "user"]
     assert not any("question 0" in u for u in users) and users[-1].endswith("and now?")
     assert built.estimate <= 0.5 * 20_000

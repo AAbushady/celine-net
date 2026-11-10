@@ -204,6 +204,7 @@ VERB = {
     "shell__list_shares": "Listed the shares", "shell__unshare": "Ended a share",
     "mind__think": "Wrote down a thought", "writer__draft": "Wrote a draft",
     "past_conversations__read_tool_call": "Read an earlier tool call",
+    "past_conversations__find_sent": "Checked what was sent",
 }
 
 Sentence = Callable[[Args, dict, str], str]

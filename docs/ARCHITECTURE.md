@@ -486,7 +486,8 @@ changes. The prompt prefix must stay stable (llama.cpp reuses its KV cache,
 persisted, and the same prompt is rebuilt byte for byte after a restart.
 
 Order: `system` = persona + skill fragments + (when a summary is in effect) "Earlier in
-this conversation (a summary of N older messages): ..."; then the messages after the
+this conversation (a summary of its messages #1 to #N, which a model wrote; ...
+past_conversations__read(...) reads them): ...", the summary's address; then the messages after the
 newest valid compaction, tool results verbatim or, for replies at or before
 `context_state.aged_through`, as a stub (`compact.stub`: the call, its first lines, its
 size, up to 40 message refs, the lines whose refs it cited in a later reply kept whole).
@@ -515,7 +516,7 @@ back, the best first, at most `memory_sections` in `memory_tokens` tokens
 (`var/settings/context.toml`); each entry is `### path#heading (similarity, last
 changed)`. Not for a note it carries in full or with `load: off`, nor a section shown on
 this branch since the last compaction unless it changed. An embedding model that does not
-answer gives `[your memory] not available now: <why>` and nothing else. The report
+answer gives `[your memory] no notes came with this message: <why>` and nothing else. The report
 (`report.notebook`) keeps the query and every candidate with its score and state.
 
 What the build decides is kept per conversation: the aging mark (`context_state`:

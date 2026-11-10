@@ -2,7 +2,8 @@
 name: past_conversations
 description: Your own earlier conversations with {{username}} in this app, your sub-agents'
   and your background runs' included. Load it when they ask what you and they talked about
-  before, or to review a day of your work. "We" in a question about their WhatsApp, Discord
+  before, to review a day of your work, or to check whether something you remember was
+  ever sent to you (past_conversations__find_sent). "We" in a question about their WhatsApp, Discord
   or other chats means the Messages archive, not this.
 ---
 Your past conversations with {{username}} in this app. Their own WhatsApp and Discord
@@ -31,6 +32,20 @@ your background runs are here too.
 - `past_conversations__read_tool_call(id)`: one tool call raw, its arguments and its whole
   result; a long one in parts: the `earlier:` and `later:` lines after the text read the
   part before and after.
+- `past_conversations__find_sent(text, conversation)`: whether a text was ever sent to you, and
+  from where. The app keeps every request it sent to your model word for word, and
+  everything you wrote. It says where the text first reached you from (a message, the
+  block the app put under one, a tool's result, the summary, your instructions) and when,
+  or that nothing sent to you holds it and where you first wrote it yourself. Without
+  `conversation` it looks at this one.
+
+When you remember something {{username}} said or did and cannot find it in the messages,
+call `past_conversations__find_sent` with a few of its exact words before you act on it or
+write it down. A memory with no source is yours to doubt: a model can write a detail
+into a note and meet it again later as if it had been told.
+
+The summary at the top of a long conversation says which messages it stands for and how
+to read them. A model wrote it, so check it against those messages when it matters.
 
 A whole day: the day's index first, then read only what matters, and a raw call only
 when its arguments or result matter. On a long day, give groups of conversations to

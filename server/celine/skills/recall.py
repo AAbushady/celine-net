@@ -205,7 +205,8 @@ async def block(cfg, store, cid: str, tid: str, message: dict
     except SemanticError as e:
         report["error"] = str(e)
         report["candidates"] = [{"id": x["id"], "key": x["key"]} for x in found]
-        return f"{HEAD} not available now: {e}", report
+        # it says that nothing came, so a memory it has cannot be laid at this block's door
+        return f"{HEAD} no notes came with this message: {e}", report
     for x, v in zip(found, vecs):
         x["score"] = round(cosine(q, v), 3)
     counter = tokens.counter(None)
