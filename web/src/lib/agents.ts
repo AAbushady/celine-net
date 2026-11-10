@@ -16,6 +16,9 @@ export type Agent = {
   folder: string | null
   /** at work (its last turn has not reported) */
   working: boolean
+  /** where it stands, the server's (sub_agents/skill.py `_look`), and why it failed, stopped or paused */
+  state: AgentState
+  reason: string | null
   /** the tool its live turn runs, null between steps */
   step: string | null
   /** that step in words, the server's ("Reading the note") */
@@ -29,6 +32,14 @@ export type Agent = {
   link: string
 }
 
+/** where a sub-agent stands, the server's word for it */
+export type AgentState = 'queued' | 'working' | 'done' | 'stopped' | 'failed' | 'paused'
+/** each state as the word and the tone every list and page shows it in */
+export const AGENT_STATE: Record<AgentState, [string, 'muted' | 'warn' | 'error' | 'success' | 'running']> = {
+  queued: ['Queued', 'running'], working: ['Running', 'running'], done: ['Done', 'success'],
+  stopped: ['Stopped', 'muted'], failed: ['Failed', 'error'], paused: ['Paused', 'warn'],
+}
+
 /** one sub-agent in the tree under a conversation's top (GET /api/conversations/{id}/sub-agents,
     server/celine/sub_agents/skill.py tree_of) */
 export type TreeAgent = {
@@ -37,7 +48,7 @@ export type TreeAgent = {
   /** 1: started by the top conversation */
   depth: number
   name: string
-  state: 'queued' | 'working' | 'done' | 'stopped' | 'failed' | 'paused'
+  state: AgentState
   /** why it failed, stopped or paused, the server's words */
   reason: string | null
   step_words: string | null

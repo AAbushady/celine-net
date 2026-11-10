@@ -23,7 +23,7 @@ import {
 } from 'lucide-react'
 import type { Message as ChatMessage } from '../lib/api'
 import { LOCALE, listTime, shortDate, turnStep } from '../lib/format'
-import { agentsApi, useAgents } from '../lib/agents'
+import { AGENT_STATE, agentsApi, useAgents } from '../lib/agents'
 import { click } from '../components/ConversationList'
 import { TreeLine, Work, treeOrder } from './Missions'
 import { isSaveKey, isTyping } from '../lib/keys'
@@ -525,8 +525,9 @@ function TaskPage({ id, day, tasks, active, go, onBack }: {
         <div className="routines-kids">
           {kids.map(a => (
             <ListRow key={a.id} icon={Bot} title={a.name} href={format({ section: 'routines', day, task: a.id })} onClick={click(() => go({ task: a.id }))}
-                     subtitle={a.working ? a.step_words ?? STATE_WORD.running : a.report?.text.split('\n')[0] ?? STATE_WORD.done}
-                     meta={a.working ? <StateWord tone="running">{STATE_WORD.running}</StateWord> : undefined} />
+                     subtitle={a.working ? a.step_words ?? AGENT_STATE[a.state][0]
+                       : a.state !== 'done' && a.reason ? a.reason : a.report?.text.split('\n')[0] ?? AGENT_STATE[a.state][0]}
+                     meta={a.state !== 'done' ? <StateWord tone={AGENT_STATE[a.state][1]}>{AGENT_STATE[a.state][0]}</StateWord> : undefined} />
           ))}
         </div>
       )}

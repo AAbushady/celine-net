@@ -23,7 +23,7 @@ import { ArrowLeftRight, Bot } from 'lucide-react'
 import { conversationApi, request, type ContextView, type Job, type NewConversationSettings } from '../lib/api'
 import { AUTO_CONTEXT, AUTO_CONTEXT_TIP, contextApi } from '../lib/context'
 import { duration, errorText, num } from '../lib/format'
-import { agentsApi, type TreeAgent } from '../lib/agents'
+import { AGENT_STATE, agentsApi, type TreeAgent } from '../lib/agents'
 import { OFFLINE_TITLE, useOnline } from '../lib/socket'
 import { useFeatureOn } from '../lib/features'
 import { format } from '../lib/nav'
@@ -33,7 +33,6 @@ import { useResource } from '../lib/useResource'
 import { useConversationSettings } from '../lib/useConversationSettings'
 import {
   Button, Choice, cx, Drawer, IconButton, InlineError, ListRow, ListSection, Loaded, Progress, Sheet, StateWord, Switch, Tabs, TextArea, useCopied,
-  type WordTone,
 } from '../ui'
 import { ModelChooser, findModel, modelName } from './ModelChooser'
 import { ToolList } from './ToolList'
@@ -104,19 +103,13 @@ export function ConversationPanel({
 }
 
 /* ── the sub-agents under the top of the chain, each under the one that started it ── */
-const AGENT_WORD: Record<TreeAgent['state'], string> = {
-  queued: 'Queued', working: 'Running', done: 'Done', stopped: 'Stopped', failed: 'Failed', paused: 'Paused',
-}
-const AGENT_TONE: Record<TreeAgent['state'], WordTone> = {
-  queued: 'running', working: 'running', done: 'success', stopped: 'muted', failed: 'error', paused: 'warn',
-}
 
 function AgentsTab({ agents, here }: { agents: TreeAgent[]; here: string | null }) {
   return (
     <div className="chat-panel" role="list" aria-label="Sub-agents">
       {agents.map(a => (
         <ListRow key={a.id} density="md" depth={a.depth - 1} running={a.state === 'working' || a.state === 'queued'} icon={Bot} title={a.name}
-                 subtitle={a.state === 'working' ? a.step_words ?? AGENT_WORD.working : <StateWord tone={AGENT_TONE[a.state]}>{AGENT_WORD[a.state]}</StateWord>}
+                 subtitle={a.state === 'working' ? a.step_words ?? AGENT_STATE.working[0] : <StateWord tone={AGENT_STATE[a.state][1]}>{AGENT_STATE[a.state][0]}</StateWord>}
                  meta={duration(a.seconds * 1000)} aside={a.model ?? undefined}
                  detail={`${num(a.prompt_tokens)} tokens in, ${num(a.completion_tokens)} out`}
                  muted={a.state !== 'working' && a.state !== 'queued'} selected={a.id === here} href={a.link} />

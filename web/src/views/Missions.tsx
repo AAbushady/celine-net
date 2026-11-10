@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import { api, conversationApi, request } from '../lib/api'
 import { AUTO_CONTEXT, AUTO_CONTEXT_TIP, contextApi } from '../lib/context'
-import { agentsApi, useAgents, type Agent, type TreeAgent, type TreeMission } from '../lib/agents'
+import { AGENT_STATE, agentsApi, useAgents, type Agent, type TreeAgent, type TreeMission } from '../lib/agents'
 import { artifactRef } from '../lib/artifacts'
 import { count, errorText, fullDate, listTime, stamp } from '../lib/format'
 import { intercomApi, isIntercomEvent, type IntercomMessage } from '../lib/intercom'
@@ -48,9 +48,7 @@ const firstLine = (text: string) => text.trim().split('\n')[0] ?? ''
 
 /** a state of the tree (a sub-agent's, a mission's) as its word and the word's tone */
 const TREE_STATE: Record<TreeAgent['state'] | TreeMission['state'], [string, WordTone]> = {
-  queued: ['Queued', 'running'], working: ['Running', 'running'], active: [STATE_WORD.active, 'running'],
-  needs_you: [STATE_WORD.needs_you, 'warn'], done: ['Done', 'success'], stopped: ['Stopped', 'muted'],
-  failed: ['Failed', 'error'], paused: ['Paused', 'warn'],
+  ...AGENT_STATE, active: [STATE_WORD.active, 'running'], needs_you: [STATE_WORD.needs_you, 'warn'],
 }
 /** a mission's status as its word's tone */
 const MISSION_TONE: Record<MissionStatus, WordTone> = { active: 'running', needs_you: 'warn', done: 'success', stopped: 'muted' }
@@ -486,8 +484,10 @@ function Steps({ m }: { m: Mission }) {
   )
 }
 
-const agentWord = (a: AgentRow) => (a.working ? STATE_WORD.active : STATE_WORD.done)
-const agentLine = (a: AgentRow) => (a.working ? a.step_words ?? STATE_WORD.active : a.report ? firstLine(a.report.text) : a.last ?? '')
+/** a sub-agent's state as the server gives it: failed, stopped and paused are no "Done" */
+const agentWord = (a: AgentRow) => <StateWord tone={AGENT_STATE[a.state][1]}>{AGENT_STATE[a.state][0]}</StateWord>
+const agentLine = (a: AgentRow) => (a.working ? a.step_words ?? AGENT_STATE[a.state][0]
+  : a.state !== 'done' && a.reason ? a.reason : a.report ? firstLine(a.report.text) : a.last ?? '')
 
 /* one sub-agent under the mission (any depth), or a mission one of them started: its state
    in a word, why it failed or what it does now, its model; it opens where it lives */
@@ -575,7 +575,7 @@ function AgentPage({ a, mission, active }: { a: AgentRow; mission: Mission; acti
     <div className="missions-page">
       <PlaceHead level={1} title={result ? 'Result' : a.name} titleAttr={result ? undefined : a.name}
                  crumbs={result ? [...crumbs, { label: a.name, href: self, onClick: (e: React.MouseEvent) => { e.preventDefault(); setResult(false) } }] : crumbs}
-                 detail={<StateWord tone={a.working ? 'running' : 'success'}>{agentWord(a)}</StateWord>}
+                 detail={agentWord(a)}
                  actions={<>
                    {!result && <Button icon={FileText} onClick={() => setResult(true)}>Result</Button>}
                    {a.working && <Button icon={CircleStop} loading={stop.busy} onClick={() => void stop.run()}>Stop</Button>}
@@ -612,7 +612,7 @@ function AgentsList({ agents, missions }: { agents: AgentRow[]; missions: Missio
   const name = useMemo(() => new Map(missions.map(m => [m.conversation_id, m.name])), [missions])
   const list = useMemo(() => {
     const s = q.trim().toLowerCase()
-    const out = agents.filter(a => (show === 'all' || (show === 'running') === a.working) && (!of || a.parent === of)
+    const out = agents.filter(a => (show === 'all' || (show === 'running' ? a.working : a.state === show)) && (!of || a.parent === of)
       && (!s || [a.name, agentLine(a), name.get(a.parent) ?? ''].some(x => x.toLowerCase().includes(s))))
     return sort === 'Name' ? [...out].sort((a, b) => a.name.localeCompare(b.name))
       : sort === 'Created' ? [...out].sort((a, b) => b.created_at.localeCompare(a.created_at))
@@ -632,7 +632,8 @@ function AgentsList({ agents, missions }: { agents: AgentRow[]; missions: Missio
           <Toolbar state={{ label: 'State', value: show, onChange: setShow, options: [
                      { value: 'all', label: 'All', count: agents.length },
                      { value: 'running', label: STATE_WORD.active, count: agents.filter(a => a.working).length },
-                     { value: 'done', label: STATE_WORD.done, count: agents.filter(a => !a.working).length }] }}
+                     { value: 'failed', label: AGENT_STATE.failed[0], count: agents.filter(a => a.state === 'failed').length },
+                     { value: 'done', label: STATE_WORD.done, count: agents.filter(a => a.state === 'done').length }] }}
                    filters={parents.length === 0 ? [] : [{ label: 'Mission', icon: Flag, picked: of ? name.get(of) : undefined, onClear: () => setOf(null),
                                items: parents.map(p => ({ label: name.get(p) ?? p, current: p === of, onSelect: () => setOf(p) })) }]}
                    sort={{ label: 'Sort', value: sort, onChange: setSort, options: SORTS.map(v => ({ value: v, label: v })) }} />
