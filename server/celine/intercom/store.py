@@ -290,6 +290,17 @@ BUG = "i.thread IN (SELECT thread FROM bugreports WHERE thread IS NOT NULL)"
 MISSION_FROM = ("(i.from_addr IN (SELECT 'agent:' || conversation_id FROM missions) AND "
                 f"NOT {BUG})")
 
+def missions_asking(c: sqlite3.Connection) -> frozenset[str]:
+    """The missions with a message of their own that waits for the user (MISSION_FROM, not
+    read yet and due). With Needs you and a request, this is what makes a mission wait
+    for them: Waiting for you (waits.py), the chat list's row (conversations/store.py
+    state_of) and the Missions list (missions/api.py `asked`) read this one set."""
+    from ..core.ids import now
+    return frozenset(r[0].removeprefix("agent:") for r in c.execute(
+        f"SELECT DISTINCT i.from_addr FROM intercom i WHERE i.kind <> 'job' AND {_UNREAD} "
+        f"AND {MISSION_FROM}", ("user", now())))
+
+
 # The app's own notice into a mission (its keep-going line, its time limit, a restart):
 # in the mission's transcript, never listed as a thread.
 APP_TO_MISSION = ("(i.from_addr = 'system:app' AND i.kind = 'notice' AND "

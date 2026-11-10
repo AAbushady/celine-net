@@ -97,6 +97,22 @@ async def test_a_bug_report_a_mission_filed_is_its_own_thread_in_the_intercom(st
     assert await store.write(lambda c: rows.read_from(c, f"agent:{night}")) == []
 
 
+async def test_a_mission_that_wrote_to_the_user_waits_in_every_list(store):
+    """Waiting for you, the chat list's row and the Missions list's `asked` read one set
+    (intercom/store.py missions_asking): an active mission with a message that waits."""
+    night = await conversations.create(store, "Night", kind="mission")
+    await missions.create(store, night, {"name": "Night", "terminal": "n", "brief": "b"})
+    assert await store.read(rows.missions_asking) == frozenset()
+    await Intercom(store).send(f"agent:{night}", "user", "Which of the two flats?")
+    assert await store.read(rows.missions_asking) == {night}
+    got = await waits.items(SimpleNamespace(store=store, approvals=None, connectors=None))
+    assert [(i["kind"], i["id"]) for i in got] == [("mission", night)]
+    listed = {r["id"]: r["state"] for r in await conversations.list(store)}
+    assert listed[night] == {"tone": "warn", "words": "Waiting for you"}, "the chat list says so too"
+    await store.write(lambda c: rows.read_from(c, f"agent:{night}"))
+    assert await store.read(rows.missions_asking) == frozenset(), "read: it waits no more"
+
+
 async def test_nothing_waiting_is_an_empty_list(store):
     services = SimpleNamespace(store=store, approvals=None, connectors=None)
     assert await waits.items(services) == []

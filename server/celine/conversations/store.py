@@ -675,6 +675,9 @@ async def list(store, limit: int = 200,  # noqa: A001 - the module's word for it
             "SELECT * FROM (" + _SUMMARY.replace("SELECT ", f"SELECT {_rank(models)} AS rank, ", 1)
             + where + ") " + page + "ORDER BY rank DESC, updated_at DESC, id DESC "
             "LIMIT ?", (*args, limit))]
+        # a request in it, or a mission's own message that waits (one set: missions_asking)
+        from ..intercom.store import missions_asking     # the intercom store imports this module
+        waiting = asked | missions_asking(c)
         for r in rows:
             r["agents"] = [{**dict(s), "agents": []} for s in c.execute(
                 _SUMMARY + "WHERE c.agent_of = ? ORDER BY c.created_at, c.id", (r["id"],))]
@@ -683,7 +686,7 @@ async def list(store, limit: int = 200,  # noqa: A001 - the module's word for it
             r["folded"] = r["dated"] and r["group"] not in OPEN_GROUPS
             for one in (r, *r["agents"]):
                 one["last_line"] = last_line(c, one.pop("active_leaf_id"))
-                one["state"] = state_of(c, one, asked, models)
+                one["state"] = state_of(c, one, waiting, models)
                 one.update(homes.of(c, one["id"]))       # where it opens, the server's
             for a in r["agents"]:
                 a["group"], a["dated"], a["folded"] = r["group"], r["dated"], r["folded"]

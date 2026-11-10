@@ -378,7 +378,8 @@ function MissionPage({ m, agents, active, onChange }: { m: Mission; agents: Agen
   return (
     <div className="missions-page">
       <PlaceHead level={1} crumbs={work ? [...crumbs, page] : crumbs} title={work ? 'Chat' : m.name} titleAttr={work ? undefined : m.name}
-                 detail={<StateWord tone={convo.running ? 'running' : MISSION_TONE[m.status]}>{STATE_WORD[m.status]}</StateWord>}
+                 detail={m.asked || waiting ? <StateWord tone="warn">{STATE_WORD.needs_you}</StateWord>
+                   : <StateWord tone={convo.running ? 'running' : MISSION_TONE[m.status]}>{STATE_WORD[m.status]}</StateWord>}
                  actions={<>
                    {work && !gone && <ModelRow cid={m.conversation_id} live={convo.settings} head />}
                    {work && <PlanButton plan={convo.plan} />}
