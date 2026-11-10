@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 from celine import homes
 from celine.core.ids import iso, now
-from celine.core.words import MISSION, state
+from celine.core.statuses import MissionStatus
 from celine.terminals.store import free_name
 from ..core.event_types import MISSION_STATE
 
@@ -149,7 +149,7 @@ def _view(r) -> dict:
                        None)
     row.pop("title_auto")
     row["name"] = row.pop("shown")
-    row["state"] = state(MISSION, row["status"])        # its words and tone, the page's to show
+    row["state"] = MissionStatus(row["status"]).display     # its words and tone, the page's to show
     row["auto_context"] = bool(row["auto_context"])
     return row
 

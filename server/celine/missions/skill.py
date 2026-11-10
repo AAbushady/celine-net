@@ -14,7 +14,8 @@ from datetime import datetime, timezone
 from typing import Annotated, Literal
 
 from .. import prompts
-from ..core import ids, words
+from ..core import ids
+from ..core.statuses import MissionStatus
 from ..core.ids import clock, iso, parse_when, when
 from . import store as missions
 from ..plans.flow import chat_models
@@ -81,8 +82,8 @@ async def record(app, store, cid: str, word: str, note: str | None) -> dict | No
         from ..intercom.addresses import Refused
         said = "stopped" if word == "stopped" and note else WORDS[word]   # not by them
         # the sentence is what it reads there; the page shows `heading` over `note`
-        # (core/words.py: the words a mission's status has everywhere)
-        heading = f"Mission {row['name']} is {words.MISSION[word][0].lower()}"
+        # (the words its status has everywhere: MissionStatus.display)
+        heading = f"Mission {row['name']} is {MissionStatus(word).display['words'].lower()}"
         try:
             await app.intercom.send(
                 f"agent:{cid}", f"agent:{to}", app.cfg.substitute(

@@ -13,7 +13,7 @@ export type Mission = {
   name: string
   /** in the list: an approval waits in it or in a sub-agent of it */
   asked?: boolean
-  /** its state as the page shows it, the server's words and tone (core/words.py MISSION) */
+  /** its state as the page shows it, the server's words and tone (core/statuses.py MissionStatus.display) */
   state: { words: string; tone: 'running' | 'warn' | 'error' | 'success' | 'muted' }
   /** its default terminal's name in this conversation */
   terminal: string

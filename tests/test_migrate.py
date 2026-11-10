@@ -639,7 +639,7 @@ def test_0031_gives_every_mission_report_its_status_heading_and_note_once(tmp_pa
               "VALUES(9, ?, 'agent:s1', 'agent:c1', 'report', 'Mission accomplished.', '{}')", (at,))
     c.commit()
     c.close()
-    shutil.copy(MIGRATIONS_DIR / "0031_mission_report_words.py", d)
+    shutil.copy(MIGRATIONS_DIR / "0031_mission_report_facts.py", d)
     assert migrate_all(db) == 31
     c = sqlite3.connect(db, isolation_level=None)
     got = {i: json.loads(raw) for i, raw in c.execute("SELECT id, data FROM intercom")}
@@ -652,7 +652,7 @@ def test_0031_gives_every_mission_report_its_status_heading_and_note_once(tmp_pa
     assert got[5] == {"mission": "m1", "status": None, "heading": "It went another way", "note": ""}
     assert got[9] == {}, "a sub-agent's report is no mission's"
     assert dict(c.execute("SELECT id, text FROM intercom WHERE id < 9")) == reports, "the text stays"
-    spec = importlib.util.spec_from_file_location("report_words", MIGRATIONS_DIR / "0031_mission_report_words.py")
+    spec = importlib.util.spec_from_file_location("report_facts", MIGRATIONS_DIR / "0031_mission_report_facts.py")
     step = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(step)
     c.execute("UPDATE intercom SET data = ? WHERE id = 2",

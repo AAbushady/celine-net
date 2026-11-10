@@ -13,8 +13,8 @@ import re
 
 SAID = re.compile(r"^(?P<mission>Mission .+?) (?P<said>needs you|done|stopped by .+?|stopped)"
                   r"(?:: (?P<note>.*)|\.)$")
-# the status a sentence names, and the words the app shows for it (core/words.py MISSION, as
-# they were when this step was written)
+# the status a sentence names, and the words the app shows for it (core/statuses.py
+# MissionStatus.display, as they were when this step was written)
 STATUS = {"needs you": ("needs_you", "waiting for you"), "done": ("done", "done"),
           "stopped": ("stopped", "stopped")}
 
