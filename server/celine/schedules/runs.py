@@ -887,7 +887,7 @@ class Scheduler:
             return _set(c, store, cfg, rid)
         try:
             cid = r["conversation_id"] or await conversations.for_trigger(
-                store, f"run:{rid}", f"{shown(s)}, {night_words(day.isoformat())}")
+                store, f"run:{rid}", f"{shown(s)}, {night_words(r['day'])}")
             if fresh:
                 from ..settings import roles
                 await roles.resolve(store, cfg, cid)
