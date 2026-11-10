@@ -33,7 +33,8 @@ type Row = { key: string; head: string; n: number } | { key: string; note: Note 
 type Ask =
   | { kind: 'new-note'; folder: string }
   | { kind: 'new-folder'; folder: string }
-  | { kind: 'rename'; path: string }
+  /** `folder`: the path is a folder's (the menu that asks knows which it opened on) */
+  | { kind: 'rename'; path: string; folder: boolean }
   | { kind: 'move'; paths: string[] }
   | { kind: 'trash'; path: string }
 type Editor = { text: string; saved: string; n: number }
@@ -119,7 +120,7 @@ export function Notebook({ active, note, edit, history }: { active: boolean; not
     if (n.locked) return [...base, readOnly]
     return [...base,
       { label: 'Edit', icon: Pencil, onSelect: () => goNote(n.path, { edit: true }) },
-      { label: 'Rename', icon: Pencil, onSelect: () => setAsk({ kind: 'rename', path: n.path }) },
+      { label: 'Rename', icon: Pencil, onSelect: () => setAsk({ kind: 'rename', path: n.path, folder: false }) },
       { label: 'Move to', icon: FolderInput, onSelect: () => setAsk({ kind: 'move', paths: [n.path] }) },
       { label: 'Duplicate', icon: Copy, onSelect: () => void duplicate(n.path) },
       { label: 'History', icon: History, onSelect: () => goNote(n.path, { history: true }) },
@@ -131,7 +132,7 @@ export function Notebook({ active, note, edit, history }: { active: boolean; not
   const folderMenu = (f: string): MenuItem[] => [
     { label: 'New note', icon: NotebookPen, onSelect: () => setAsk({ kind: 'new-note', folder: f }) },
     { label: 'New folder', icon: FolderPlus, onSelect: () => setAsk({ kind: 'new-folder', folder: f }) },
-    ...(f ? ['sep' as const, { label: 'Rename', icon: Pencil, onSelect: () => setAsk({ kind: 'rename', path: f }) },
+    ...(f ? ['sep' as const, { label: 'Rename', icon: Pencil, onSelect: () => setAsk({ kind: 'rename', path: f, folder: true }) },
              { label: 'Move to', icon: FolderInput, onSelect: () => setAsk({ kind: 'move', paths: [f] }) },
              'sep' as const, { label: 'Move to Trash', icon: Trash2, danger: true, detail: f, onSelect: () => setAsk({ kind: 'trash', path: f }) }] : []),
   ]
@@ -483,7 +484,7 @@ function Asked({ ask, folders, onClose, onDone, onCreated, onMoved }: {
       </Dialog>
     )
   }
-  const folderAsk = ask.kind === 'new-folder' || (ask.kind === 'rename' && !/\.[a-z0-9]+$/i.test(ask.path))
+  const folderAsk = ask.kind === 'new-folder' || (ask.kind === 'rename' && ask.folder)
   const title = ask.kind === 'new-note' ? 'New note' : ask.kind === 'new-folder' ? 'New folder' : 'Rename'
   const where = ask.kind === 'rename' ? parentOf(ask.path) : ask.folder
   const a = ask
