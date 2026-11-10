@@ -17,11 +17,13 @@ How:
 2. `video__read(id, at)` gives about three minutes at a time. Read it in order, the way time
    passes, and stop between stretches to write what you think and feel before you go on. Do
    not read ahead to the end first.
-3. `video__list` shows your watches and how far each one is, a queued one by its source until
-   the helper has its title. `video__stop` ends one.
+3. `video__list` shows your watches, each with when you asked for it and how far it is, a
+   queued one by its source until the helper has its title. A failed watch stays in the list
+   with its date: it says what happened then. `video__stop` ends one.
 
-YouTube sometimes stops the helper with its bot check ("Sign in to confirm you're not a bot").
-Then the shell guide's way, in your box, can still get the video.
+YouTube sometimes stops the helper with its bot check. The check comes and goes for the same
+video, so the helper tries once more by itself. When a watch still fails with it, watch it
+again later, or get the video in your box the shell guide's way.
 
 Plex: films and shows are on {{username}}'s Plex servers, shared with your own Plex account,
 downloads allowed. Link the account once with `video__link_plex`: open the link it gives in

@@ -156,6 +156,11 @@ async def test_the_helpers_words_come_through_and_a_bad_time_is_refused(store, c
     out = await v.watch(_ctx(store, cfg), "https://youtu.be/x", start="soon")
     assert out.is_error and "like \"12:30\"" in out.content
     assert (await v.list(_ctx(store, cfg))).content.startswith("#abc123def456 A short film (Blender), 0:00 to 10:00: done")
+    from zoneinfo import ZoneInfo
+    old = {**Helper().job("failed"), "error": "YouTube stopped the download.", "created": 1794118015.84}
+    assert Video._dated(old, ZoneInfo("UTC")) == \
+        "Sun 8 Nov 06:06 #abc123def456 A short film (Blender), 0:00 to 10:00: failed: YouTube stopped the download.", \
+        "a watch in the list says when it was asked for"
 
     def down(request):
         raise httpx.ConnectError("refused", request=request)

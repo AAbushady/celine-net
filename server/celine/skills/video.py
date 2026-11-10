@@ -10,6 +10,7 @@ sha256 (video.hash) the helper checks."""
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 from typing import Annotated
 from urllib.parse import urlsplit
 
@@ -17,6 +18,8 @@ import anyio
 import httpx
 
 from .. import attachments, vision
+from ..clock import zone
+from ..core.ids import when
 from ..settings import services as services_mod
 from . import ToolContext, ToolResult, described, guide, tool
 
@@ -122,6 +125,16 @@ class Video:
         way = {"omni": "seen and heard", "stills": "as stills and subtitles"}.get(j.get("mode") or "", "")
         why = f" ({j['why']})" if j.get("mode") == "stills" and j.get("why") else ""
         return f"#{j['id']} {title}{span}: {state}" + (f", {way}{why}" if way and j["state"] == "done" else "")
+
+    @classmethod
+    def _dated(cls, j: dict, tz) -> str:
+        """A watch's line with when it was asked for in front ("Sun 8 Nov 01:06 #..."), so a failure from days
+        ago reads as old in the list."""
+        asked = j.get("created")
+        line = cls._line(j)
+        if not asked:
+            return line
+        return f"{when(datetime.fromtimestamp(asked, timezone.utc).isoformat(), tz)} {line}"
 
     # ---- tools ---------------------------------------------------------------------------------------------------
 
@@ -264,13 +277,14 @@ class Video:
 
     @tool()
     async def list(self, ctx: ToolContext) -> ToolResult:  # noqa: A003 - the tool's name
-        """Your recent watches, newest first, with where each stands."""
+        """Your recent watches, newest first, each with when you asked for it and where it stands."""
         try:
             got = await self._call("GET", "/jobs")
         except HelperError as e:
             return ToolResult(content=str(e), is_error=True)
         jobs = got.get("jobs") or []
-        return ToolResult(content="\n".join(self._line(j) for j in jobs) or "No watches yet.")
+        tz = zone(ctx.config)
+        return ToolResult(content="\n".join(self._dated(j, tz) for j in jobs) or "No watches yet.")
 
     @tool(read_only=False, destructive=True)
     async def stop(
