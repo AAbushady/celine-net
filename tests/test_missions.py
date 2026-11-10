@@ -90,7 +90,9 @@ async def test_a_mission_starts_reports_and_stops(db_path):
             assert (note["author"], note["role"]) == ("intercom", "user")
             assert note["content"] == "Mission RSS feed needs you: The MR is up."
             assert (note["intercom"]["kind"], note["intercom"]["data"]) == \
-                ("report", {"mission": cid})
+                ("report", {"mission": cid, "status": "needs_you",
+                            "heading": "Mission RSS feed is waiting for you",
+                            "note": "The MR is up."}), "the page shows the heading over the note"
             assert await _turns(store, report) == [("user", "done")], "no turn for a note"
 
             # the mission works: its turn is running and has a step in a job

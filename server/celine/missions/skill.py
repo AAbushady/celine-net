@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from typing import Annotated, Literal
 
 from .. import prompts
-from ..core import ids
+from ..core import ids, words
 from ..core.ids import clock, iso, parse_when, when
 from . import store as missions
 from ..plans.flow import chat_models
@@ -80,11 +80,15 @@ async def record(app, store, cid: str, word: str, note: str | None) -> dict | No
         # a report the user reads in that conversation; it starts no turn there
         from ..intercom.addresses import Refused
         said = "stopped" if word == "stopped" and note else WORDS[word]   # not by them
+        # the sentence is what it reads there; the page shows `heading` over `note`
+        # (core/words.py: the words a mission's status has everywhere)
+        heading = f"Mission {row['name']} is {words.MISSION[word][0].lower()}"
         try:
             await app.intercom.send(
                 f"agent:{cid}", f"agent:{to}", app.cfg.substitute(
                     f"Mission {row['name']} {said}" + (f": {note}" if note else ".")),
-                kind="report", wake=False, data={"mission": cid})
+                kind="report", wake=False,
+                data={"mission": cid, "status": word, "heading": heading, "note": note or ""})
         except Refused:
             pass                       # that chat is locked: it takes no report
     return await missions.get(store, cid)

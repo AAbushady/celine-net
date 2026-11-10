@@ -369,7 +369,8 @@ export type Intercom = {
   due_at: string | null
   reply_to: number | null
   thread: number
-  data: { mission?: string; changed?: boolean; time_limit?: boolean; via?: string; jobs?: string[] } & Record<string, unknown>
+  /** a mission's report: `mission` its conversation, `heading` and `note` the server's words for it */
+  data: { mission?: string; heading?: string; note?: string; changed?: boolean; time_limit?: boolean; via?: string; jobs?: string[] } & Record<string, unknown>
   from_name: string | null
   mine: boolean
   /** it starts a turn where it lands; false: it lands quietly and waits for no answer */

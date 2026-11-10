@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict
 
 from ..conversations import store as conversations
 from ..core.ids import iso, parse_when
+from ..core.words import MISSION, state
 from ..errors import CelineError, NotFound
 from . import store as missions
 from .store import book_time_limit
@@ -178,13 +179,16 @@ async def list_missions(request: Request, status: str | None = None,
     `counts`: the page's numbers (store.counts), whatever the filters. `asked`: it waits
     for the user beyond its status: an approval waits in it or in a sub-agent of it
     (approvals.asked), or a message of its own does (intercom/store.py missions_asking),
-    as Waiting for you and the chat list say."""
+    as Waiting for you and the chat list say. `state`: its words and tone as the page
+    shows them (core/words.py MISSION), Waiting for you while `asked`."""
     from ..approvals import asked
     from ..intercom.store import missions_asking
     store = request.app.state.services.store
     settings = getattr(request.app.state.services.cfg, "settings", None)
     waits = asked(request.app.state.services) | await store.read(missions_asking)
-    return {"missions": [{**_labelled(settings, r), "asked": r["conversation_id"] in waits}
+    return {"missions": [{**_labelled(settings, r), "asked": r["conversation_id"] in waits,
+                          **({"state": state(MISSION, "needs_you")}
+                             if r["conversation_id"] in waits else {})}
                          for r in await missions.list(store, status, trashed, archived)],
             "counts": await missions.counts(store)}
 

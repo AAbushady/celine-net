@@ -24,7 +24,7 @@ EXPECTED_TABLES = {
 }
 LOG_TABLES = {"events", "global_events", "raw_responses", "requests", "terminal_commands"}
 NOTEBOOK_TABLES = {"notebook_index", "notebook_fts"}
-LATEST = 30
+LATEST = 31
 
 
 def _version(db) -> int:
@@ -611,3 +611,52 @@ def test_0030_gives_every_run_the_calendar_day_of_its_slot_in_the_apps_zone(tmp_
         "run again, it writes nothing over a day that is there"
     c.close()
     assert step._zone(tmp_path / "nowhere" / "celine.db") == ZoneInfo("UTC"), "no setting: UTC"
+
+
+def test_0031_gives_every_mission_report_its_status_heading_and_note_once(tmp_path, monkeypatch):
+    import importlib.util
+    import json
+    d = tmp_path / "migrations"
+    d.mkdir()
+    for f in sorted(MIGRATIONS_DIR.iterdir()):
+        if f.suffix in (".sql", ".py") and f.name < "0031":
+            shutil.copy(f, d)
+    monkeypatch.setattr(m, "MIGRATIONS_DIR", d)
+    db = tmp_path / "celine.db"
+    assert migrate_all(db) == 30
+    at = "2026-11-01T10:00:00.000+00:00"
+    reports = {1: "Mission Night needs you: which of the two flats?\nThe first is cheaper.",
+               2: "Mission Night done.",
+               3: "Mission Flaky tests stopped by Sam.",
+               4: "Mission Night stopped: Ran over 3 hours",
+               5: "It went another way"}
+    c = sqlite3.connect(db)
+    for iid, text in reports.items():
+        c.execute("INSERT INTO intercom(id, created_at, from_addr, to_addr, kind, text, data) "
+                  "VALUES(?, ?, 'agent:m1', 'agent:c1', 'report', ?, '{\"mission\": \"m1\"}')",
+                  (iid, at, text))
+    c.execute("INSERT INTO intercom(id, created_at, from_addr, to_addr, kind, text, data) "
+              "VALUES(9, ?, 'agent:s1', 'agent:c1', 'report', 'Mission accomplished.', '{}')", (at,))
+    c.commit()
+    c.close()
+    shutil.copy(MIGRATIONS_DIR / "0031_mission_report_words.py", d)
+    assert migrate_all(db) == 31
+    c = sqlite3.connect(db, isolation_level=None)
+    got = {i: json.loads(raw) for i, raw in c.execute("SELECT id, data FROM intercom")}
+    assert got[1] == {"mission": "m1", "status": "needs_you",
+                      "heading": "Mission Night is waiting for you",
+                      "note": "which of the two flats?\nThe first is cheaper."}
+    assert (got[2]["status"], got[2]["heading"], got[2]["note"]) == ("done", "Mission Night is done", "")
+    assert (got[3]["status"], got[3]["heading"]) == ("stopped", "Mission Flaky tests is stopped")
+    assert (got[4]["status"], got[4]["note"]) == ("stopped", "Ran over 3 hours")
+    assert got[5] == {"mission": "m1", "status": None, "heading": "It went another way", "note": ""}
+    assert got[9] == {}, "a sub-agent's report is no mission's"
+    assert dict(c.execute("SELECT id, text FROM intercom WHERE id < 9")) == reports, "the text stays"
+    spec = importlib.util.spec_from_file_location("report_words", MIGRATIONS_DIR / "0031_mission_report_words.py")
+    step = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(step)
+    c.execute("UPDATE intercom SET data = ? WHERE id = 2",
+              (json.dumps({**got[2], "heading": "kept"}),))
+    step.up(c, db)
+    assert json.loads(c.execute("SELECT data FROM intercom WHERE id = 2").fetchone()[0])["heading"] == "kept"
+    c.close()

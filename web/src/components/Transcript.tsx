@@ -76,12 +76,8 @@ function eventOf(m: Message, user: string, assistant: string): { heading: ReactN
   }
   if (ic.kind === 'notice') return { heading: ic.data.time_limit ? 'Time limit' : `Notice from ${sender}`, body: m.content }
   if (ic.kind === 'report' && ic.data.mission) {
-    const [first = '', ...rest] = m.content.trimEnd().split('\n')
-    const said = /^(Mission .+?) (needs you|done): ?(.*)$/.exec(first)
-    const state = said ? (said[2] === 'needs you' ? 'waiting for you' : 'done') : ''
-    const title = said ? `${said[1]} ${state}` : first
-    const body = [said ? said[3]! : '', ...rest].join('\n').trim()
-    return { heading: <a href={format({ section: 'missions', conversation: ic.data.mission })}>{title}</a>, body }
+    // the heading and the note are the server's (missions/skill.py record): nothing is read out of the sentence
+    return { heading: <a href={format({ section: 'missions', conversation: ic.data.mission })}>{ic.data.heading ?? ''}</a>, body: ic.data.note ?? '' }
   }
   if (ic.kind === 'report') {
     // a sub-agent's report says how its last turn ended when that was not done
