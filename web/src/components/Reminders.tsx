@@ -69,7 +69,8 @@ function ReminderForm({ conversationId, editing, onClose, onDone }: {
   onClose: () => void
   onDone: () => void
 }) {
-  const [when, setWhen] = useState(editing ? stamp(Date.parse(editing.due_at)).split(', ').at(-1)! : '')
+  // Edit starts from the server's words for its time, day and hour: saved unchanged, it stays when it was
+  const [when, setWhen] = useState(editing ? editing.at : '')
   const [text, setText] = useState(editing?.text ?? '')
   const submit = useAction(async () => {
     await remindersApi.set(conversationId, when, text)

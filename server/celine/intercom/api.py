@@ -111,7 +111,9 @@ async def list_messages(request: Request, to: str | None = None,
     `after`, oldest first, each with its state (pending, sent, cancelled) and whether it
     waits for the user (`unread`) and where it came from (`source`); `scheduled`: only
     those with a due time; `waiting`: only those that wait for the user (a mission's
-    page: what it asked). With `thread`, also where the thread comes from (`source`) and
+    page: what it asked). One with a due time also has `at`: that time in the app's zone
+    as the When of a reminder takes it ("2026-01-10 08:00"), so an edit that leaves it
+    alone keeps its day and hour. With `thread`, also where the thread comes from (`source`) and
     whether it is archived (`archived`); the bug report it is: GET /api/bugreports?thread=."""
     def fn(c):
         out = {"messages": rows.listed(c, to=to, from_addr=from_, scheduled=scheduled,
@@ -120,6 +122,11 @@ async def list_messages(request: Request, to: str | None = None,
         if thread is not None:
             out["source"] = rows.thread_source(c, thread)
             out["archived"] = rows.is_archived(c, thread)
+        for m in out["messages"]:
+            if m.get("due_at"):
+                tz = zone(request.app.state.services.cfg)
+                m["at"] = datetime.fromisoformat(m["due_at"]).astimezone(tz).strftime(
+                    "%Y-%m-%d %H:%M")
         return out
 
     return await request.app.state.services.store.read(fn)

@@ -12,12 +12,14 @@ export type Reminder = {
   from: string
   to: string
   due_at: string
+  /** the due time in the app's zone as the When field takes it ("2026-01-10 08:00") */
+  at: string
   text: string
   state: 'pending' | 'sent' | 'cancelled'
 }
 
-/** the When field as the server takes it: `08:00` is `at`, anything else is `in` */
-const when = (s: string) => (/^\d{1,2}:\d\d$/.test(s) ? { at: s } : { in: s })
+/** the When field as the server takes it: `08:00` and `2026-01-10 08:00` are `at`, anything else is `in` */
+const when = (s: string) => (/^(\d{4}-\d\d-\d\d )?\d{1,2}:\d\d$/.test(s) ? { at: s } : { in: s })
 
 export const remindersApi = {
   /** every message scheduled to one conversation, with its state */

@@ -70,6 +70,12 @@ async def test_set_list_cancel_and_refuse(c):
     left = (await c.get("/api/intercom", params={"to": to, "scheduled": "true"})).json()
     assert {(x["text"], x["from"], x["state"]) for x in left["messages"]} == {
         ("x", "user", "pending"), ("Try the shellbox again", "user", "cancelled")}
+    # an edit sends a reminder's own `at` back: it is due when it was, day and hour
+    kept = next(x for x in left["messages"] if x["text"] == "x")
+    again = await c.post("/api/intercom", json={"to": to, "at": kept["at"], "text": "x again"})
+    assert again.status_code == 200, again.text
+    both = (await c.get("/api/intercom", params={"to": to, "scheduled": "true"})).json()
+    assert next(x for x in both["messages"] if x["text"] == "x again")["due_at"] == kept["due_at"]
     for body in ({"in": "soon", "text": "x"}, {"in": "5 min", "text": " "}):
         r = await c.post("/api/intercom", json={"to": to, **body})
         assert r.status_code == 400 and r.json()["error"]["code"]
