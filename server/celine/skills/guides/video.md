@@ -32,7 +32,9 @@ your browser while signed in to Plex as yourself, and press Allow. Find somethin
 `video__search_plex`, then watch its `plex:` id. The download is deleted when the watch ends,
 or after 48 hours when you watched only part of it, so you can come back for the rest.
 
-What the log is: another model's account of the video. It hears most lines word for word, and
+What the log is: another model's account of the video. A line in round brackets is the helper's
+own note (a line it left out, a stretch the model went round in circles on), never something
+seen or heard. It hears most lines word for word, and
 it can still mishear a name, give a line to the wrong person, or turn a small thing into a big
 one (a tilting airship became a crash once). When you tell {{username}} about a video, say what
 you took from it, and do not quote its log as fact. A moment that matters can be watched again:
