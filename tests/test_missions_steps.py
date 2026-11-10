@@ -197,10 +197,25 @@ async def test_the_user_edits_the_steps_and_moves_the_step(tmp_path, monkeypatch
         assert (await conv.get(store, cid))["model"] == "main/big"
         two = {"steps": [{"title": "a", "state": "doing"}, {"title": "b", "state": "doing"}]}
         assert (await c.patch(f"/api/missions/{cid}", json=two)).status_code == 400
-        listed = (await c.get("/api/missions")).json()["missions"]
+        got = (await c.get("/api/missions")).json()
+        listed = got["missions"]
         assert (listed[0]["step"], listed[0]["steps"][0]["done_at"]) == (2, T0)
         assert [s["model_label"] for s in listed[0]["steps"]] == [None, "Big"], \
             "each step's model by its name, the server's"
+        assert [s["display"]["words"] for s in listed[0]["steps"]] == ["Done", "Running"]
+        assert listed[0]["filter"] == "active" and got["filters"] == [
+            {"value": "all", "label": "All", "count": 1},
+            {"value": "active", "label": "Running", "count": 1},
+            {"value": "needs_you", "label": "Waiting for you", "count": 0},
+            {"value": "done", "label": "Done", "count": 0},
+            {"value": "stopped", "label": "Stopped", "count": 0}], "the page's State options"
+        await Intercom(store).send(f"agent:{cid}", "user", "Which feed?")
+        got = (await c.get("/api/missions")).json()
+        assert (got["missions"][0]["status"], got["missions"][0]["filter"],
+                got["missions"][0]["display"]["words"]) == ("active", "needs_you", "Waiting for you")
+        assert {f["value"]: f["count"] for f in got["filters"]} == {
+            "all": 1, "active": 0, "needs_you": 1, "done": 0, "stopped": 0}, \
+            "a row is counted under the option its words name"
         assert (await c.get("/api/missions?trashed=1")).json()["missions"] == []
         await conversations.delete(store, cid)
         assert (await c.get("/api/missions")).json()["missions"] == []

@@ -100,6 +100,20 @@ _MISSION_SHOWN = {
 }
 
 
+class PlanStepState(Shown):
+    """Where a step of a plan stands (plans/store.py)."""
+    TODO = "todo"
+    DOING = "doing"
+    DONE = "done"
+
+
+_PLAN_STEP_SHOWN = {
+    PlanStepState.TODO: ("To do", Tone.MUTED),
+    PlanStepState.DOING: ("Running", Tone.RUNNING),
+    PlanStepState.DONE: ("Done", Tone.SUCCESS),
+}
+
+
 class AgentState(Shown):
     """Where a sub-agent stands (sub_agents/skill.py `_look` works it out; nothing stores it)."""
     QUEUED = "queued"
@@ -128,4 +142,5 @@ AGENT_ENDED = {
 
 # each shown set's members as (words, tone); one table per set, since a member equals its
 # string and "done" of one set would be "done" of another in a shared table
-_DISPLAYS = {RunState: _RUN_SHOWN, MissionStatus: _MISSION_SHOWN, AgentState: _AGENT_SHOWN}
+_DISPLAYS = {RunState: _RUN_SHOWN, MissionStatus: _MISSION_SHOWN,
+             PlanStepState: _PLAN_STEP_SHOWN, AgentState: _AGENT_SHOWN}

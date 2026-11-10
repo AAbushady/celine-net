@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict
 
 from ..conversations import store as conversations
 from ..core.ids import iso, parse_when
-from ..core.statuses import MissionStatus
+from ..core.statuses import MissionStatus, PlanStepState
 from ..errors import CelineError, NotFound
 from . import store as missions
 from .store import book_time_limit
@@ -176,28 +176,36 @@ async def list_missions(request: Request, status: str | None = None,
     text, `steps`, each with its `model_label`, `step` the number of the one doing) and its automatic context switch; with `trashed` only the ones in the
     trash, with `archived` only the archived ones (a mission is archived and deleted as
     its conversation is: POST /conversations/{cid}/archive, DELETE /conversations/{cid}).
-    `counts`: the page's numbers (store.counts), whatever the filters. `asked`: it waits
-    for the user beyond its status: an approval waits in it or in a sub-agent of it
+    `counts`: the shelves in numbers (store.counts), whatever the filters. `asked`: it
+    waits for the user beyond its status: an approval waits in it or in a sub-agent of it
     (approvals.asked), or a message of its own does (intercom/store.py missions_asking),
     as Waiting for you and the chat list say. `display`: its words and tone as the page
-    shows them (MissionStatus.display), Waiting for you while `asked`."""
+    shows them (MissionStatus.display), Waiting for you while `asked`. `filter`: the
+    State option it falls under, the one its display names. `filters`: those options,
+    each {value, label, count} over the rows sent."""
     from ..approvals import asked
     from ..intercom.store import missions_asking
     store = request.app.state.services.store
     settings = getattr(request.app.state.services.cfg, "settings", None)
     waits = asked(request.app.state.services) | await store.read(missions_asking)
-    return {"missions": [{**_labelled(settings, r), "asked": r["conversation_id"] in waits,
-                          **({"display": MissionStatus.NEEDS_YOU.display}
-                             if r["conversation_id"] in waits else {})}
-                         for r in await missions.list(store, status, trashed, archived)],
-            "counts": await missions.counts(store)}
+    rows = []
+    for r in await missions.list(store, status, trashed, archived):
+        asks = r["conversation_id"] in waits
+        shown = MissionStatus.NEEDS_YOU if asks else MissionStatus(r["status"])
+        rows.append({**_labelled(settings, r), "asked": asks, "display": shown.display,
+                     "filter": shown})
+    filters = [{"value": "all", "label": "All", "count": len(rows)},
+               *({"value": s.value, "label": s.display["words"],
+                  "count": sum(1 for r in rows if r["filter"] == s)} for s in MissionStatus)]
+    return {"missions": rows, "filters": filters, "counts": await missions.counts(store)}
 
 
 def _labelled(settings, row: dict) -> dict:
     """A mission as a client gets it: each step's `model_label` (attachments.label),
-    None for a step on the mission's own model."""
+    None for a step on the mission's own model, and its `display` (PlanStepState.display)."""
     from ..attachments import label
-    return {**row, "steps": [{**s, "model_label": label(settings, s.get("model")) or None}
+    return {**row, "steps": [{**s, "model_label": label(settings, s.get("model")) or None,
+                              "display": PlanStepState(s["state"]).display}
                              for s in row["steps"]]}
 
 

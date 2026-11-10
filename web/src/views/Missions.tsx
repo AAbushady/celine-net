@@ -20,7 +20,7 @@ import { artifactRef } from '../lib/artifacts'
 import { count, errorText, fullDate, listTime, stamp } from '../lib/format'
 import { intercomApi, isIntercomEvent, type IntercomMessage } from '../lib/intercom'
 import {
-  STATE_WORD, isMissionEvent, isOpen, missionsApi, type Mission, type MissionStatus, type MissionStep,
+  isMissionEvent, isOpen, missionsApi, type Mission, type MissionStep,
 } from '../lib/missions'
 import { SETTINGS_EVENTS, settingsApi } from '../lib/settingsApi'
 import { useName } from '../lib/name'
@@ -61,11 +61,6 @@ export function treeOrder(top: string, agents: TreeAgent[], missions: TreeMissio
 const missionsNoun = (n: number) => count(n, 'mission')
 const agentsNoun = (n: number) => count(n, 'sub-agent')
 
-type Show = 'all' | MissionStatus
-const SHOW: { value: Show; label: string }[] = [
-  { value: 'all', label: 'All' }, { value: 'active', label: STATE_WORD.active }, { value: 'needs_you', label: STATE_WORD.needs_you },
-  { value: 'done', label: STATE_WORD.done }, { value: 'stopped', label: STATE_WORD.stopped },
-]
 const SORTS = ['Recent', 'Name', 'Created']
 const GROUPS = ['State', 'None']
 
@@ -133,7 +128,7 @@ function MissionsList({ shelf, setShelf, lists, agents, onNew, onChange }: {
 }) {
   const nav = useNav()
   const [q, setQ] = useState('')
-  const [show, setShow] = useState<Show>('all')
+  const [show, setShow] = useState('all')
   const [sort, setSort] = useState('Recent')
   const [group, setGroup] = useState('None')
   const [renaming, setRenaming] = useState<Mission | null>(null)
@@ -145,6 +140,8 @@ function MissionsList({ shelf, setShelf, lists, agents, onNew, onChange }: {
   const act = useAction(async (fn: () => Promise<unknown>) => { await fn(); onChange() })
   const shown = lists[shelf]
   const counts = lists.list.data?.counts
+  // the State options of the list, the server's: their labels, their counts, and which a row falls under
+  const filters = lists.list.data?.filters
   const kids = useMemo(() => {
     const out = new Map<string, number>()
     for (const a of agents) out.set(a.parent, (out.get(a.parent) ?? 0) + 1)
@@ -153,7 +150,7 @@ function MissionsList({ shelf, setShelf, lists, agents, onNew, onChange }: {
 
   const items = useMemo(() => {
     const s = q.trim().toLowerCase()
-    let list = (shown.data?.missions ?? []).filter(m => (shelf !== 'list' || show === 'all' || m.status === show)
+    let list = (shown.data?.missions ?? []).filter(m => (shelf !== 'list' || show === 'all' || m.filter === show)
       && (!s || [m.name, m.brief, m.note ?? ''].some(x => x.toLowerCase().includes(s))))
     if (sort === 'Name') list = [...list].sort((a, b) => a.name.localeCompare(b.name))
     else if (sort === 'Recent') list = [...list].sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
@@ -162,11 +159,11 @@ function MissionsList({ shelf, setShelf, lists, agents, onNew, onChange }: {
   }, [shown.data, shelf, show, q, sort])
   const rows = useMemo<Row[]>(() => {
     if (group !== 'State' || shelf !== 'list') return items.map(m => ({ key: m.conversation_id, m }))
-    return SHOW.slice(1).flatMap(s => {
-      const these = items.filter(m => m.status === s.value)
+    return (filters ?? []).slice(1).flatMap(s => {
+      const these = items.filter(m => m.filter === s.value)
       return these.length ? [{ key: `g:${s.value}`, head: s.label, n: these.length }, ...these.map(m => ({ key: m.conversation_id, m }))] : []
     })
-  }, [items, group, shelf])
+  }, [items, group, shelf, filters])
   picker.keys.current = items.map(m => m.conversation_id)
 
   const open = (m: Mission) => nav.go({ section: 'missions', conversation: m.conversation_id })
@@ -196,8 +193,8 @@ function MissionsList({ shelf, setShelf, lists, agents, onNew, onChange }: {
         <div className="list-page__top">
           {picker.on
             ? <SelectBar picker={picker} noun={missionsNoun} actions={bulkActions({ what: 'conversations', shelf, noun: missionsNoun, archive: true })} />
-            : <Toolbar state={{ label: 'State', value: show, onChange: v => setShow(v as Show),
-                                options: SHOW.map(s => ({ ...s, count: s.value === 'all' ? counts?.all : counts?.[s.value] })) }}
+            : <Toolbar state={{ label: 'State', value: show, onChange: setShow,
+                                options: filters ?? [] }}
                        sort={{ label: 'Sort', value: sort, onChange: setSort, options: SORTS.map(v => ({ value: v, label: v })) }}
                        group={{ label: 'Group', value: group, onChange: setGroup, options: GROUPS.map(v => ({ value: v, label: v })) }} />}
         </div>
@@ -459,7 +456,7 @@ function Steps({ m }: { m: Mission }) {
       <div className="missions-rows">
         {m.steps.map((s, i) => (
           <ListRow key={i} density="lg" leading={<Step n={i + 1} done={s.state === 'done'} current={s.state === 'doing'} />} title={s.title} tooltip={s.title}
-                   muted={s.state === 'done'} subtitle={nameOf(s)} aside={s.state === 'done' ? STATE_WORD.done : s.state === 'doing' ? STATE_WORD.active : undefined}
+                   muted={s.state === 'done'} subtitle={nameOf(s)} aside={s.state !== 'todo' ? s.display.words : undefined}
                    trailing={<IconButton icon={ArrowLeftRight} size="sm" label="Change model" disabled={!online || save.busy || !!m.trashed_at}
                                          onClick={() => setChoosing(i)} />} />
         ))}

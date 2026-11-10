@@ -1,7 +1,6 @@
 /* Missions: the api clients (POST /missions, GET, PATCH, POST /stop; a mission is a
    conversation, so it is archived, goes to the Trash, comes back and is deleted
-   permanently as one), the row types and the words a mission's state is said in
-   (docs/ARCHITECTURE.md). A mission is its instructions: it writes the plan, works with its
+   permanently as one) and the row types (docs/ARCHITECTURE.md). A mission is its instructions: it writes the plan, works with its
    sub-agents and delivers an artifact. */
 import { del, json, post, request, type Display, type PlanStep } from './api'
 
@@ -15,6 +14,8 @@ export type Mission = {
   asked?: boolean
   /** its state as the page shows it, the server's words and tone (core/statuses.py MissionStatus.display) */
   display: Display
+  /** the State option of the list it falls under (GET /missions `filters`) */
+  filter: string
   /** its default terminal's name in this conversation */
   terminal: string
   brief: string
@@ -44,12 +45,13 @@ export type Mission = {
 }
 
 /** a step as the server sends it: `model_label` its model's name, the server's (null:
-    the mission's own model) */
-export type MissionStep = PlanStep & { model_label: string | null }
+    the mission's own model), `display` its state as the page shows it */
+export type MissionStep = PlanStep & { model_label: string | null; display: Display }
 
-/** GET /missions: the page's numbers, the server's (each status of the list, all of it,
-    the Archive and the Trash) */
-type MissionCounts = Record<MissionStatus | 'all' | 'archived' | 'trashed', number>
+/** GET /missions: the shelves in numbers, the server's (the list, the Archive, the Trash) */
+type MissionCounts = Record<'all' | 'archived' | 'trashed', number>
+/** GET /missions: the State options of the rows sent, with their labels and counts, the server's */
+export type MissionFilters = { value: string; label: string; count: number }[]
 
 export const missionsApi = {
   /** the brief; with no name it names it; `model`: its chat model, else the default;
@@ -61,7 +63,7 @@ export const missionsApi = {
     })),
   /** the archived or the trashed ones instead */
   list: (which?: 'archived' | 'trashed') =>
-    request<{ missions: Mission[]; counts: MissionCounts }>(`/missions${which ? `?${which}=1` : ''}`),
+    request<{ missions: Mission[]; filters: MissionFilters; counts: MissionCounts }>(`/missions${which ? `?${which}=1` : ''}`),
   /** a new name, or the brief changed (both reach it as a message) */
   edit: (cid: string, body: { name?: string; brief?: string }) =>
     request<{ ok: boolean }>(`/missions/${cid}`, json('PATCH', body)),
@@ -88,8 +90,4 @@ export const isMissionEvent = (ev: { type: string }) =>
 /** a mission still at work: active or waiting for you */
 export const isOpen = (status: string | null | undefined) => status === 'active' || status === 'needs_you'
 
-/** the one word for where a mission is */
-export const STATE_WORD: Record<MissionStatus, string> = {
-  active: 'Running', needs_you: 'Waiting for you', done: 'Done', stopped: 'Stopped',
-}
 

@@ -51,12 +51,11 @@ async def _mission(store, name: str, status: str) -> str:
     return cid
 
 
-async def test_the_counts_split_the_list_by_status_and_count_the_shelves_apart(store):
+async def test_the_counts_are_the_list_and_the_shelves_apart(store):
     for name, status in [("a", "active"), ("b", "active"), ("c", "needs_you"), ("d", "done"), ("e", "stopped")]:
         await _mission(store, name, status)
     archived = await _mission(store, "f", "done")
     trashed = await _mission(store, "g", "stopped")
     await store.write(lambda c: c.execute("UPDATE conversations SET archived_at='2026-10-01T00:00:00Z' WHERE id=?", (archived,)))
     await store.write(lambda c: c.execute("UPDATE conversations SET trashed_at='2026-10-01T00:00:00Z' WHERE id=?", (trashed,)))
-    assert await missions.counts(store) == {"all": 5, "active": 2, "needs_you": 1, "done": 1, "stopped": 1,
-                                            "archived": 1, "trashed": 1}
+    assert await missions.counts(store) == {"all": 5, "archived": 1, "trashed": 1}

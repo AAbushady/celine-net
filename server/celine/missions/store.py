@@ -60,22 +60,15 @@ async def list(store, status: str | None = None,  # noqa: A001
 
 
 async def counts(store) -> dict:
-    """The numbers the Missions page shows: each status of the list (not archived, not in
-    the trash), all of them, and the Archive and the Trash."""
+    """The Missions page's shelves in numbers: `all` the list (not archived, not in the
+    trash), `archived` the Archive, `trashed` the Trash."""
     def fn(c: sqlite3.Connection) -> dict:
-        out = {"all": 0, "active": 0, "needs_you": 0, "done": 0, "stopped": 0,
-               "archived": 0, "trashed": 0}
+        out = {"all": 0, "archived": 0, "trashed": 0}
         for r in c.execute(
-                "SELECT m.status, c.trashed_at IS NOT NULL AS t, c.archived_at IS NOT NULL AS a, "
+                "SELECT c.trashed_at IS NOT NULL AS t, c.archived_at IS NOT NULL AS a, "
                 "COUNT(*) AS n FROM missions m JOIN conversations c ON c.id = m.conversation_id "
-                "GROUP BY 1, 2, 3"):
-            if r["t"]:
-                out["trashed"] += r["n"]
-            elif r["a"]:
-                out["archived"] += r["n"]
-            else:
-                out["all"] += r["n"]
-                out[r["status"]] = out.get(r["status"], 0) + r["n"]
+                "GROUP BY 1, 2"):
+            out["trashed" if r["t"] else "archived" if r["a"] else "all"] += r["n"]
         return out
     return await store.read(fn)
 
