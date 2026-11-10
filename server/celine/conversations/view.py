@@ -66,7 +66,7 @@ async def snapshot(store, cid: str, llm=None) -> dict:
                 "LEFT JOIN messages r ON r.id = tc.result_message_id "
                 "WHERE tc.message_id=? ORDER BY tc.rowid", (m["id"],)).fetchall()
             if rows:
-                calls[m["id"]] = [_call(r, store.tool_words) for r in rows]
+                calls[m["id"]] = [_call(c, r, store.tool_words) for r in rows]
                 if m.get("turn_id") and m["turn_id"] not in runs:
                     runs[m["turn_id"]] = words.runs_of_turn(c, m["turn_id"], store.tool_words)
         # a call still at work (here or as a job) shows its latest progress line
@@ -239,9 +239,13 @@ def continuable(c: sqlite3.Connection, cid: str, turn) -> dict:
     return {"ok": True, "label": label, "reason": None}
 
 
-def _call(r: sqlite3.Row, own: dict) -> dict:
-    """One tool call as the transcript shows it, its row in words (skills/words.py)."""
+def _call(c: sqlite3.Connection, r: sqlite3.Row, own: dict) -> dict:
+    """One tool call as the transcript shows it, its row in words (skills/words.py). A
+    call that names a conversation with a link (a sub-agent's) gets the link as homes.of
+    gives it now: the one stored with the call is where it opened when the call was made."""
     display = json.loads(r["display"]) if r["display"] else None
+    if isinstance(display, dict) and display.get("conversation_id") and "link" in display:
+        display["link"] = homes.of(c, display["conversation_id"])["link"]
     return {**dict(r), "display": mark.for_client(display),
             "words": words.words(r["name"], r["arguments"], r["state"], display, r["result"], own)}
 
