@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sqlite3
 
+from .. import homes
 from ..core.states import LIVE_SQL
 from ..intercom.store import OPENING
 
@@ -31,9 +32,7 @@ def _what(c: sqlite3.Connection, r) -> str:
     if (run := _run(c, r)) is not None:
         return f"the run of the Routine {run['label']} (address run:{run['id']})"
     if r["kind"] == "mission":
-        m = c.execute("SELECT name FROM missions WHERE conversation_id=?",
-                      (r["id"],)).fetchone()
-        return f"the mission {m['name'] if m else title} (address {r['id']})"
+        return f"the mission {homes.mission_name(c, r['id']) or title} (address {r['id']})"
     if r["kind"] == "agent":
         return f"the sub-agent {r['agent_name'] or title} (address {r['id']})"
     if r["kind"] == "chat":

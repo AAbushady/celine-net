@@ -18,7 +18,9 @@ FIELDS = ("name", "terminal", "brief", "artifact", "report_to", "until", "min_un
 # what a row reads of its conversation: an unnamed mission is named as a chat is (the
 # title role, after its first reply), and the automatic context switch is the
 # conversation's (api/context.py)
-_SELECT = ("SELECT m.*, c.title, c.title_auto, c.auto_context, c.created_at, c.updated_at, "
+# `shown`: its name as people read it (homes.MISSION_NAME)
+_SELECT = (f"SELECT m.*, {homes.MISSION_NAME} AS shown, c.title, c.title_auto, c.auto_context, "
+           "c.created_at, c.updated_at, "
            "c.trashed_at, c.archived_at, p.text AS plan, p.steps AS steps "
            "FROM missions m JOIN conversations c ON c.id = m.conversation_id "
            "LEFT JOIN plans p ON p.conversation_id = m.conversation_id ")
@@ -144,8 +146,8 @@ def _view(r) -> dict:
     row["steps"] = json.loads(row["steps"] or "[]")
     row["step"] = next((n for n, s in enumerate(row["steps"], 1) if s["state"] == "doing"),
                        None)
-    if row.pop("title_auto") and row["title"]:
-        row["name"] = row["title"]
+    row.pop("title_auto")
+    row["name"] = row.pop("shown")
     row["auto_context"] = bool(row["auto_context"])
     return row
 

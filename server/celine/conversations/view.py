@@ -38,8 +38,9 @@ async def snapshot(store, cid: str, llm=None) -> dict:
             "FROM conversations WHERE id=?", (cid,)).fetchone()
         if conv is None:
             raise KeyError(cid)
-        mission = c.execute("SELECT name, status, note, until FROM missions WHERE "
-                            "conversation_id=?", (cid,)).fetchone()
+        mission = c.execute(f"SELECT {homes.MISSION_NAME} AS name, m.status, m.note, m.until "
+                            "FROM missions m JOIN conversations c ON c.id = m.conversation_id "
+                            "WHERE m.conversation_id=?", (cid,)).fetchone()
         from ..intercom.store import source_of
         from ..sub_agents.skill import agents_of
         agents = agents_of(c, cid, own=store.tool_words)

@@ -599,7 +599,8 @@ def tree_of(c: sqlite3.Connection, cid: str, own: dict) -> dict | None:
             f = _look(c, r["id"], own)
             node(r, parent, depth, "agent", r["agent_name"], f["state"], f["reason"],
                  f["step_words"] if f["working"] else None)
-        for r in c.execute("SELECT cv.id, cv.model_id, m.name, m.status, m.note FROM "
+        for r in c.execute(f"SELECT cv.id, cv.model_id, {homes.mission_name_sql('m', 'cv')} AS name, "
+                           "m.status, m.note FROM "
                            "missions m JOIN conversations cv ON cv.id = m.conversation_id "
                            "WHERE m.started_by=? ORDER BY cv.created_at, cv.id",
                            (parent,)).fetchall():

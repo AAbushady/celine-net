@@ -112,7 +112,7 @@ def name_of(c: sqlite3.Connection, addr: str) -> str | None:
         return SYSTEM_NAMES.get(rest, rest)
     if kind not in ("agent", "team"):
         return None
-    r = c.execute("SELECT coalesce(mi.name, c.agent_name) AS name "
+    r = c.execute(f"SELECT coalesce({homes.mission_name_sql('mi')}, c.agent_name) AS name "
                   "FROM conversations c LEFT JOIN missions mi ON mi.conversation_id = c.id "
                   "WHERE c.id=?", (rest,)).fetchone()
     return None if r is None else r["name"] or NAMES["agent"]
@@ -138,7 +138,7 @@ def source_of(c: sqlite3.Connection, addr: str) -> dict | None:
     if kind not in ("agent", "team"):
         return None
     r = c.execute("SELECT c.kind, c.title, c.agent_of, c.agent_name, c.trigger_key, "
-                  "mi.name AS mission FROM conversations c LEFT JOIN missions mi "
+                  f"{homes.mission_name_sql('mi')} AS mission FROM conversations c LEFT JOIN missions mi "
                   "ON mi.conversation_id = c.id WHERE c.id=?", (rest,)).fetchone()
     if r is None:
         return None

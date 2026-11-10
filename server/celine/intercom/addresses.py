@@ -20,6 +20,7 @@ from __future__ import annotations
 import re
 import sqlite3
 
+from .. import homes
 from ..core.states import LIVE_SQL
 
 SHORT = 8           # the shortest id that addresses a conversation: past_conversations shows 8
@@ -97,8 +98,10 @@ def _by_name(c: sqlite3.Connection, name: str, me: sqlite3.Row | None) -> str | 
             "SELECT id FROM conversations WHERE agent_of=? AND agent_name=?",
             (me["id"], name)).fetchone()):
         return r[0]
-    r = c.execute("SELECT conversation_id FROM missions WHERE name=?",
-                  (name,)).fetchone()
+    # by the name people read (a mission the title role named), or the one it was started with
+    r = c.execute("SELECT m.conversation_id FROM missions m JOIN conversations c "
+                  f"ON c.id = m.conversation_id WHERE {homes.MISSION_NAME} = ? OR m.name = ? "
+                  f"ORDER BY {homes.MISSION_NAME} = ? DESC", (name, name, name)).fetchone()
     return r[0] if r else None
 
 

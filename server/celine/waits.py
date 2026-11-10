@@ -69,7 +69,8 @@ def _missions(c) -> list[dict]:
     from .core.ids import now
     from .intercom.store import _UNREAD, BUG
     rows = c.execute(
-        "SELECT * FROM (SELECT m.conversation_id, m.name, m.note, m.status, m.updated_at, "
+        f"SELECT * FROM (SELECT m.conversation_id, {homes.mission_name_sql('m', 'cv')} AS name, m.note, "
+        "m.status, m.updated_at, "
         "(SELECT i.text FROM intercom i WHERE i.from_addr = 'agent:' || m.conversation_id "
         f"AND i.kind <> 'job' AND {_UNREAD} AND NOT {BUG} ORDER BY i.id DESC LIMIT 1) AS asked "
         "FROM missions m JOIN conversations cv ON cv.id = m.conversation_id "

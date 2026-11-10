@@ -15,6 +15,26 @@ import sqlite3
 from .clock import day_of
 
 HOMES = ("agent", "missions", "routines")
+# A mission's name as people and the agent read it, over missions `m` and its conversation
+# `c`: the title the title role gave it while its own name is still the one made from its
+# brief (title_auto), else the name it was started or renamed with. NULL where `m` is no
+# mission (a LEFT JOIN). Every place that names a mission reads this, so the Missions
+# page, a crumb, a sender's name, Waiting for you and an approval say the same.
+MISSION_NAME = ("CASE WHEN m.conversation_id IS NULL THEN NULL "
+                "WHEN c.title_auto AND coalesce(c.title, '') <> '' THEN c.title ELSE m.name END")
+
+
+def mission_name_sql(m: str = "m", c: str = "c") -> str:
+    """MISSION_NAME for other aliases of the two tables."""
+    return MISSION_NAME.replace("m.", f"{m}.").replace("c.", f"{c}.")
+
+
+def mission_name(c: sqlite3.Connection, cid: str) -> str | None:
+    """Inside a read: the name of the mission of conversation `cid` as people read it
+    (MISSION_NAME); None: it is no mission."""
+    r = c.execute(f"SELECT {MISSION_NAME} FROM missions m JOIN conversations c "
+                  "ON c.id = m.conversation_id WHERE m.conversation_id=?", (cid,)).fetchone()
+    return r[0] if r else None
 _COLS = "id, kind, trigger_key, created_at"
 
 
@@ -82,8 +102,7 @@ def _named(c: sqlite3.Connection, r) -> dict:
     agent), name, link}."""
     kind, name = r["kind"], None
     if kind == "mission":
-        m = c.execute("SELECT name FROM missions WHERE conversation_id=?", (r["id"],)).fetchone()
-        name = m[0] if m else None
+        name = mission_name(c, r["id"])
     elif kind == "agent":
         name = r["agent_name"]
     elif (r["trigger_key"] or "").startswith("run:"):

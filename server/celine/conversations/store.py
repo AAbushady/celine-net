@@ -140,7 +140,8 @@ async def update(store, cid: str, title: str | None = None,
 def named(c: sqlite3.Connection, tz, first: str | None = None) -> list[dict]:
     """The agent's chats, `first` first then the newest, each with the name people read: a
     mission's name, a sub-agent's, the title the user gave it, else its name and the
-    day it started (an app title is no name, nor an unnamed mission's brief start)."""
+    day it started (an app title is no name, nor the name an unnamed mission got from
+    its brief: `title_auto` says both)."""
     from ..intercom.store import NAMES
     rows = c.execute(
         "SELECT c.id, c.title, c.title_auto, c.agent_name, c.created_at, "
@@ -151,7 +152,7 @@ def named(c: sqlite3.Connection, tz, first: str | None = None) -> list[dict]:
         (first, first)).fetchall()
 
     def name(r) -> str:
-        if r["mission"] and r["mission"] != " ".join(r["brief"].split())[:40]:
+        if r["mission"] and not r["title_auto"]:
             return r["mission"]
         if r["agent_name"]:
             return r["agent_name"]

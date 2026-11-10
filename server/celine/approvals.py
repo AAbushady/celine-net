@@ -192,9 +192,8 @@ def _where(c, cid: str) -> dict:
         return {"home": None, "link": None, "root": None, "where": None}
     name = None
     if top["kind"] == "mission":
-        r = c.execute("SELECT name FROM missions WHERE conversation_id=?",
-                      (top["id"],)).fetchone()
-        name = f"Mission {r[0]}" if r else None
+        called = homes.mission_name(c, top["id"])
+        name = f"Mission {called}" if called else None
     elif (top["trigger_key"] or "").startswith("run:"):
         r = c.execute("SELECT label FROM runs WHERE id=?",
                       (top["trigger_key"][4:],)).fetchone()
