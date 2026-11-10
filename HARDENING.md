@@ -1,7 +1,9 @@
 # Hardening
 
 This fork runs upstream's app with tighter defaults, for one owner on one machine. It
-branched from upstream commit `69928d0` and was last merged with `9e56196` (v2.1.0).
+branched from upstream commit `69928d0` and was last merged with `9e56196` (v2.1.0). That
+merge is its last: since 2026-11-10 an upstream feature wanted here is written again in this
+fork (Taking upstream changes).
 
 ## What differs from upstream
 
@@ -126,13 +128,17 @@ docker compose up -d --force-recreate --no-deps shellbox browser
 
 ## Taking upstream changes
 
-Nothing here updates itself. Read the changes before merging them:
+This fork does not merge upstream any more. `9e56196` (v2.1.0) is the last merge: upstream
+changes hundreds of files a day, and this fork's own interface and structure conflict with
+them more with each one. The `upstream` remote stays, to read what upstream adds:
 
 ```sh
 git remote add upstream <its address>   # once per clone
 git fetch upstream
-git diff 9e56196 upstream/master
+git log 9e56196..upstream/master        # what is new there
 ```
 
-Read the Dockerfiles, the compose files, the lockfiles, `config/` and `server/celine/guard/`
-most closely, and update the commit named at the top of this file after a merge.
+A feature wanted here is written again in this fork, to this fork's own structure and
+rules, with its own tests. Its commit message names the upstream commit or feature it
+follows. The licence stays as it is: the whole program is AGPL-3.0 with upstream's copyright
+notice (LICENSE), and the README says it is a fork.
