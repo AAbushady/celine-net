@@ -23,12 +23,12 @@ The map of the code and the rules it follows.
 | Module | What |
 |---|---|
 | `__main__.py`, `config.py`, `boot.py`, `reload.py`, `saves.py` | preflight and lifespan; celine.toml into a Config and the readers' helpers; the whole load (every config file, var/settings, its row), which writes nothing; config reloaded in place; the Settings saves, one function each, for the routes and the agent's `settings` skill |
-| `core/` | the single writer and event append, EventBus, ids and times, Services |
+| `core/` | the single writer and event append, EventBus, ids and times, Services; `statuses.py` every status set the app shows, each an enum with its display (words and tone) |
 | `db/` | `migrations/0001_schema.sql`, the later `NNNN_*.sql` and `NNNN_*.py` (a `.py` one moves stored data), and the chains for `log/` and `notebook/`; `migrate.py` applies them |
 | `conversations/` | conversation rows, the message tree, snapshot and replay, routes |
 | `turns/` | one turn: dispatcher, runner, tool chokepoint, context, compaction, titles; `reply.py` the one place that touches a stored reply (citation tokens only); `warm.py` keeps the newest chat ready on its model server |
 | `backends/` | model APIs (openai, anthropic), router, queue, the test model is `tests/fake_backend.py` |
-| `skills/` | the tool registry and the tools without a module of their own; `guides/<skill>.md` the skill guides; `recall.py` what comes back on its own |
+| `skills/` | the tool registry and the tools without a module of their own; `guides/<skill>.md` the skill guides; `recall.py` what comes back on its own; `tool_rows.py` what a tool call's row says and how rows group into runs |
 | `kb/` | knowledge bases: the chat archive, documents, instant and semantic search, the connectors' feed |
 | `settings/` | `var/settings` and `var/secrets`: shapes, validation, `registry.py` (every setting), `features.py` (the feature catalog and probes), `services.py` (box addresses), `prompts.py` (Settings, Advanced, Prompts: the user's edits in var/prompts) |
 | `agent.py`, `prompts.py` | the agent's row: name, pronouns, persona, talk, voice, portrait; `text(__file__, name)` reads a `.md` beside the module that sends it |
@@ -42,7 +42,7 @@ The map of the code and the rules it follows.
 | `homes.py` | where a conversation lives and the link that opens it, and the one walk up the agent chain (`root`); the client never works it out |
 | `push.py` | web push: the VAPID key, the devices that take pushes, every notice to them while no page is focused |
 | `jobs/` | steps that outlive their turn |
-| `work.py`, `hold.py`, `leftovers.py` | the queue of background model jobs; why the agent's turns may not start now; what a done mission leaves open |
+| `work.py`, `hold.py`, `leftovers.py`, `activity.py` | the queue of background model jobs; why the agent's turns may not start now; what a done mission leaves open; whether a conversation is at work (Running for lists, Busy for decisions) |
 | `events.py`, `texts.py`, `approvals.py`, `waits.py`, `metrics.py` | the events list; every long text's history; approvals before something runs; Waiting for you, everything that waits on the user; Prometheus numbers |
 | `attachments.py`, `box_files.py` | files on a message; files between the app and the box |
 | `comfyui/`, `image_catalog.py`, `vision.py` | images and music; the model catalog; one question about one image |
@@ -92,7 +92,7 @@ An instance on a scratch data dir: `CELINE_DATA_DIR=DIR/data ./start.sh --port 8
 
 1. No backwards compatibility: no shims, aliases or old shapes. Stored data changes once, in a migration, and the old code goes in the same change.
 2. An interactive turn that fails fails with its reason. Nothing re-asks behind the user's back; a routine waits for its model; a failed run runs again only as its schedule's "When a run fails" setting says, or when the user presses Retry on it (a failed, skipped or stopped run), as a fresh run of its prompt. A model's output is stored and shown as it came: no code transforms, trims, replaces or rewrites a reply (`turns/reply.py` touches citation tokens only; known secrets are masked).
-3. The server owns state: lists, counts, labels, paths and effective settings come from the server through explicit events. The client never guesses.
+3. The server owns state: lists, counts, labels, paths and effective settings come from the server through explicit events. The client never guesses. A status is an enum in `core/statuses.py`, sent as its value with its `display` (words and tone), so the page keeps no word table. A list comes with its filter options (label and count each) and is fetched again on its events.
 4. Routes are plain REST: `/api/<plural-noun>[/{id}[/<sub-resource>]]`, kebab-case, a verb only as a trailing action (`/run`, `/stop`, `/test`), singular only for a singleton (`/api/agent`, `/api/status`), sockets under `/ws/`.
 5. A text a model reads lives beside the code that sends it (`prompts.text`), or in `config/` when a user is meant to edit it, or edited by the user in Settings, Advanced, Prompts (var/prompts), which `prompts.text` reads first.
 6. A feature is one entry in `settings/features.py`; a service address is a setting with a probe.

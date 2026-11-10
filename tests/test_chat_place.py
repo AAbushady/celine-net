@@ -89,9 +89,9 @@ async def test_the_list_runs_first_then_pinned_and_every_row_says_its_state(c, s
     assert order[:2] == [running, pinned]
     assert mission not in rows and body["count"] == len(rows) == 4
     assert rows[running]["group"] == "Running"
-    assert rows[running]["state"] == {"tone": "running", "words": ""}
-    assert rows[pinned]["group"] == "Pinned" and rows[pinned]["state"] is None
-    assert rows[failed]["state"] == {"tone": "error", "words": "The reply failed."}
+    assert rows[running]["display"] == {"tone": "running", "words": ""}
+    assert rows[pinned]["group"] == "Pinned" and rows[pinned]["display"] is None
+    assert rows[failed]["display"] == {"tone": "error", "words": "The reply failed."}
     assert rows[old]["group"] == "2025" and rows[old]["dated"]
     assert not rows[pinned]["dated"] and not rows[running]["dated"]
     assert rows[old]["folded"] and not rows[failed]["folded"], \
@@ -103,7 +103,7 @@ async def test_the_list_runs_first_then_pinned_and_every_row_says_its_state(c, s
     rows = {r["id"]: r for r in (await c.get("/api/conversations",
                                              params={"place": "celine"})).json()["conversations"]}
     assert rows[running]["group"] != "Running"
-    assert rows[running]["state"] == {"tone": "warn", "words": "Frozen"}, "its row says why it waits"
+    assert rows[running]["display"] == {"tone": "warn", "words": "Frozen"}, "its row says why it waits"
 
 
 async def test_a_running_row_says_loading_while_its_model_loads(c, store):
@@ -115,7 +115,7 @@ async def test_a_running_row_says_loading_while_its_model_loads(c, store):
 
     async def state():
         rows = (await c.get("/api/conversations", params={"place": "celine"})).json()
-        return next(r for r in rows["conversations"] if r["id"] == cid)["state"]
+        return next(r for r in rows["conversations"] if r["id"] == cid)["display"]
     assert await state() == {"tone": "running", "words": "Thinking"}
     await store.append_event(cid, "llm.queue", {"turn_id": tid, "state": "loading",
                                                 "model": "big-model"})

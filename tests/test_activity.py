@@ -27,7 +27,7 @@ async def test_a_job_that_still_runs_is_busy_and_not_running(store):
                                      tool_name="shell__run", state="running", created_at=AT))
     assert await _both(store, cid) == (False, True), "nothing executes, its result still comes"
     listed = {r["id"]: r for r in await conversations.list(store)}
-    assert listed[cid]["group"] != "Running" and listed[cid]["state"] is None
+    assert listed[cid]["group"] != "Running" and listed[cid]["display"] is None
 
 
 async def test_a_turn_runs_and_a_queued_one_the_hold_keeps_aside_does_not(store):
@@ -40,7 +40,7 @@ async def test_a_turn_runs_and_a_queued_one_the_hold_keeps_aside_does_not(store)
     assert await _both(store, cid) == (False, True), "frozen: it has not started, and it will"
     row = {r["id"]: r for r in await conversations.list(store)}[cid]
     assert row["group"] != "Running"
-    assert row["state"] == {"tone": "warn", "words": "Frozen"}, "its row says why it waits"
+    assert row["display"] == {"tone": "warn", "words": "Frozen"}, "its row says why it waits"
     background = await conversations.create(store, "Mail", kind="background",
                                             trigger_key="trigger:new_mail")
     await store.write(lambda c: _row(c, "turns", id="t2", conversation_id=background,

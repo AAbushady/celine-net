@@ -4,7 +4,7 @@
                     date group (`dated`) folds by its head: the server's `folded`
                     (before Previous 7 days) until the user folds or opens it here;
                     each row a real link with the title, its last line, a bare time, the
-                    server's words for a failure or a wait (its `state`); a running row
+                    server's words for a failure or a wait (its `display`); a running row
                     shows the server's step words (the dots while it writes) and Stop
      sub-agents     always under the conversation that started them, no fold
      Found in messages   on a search: the titles the server ranked first, then the
@@ -26,7 +26,7 @@ import { listTime } from '../lib/format'
 import { usePref } from '../lib/prefs'
 import {
   Button, coarse, Dots, EmptyState, EventLine, ICON, IconButton, InlineEdit, ListRow, ListSection, MenuButton, ShelfRow, Snippet,
-  StateWord, VirtualList, useContextMenu, type MenuItem, type WordTone, type Picker, type Shelf,
+  StateWord, VirtualList, useContextMenu, type MenuItem, type Picker, type Shelf,
 } from '../ui'
 
 /** one thing at work, on top of a list without the server's groups */
@@ -52,8 +52,6 @@ export type ListGroup = { key: string; head: ReactNode; items: ConversationSumma
 export const kindIcon = (c: Pick<ConversationSummary, 'kind'>): LucideIcon => (c.kind === 'mission' ? Flag : Heart)
 
 /** the server's row tone as its word's tone */
-const WORD_TONE: Record<string, WordTone> = { running: 'running', error: 'error', warn: 'warn' }
-
 type Row =
   | { type: 'group'; key: string; label: string; open?: boolean }
   | { type: 'head'; key: string; node: ReactNode }
@@ -181,7 +179,7 @@ export function ConversationList({
   const ctx = useContextMenu()
   const touch = useMemo(coarse, [])
   const actions = (c: ConversationSummary): MenuItem[] => {
-    const running = c.state ? c.state.tone === 'running' : !!c.active_state
+    const running = c.display ? c.display.tone === 'running' : !!c.active_state
     return [
       { label: 'Open', icon: MessageCircle, onSelect: () => onOpen(c.id) },
       // after App's focus hand-back from the pressed item (App.tsx), which would blur the field
@@ -263,9 +261,9 @@ export function ConversationList({
                        return <InlineEdit value={c.title} label="Rename" onSave={t => onRename(c.id, t)} onCancel={() => onStartRename(null)} />
                      }
                      const menu = actions(c)
-                     const state = c.state ?? null
-                     const running = state?.tone === 'running'
-                     const said = state && !running ? <StateWord tone={WORD_TONE[state.tone] ?? 'muted'}>{state.words}</StateWord> : null
+                     const shown = c.display ?? null
+                     const running = shown?.tone === 'running'
+                     const said = shown && !running ? <StateWord tone={shown.tone}>{shown.words}</StateWord> : null
                      if (r.sub) {
                        return (
                          <ListRow depth={1} icon={Bot} href={c.link} selected={c.id === selected} title={name} tooltip={c.last_line || name}
@@ -279,7 +277,7 @@ export function ConversationList({
                        <ListRow density="lg" href={c.link} selected={c.id === selected} pick={touch && !picker?.on ? undefined : picker?.row(c.id)}
                                 leading={leading(c)} title={name} tooltip={name}
                                 subtitle={running
-                                  ? state?.words ? <EventLine running quiet>{state.words}</EventLine> : <Dots />
+                                  ? shown?.words ? <EventLine running quiet>{shown.words}</EventLine> : <Dots />
                                   : said ?? (c.last_line || undefined)}
                                 meta={running ? undefined : listTime(c.updated_at, Date.now(), !q)}
                                 onClick={click(() => onOpen(c.id))} onContextMenu={e => ctx.open(e, menu, name)}

@@ -51,7 +51,7 @@ async def test_the_agents_text_is_its_first_message_and_the_chat_knows_where_it_
         "SELECT count(*) FROM global_events WHERE type='waits.changed'").fetchone()[0]) == 1, \
         "Waiting for you lists it at once"
     row = {"id": new, "active_state": None}         # as the chat list's row has it
-    assert await store.read(lambda c: conversations.state_of(c, row)) == {
+    assert await store.read(lambda c: conversations.display_of(c, row)) == {
         "tone": "warn", "words": "Waiting for you"}
     built = await context.build(store, cfg, FakeBackend(), new, system="", tools=[])
     first, answer = [m for m in built.messages if m["role"] != "system"][:2]

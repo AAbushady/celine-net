@@ -331,13 +331,13 @@ async def test_an_ask_marks_its_place_and_its_row_until_answered(store, monkeypa
     [view] = a.view()
     assert (view["home"], view["link"]) == ("agent", f"/chat/{cid}")
     [row] = await conversations.list(store, asked=a.conversations())
-    assert row["state"] == {"tone": "warn", "words": "Waiting for you"}
+    assert row["display"] == {"tone": "warn", "words": "Waiting for you"}
     [aid] = a.waiting
     assert a.decide(aid, True, OWNER)
     await task
     assert a.view() == [] and a.conversations() == frozenset()
     [row] = await conversations.list(store, asked=a.conversations())
-    assert row["state"] != {"tone": "warn", "words": "Waiting for you"}
+    assert row["display"] != {"tone": "warn", "words": "Waiting for you"}
 
 
 async def test_two_asks_at_once_in_one_conversation_make_one_card(store, monkeypatch):

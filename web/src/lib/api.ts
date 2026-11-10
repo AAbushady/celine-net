@@ -78,7 +78,7 @@ export type ConversationSummary = {
   folded?: boolean
   /** GET /conversations: its turn in it, running with the server's step words ('' while it
       writes), waiting for you, or how the last turn ended when it failed or paused */
-  state?: { tone: 'running' | 'error' | 'warn'; words: string } | null
+  display?: Display | null
   /** GET /conversations: where it lives and the path that opens it, the server's (homes.py) */
   home?: Home
   link?: string

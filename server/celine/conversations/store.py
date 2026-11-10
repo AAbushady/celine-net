@@ -12,7 +12,7 @@ from .. import homes
 from ..activity import family_running_sql, running
 from ..hold import held
 from ..core.ids import iso, new_id, now
-from ..core.statuses import LIVE_TURNS_SQL, RunState
+from ..core.statuses import LIVE_TURNS_SQL, WAITING_FOR_YOU, RunState
 from ..kb.chat import fts_candidates, is_query_error
 from . import tree
 from ..core.event_types import (
@@ -603,16 +603,16 @@ def _loading(c: sqlite3.Connection, cid: str) -> str | None:
     return f"Loading {d.get('model') or 'the model'}." if d.get("state") == "loading" else None
 
 
-def state_of(c: sqlite3.Connection, row: dict, asked: frozenset[str] = frozenset(),
+def display_of(c: sqlite3.Connection, row: dict, asked: frozenset[str] = frozenset(),
              models: frozenset[str] | None = None) -> dict | None:
-    """How its turn in it stands, in the server's words: waiting for you (a request in
+    """How its turn in it stands as the page shows it, {words, tone}: waiting for you (a request in
     it, `asked`: approvals.py; a mission; a chat the agent started for you that you have
     not written in), running with its step (not while the hold keeps its queued turn
     aside: hold.held, `models` as there), or how the last turn ended when it failed or
     paused."""
     from ..settings.tools_meta import TOOLS, humanize
     if row["id"] in asked:
-        return {"tone": "warn", "words": "Waiting for you"}
+        return WAITING_FOR_YOU
     kept = held(c, row["id"], models) if row["active_state"] == "queued" else None
     if kept:                    # queued and kept aside: not running, and the row says why
         return {"tone": "warn", "words": "Frozen" if kept == "frozen" else "Paused"}
@@ -628,9 +628,9 @@ def state_of(c: sqlite3.Connection, row: dict, asked: frozenset[str] = frozenset
             words = (TOOLS.get(r[0], {}).get("label") or humanize(r[0])) if r else "Thinking"
         return {"tone": "running", "words": words}
     if row.get("mission_status") == "needs_you":
-        return {"tone": "warn", "words": "Waiting for you"}
+        return WAITING_FOR_YOU
     if opened_for_you(c, row["id"]):
-        return {"tone": "warn", "words": "Waiting for you"}
+        return WAITING_FOR_YOU
     last = c.execute("SELECT state FROM turns WHERE conversation_id = ? "
                      "ORDER BY created_at DESC, rowid DESC LIMIT 1", (row["id"],)).fetchone()
     if last and last[0] in ("failed", "interrupted"):
@@ -653,7 +653,7 @@ async def list(store, limit: int = 200,  # noqa: A001 - the module's word for it
     chats (no missions). Background conversations are not in it (GET /api/background-conversations).
     A mission's row carries its name and status, every row its kind, its `last_line`
     (last_line above), `group` (group_of), `dated` (its group is a date) and `folded`
-    (its group starts folded: a date before Previous 7 days), `state` (state_of; `asked`: the conversations a
+    (its group starts folded: a date before Previous 7 days), `display` (display_of; `asked`: the conversations a
     request waits in; `models`: hold.answering), `home` and `link`
     (homes.of: where it opens). Sub-agents are not rows of their own: each row lists its
     sub-agents in `agents`, oldest first, in the same shape; `rank` is the page's sort key (2 running,
@@ -684,7 +684,7 @@ async def list(store, limit: int = 200,  # noqa: A001 - the module's word for it
             r["folded"] = r["dated"] and r["group"] not in OPEN_GROUPS
             for one in (r, *r["agents"]):
                 one["last_line"] = last_line(c, one.pop("active_leaf_id"))
-                one["state"] = state_of(c, one, waiting, models)
+                one["display"] = display_of(c, one, waiting, models)
                 one.update(homes.of(c, one["id"]))       # where it opens, the server's
             for a in r["agents"]:
                 a["group"], a["dated"], a["folded"] = r["group"], r["dated"], r["folded"]
@@ -713,7 +713,7 @@ async def background(store, models: frozenset[str] | None = None) -> list[dict]:
     """The background conversations but the runs' (`run:<id>`, they are in
     Routines), newest activity first: {id, title, kind, trigger (a fired trigger's name,
     from `trigger:<name>`), working (a turn of it runs: activity.py), display (how its
-    turn stands as the page shows it: state_of's words and tone, as a chat's row has them,
+    turn stands as the page shows it: display_of's words and tone, as a chat's row has them,
     Running for a turn with no step to name, Done when its last turn ended well),
     last_line, updated_at}. `models`: hold.answering."""
     def fn(c: sqlite3.Connection) -> list[dict]:
@@ -723,7 +723,7 @@ async def background(store, models: frozenset[str] | None = None) -> list[dict]:
         out = []
         for r in rows:
             kind, _, rest = (r["trigger_key"] or "").partition(":")
-            stands = state_of(c, dict(r), models=models) or RunState.DONE.display
+            stands = display_of(c, dict(r), models=models) or RunState.DONE.display
             if not stands["words"]:         # a turn that writes: no step to name
                 stands = {**stands, "words": RunState.RUNNING.display["words"]}
             out.append({"id": r["id"], "title": r["title"], "kind": r["kind"],

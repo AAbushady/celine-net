@@ -294,7 +294,7 @@ def missions_asking(c: sqlite3.Connection) -> frozenset[str]:
     """The missions with a message of their own that waits for the user (MISSION_FROM, not
     read yet and due). With Needs you and a request, this is what makes a mission wait
     for them: Waiting for you (waits.py), the chat list's row (conversations/store.py
-    state_of) and the Missions list (missions/api.py `asked`) read this one set."""
+    display_of) and the Missions list (missions/api.py `asked`) read this one set."""
     from ..core.ids import now
     return frozenset(r[0].removeprefix("agent:") for r in c.execute(
         f"SELECT DISTINCT i.from_addr FROM intercom i WHERE i.kind <> 'job' AND {_UNREAD} "
