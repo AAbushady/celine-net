@@ -12,7 +12,7 @@ from .. import homes
 from ..attachments import draft_of, agent_file
 from ..core.event_types import WAITS_CHANGED
 from ..core.ids import clock, iso, parse_when, when
-from ..skills import ToolContext, ToolResult, guide, tool, described, words
+from ..skills import ToolContext, ToolResult, guide, tool, described, tool_rows
 from ..clock import zone
 from . import store as rows
 from .addresses import GUARD, GUARD_NAMES, Refused, resolve
@@ -376,7 +376,7 @@ class IntercomSkill:
             return ToolResult(content="No jobs yet.", display={"jobs": 0})
         lines = []
         for j in found:
-            asked = " ".join((words.prompt_of(j["arguments"], j["tool_name"]) or "").split())
+            asked = " ".join((tool_rows.prompt_of(j["arguments"], j["tool_name"]) or "").split())
             if len(asked) > TEXT_MAX:
                 asked = asked[:TEXT_MAX - 1].rstrip() + "\u2026"
             what = j["tool_name"] + (f" `{asked}`" if asked else "")

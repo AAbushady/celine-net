@@ -11,7 +11,7 @@ from .. import attachments as files
 from ..core.ids import now, when
 from ..intercom.store import insert as intercom_insert
 from ..turns import store as turns
-from ..skills import words
+from ..skills import tool_rows
 from ..core.event_types import JOB_STATE, TOOL_DETACHED, TOOL_DONE
 
 
@@ -74,7 +74,7 @@ def interrupt_running(c: sqlite3.Connection, store) -> list[tuple[str, str]]:
                         {"tool_call_id": call["id"], "name": call["name"], "ok": False,
                          "state": "interrupted", "reason": "the server restarted",
                          "result": result, "display": None,
-                         "words": words.words(call["name"], call["arguments"],
+                         "words": tool_rows.words(call["name"], call["arguments"],
                                               "interrupted", None, result, store.tool_words),
                          **turns.runs_field(c, store, [call["id"]])})
         out.append((row["conversation_id"],
@@ -88,7 +88,7 @@ def _view(r: sqlite3.Row) -> dict:
     d["display"] = (json.loads(d["display"])
                     if d["display"] and d["state"] != "running" else None)
     arguments = d.pop("arguments")
-    d["prompt"] = words.prompt_of(arguments, d["tool_name"])
+    d["prompt"] = tool_rows.prompt_of(arguments, d["tool_name"])
     # a shell job's terminal, also while it runs (display is empty then): the UI
     # opens the live terminal from it
     d["terminal"] = terminal_of(arguments, d["tool_name"])
@@ -167,7 +167,7 @@ async def finish(store, job_id: str, call: dict, result, call_state: str,
                     {"tool_call_id": call["id"], "name": call["name"],
                      "ok": call_state == "ok", "state": call_state, "result": said,
                      "display": shown, "job_id": job_id, "finished_at": ts,
-                     "words": words.of_call(c, call["id"], call_state, shown, said, store.tool_words),
+                     "words": tool_rows.of_call(c, call["id"], call_state, shown, said, store.tool_words),
                      **turns.runs_field(c, store, [call["id"]])})
         store.event(c, cid, JOB_STATE,
                     {"job_id": job_id, "state": job_state, "tool": job["tool_name"]})

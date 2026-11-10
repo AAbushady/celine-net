@@ -37,7 +37,7 @@ from ..conversations import store as conversations, tree
 from ..core.ids import now
 from ..skills import ToolContext, ToolResult, guide, knob, tool, described
 from ..settings import agent_models
-from ..skills import words
+from ..skills import tool_rows
 from ..skills.gating import overrides_for
 from . import report, templates
 from ..guard.sources import agent_read_outside
@@ -694,7 +694,7 @@ def _look(c: sqlite3.Connection, sub: str, own: dict) -> dict:
             if last and state in AGENT_ENDED.values() else None,
             "root": top["id"] if top is not None else None,
             "step": step["name"] if step else flown,
-            "step_words": words.step(step["name"], own) if step else flown,
+            "step_words": tool_rows.step(step["name"], own) if step else flown,
             "report": dict(rep) if rep else None,
             "last": report.last_answer(c, sub)}
 

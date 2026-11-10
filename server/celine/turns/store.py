@@ -17,7 +17,7 @@ from ..core.statuses import CLAIMED_TURNS_SQL, ENDED_TURNS, LIVE_TURNS, LIVE_TUR
 from ..core.turn_queue import QUEUE_ORDER
 from ..errors import mask_all
 from ..guard import mark
-from ..skills import words
+from ..skills import tool_rows
 from .. import homes
 from ..intercom.store import NAMES, insert as intercom_insert
 from ..plans import store as plans
@@ -41,8 +41,8 @@ _SETTLE_WHY = {"aborted": "stopped", "failed": "the turn failed",
 
 def runs_field(c: sqlite3.Connection, store, call_ids: list[str], reset: bool = False) -> dict:
     """`runs` for the event of calls whose state changed, when their turn's runs changed
-    (skills/words.py runs_after); nothing otherwise, and the client keeps the last."""
-    r = words.runs_after(c, call_ids, store.tool_words, reset=reset)
+    (skills/tool_rows.py runs_after); nothing otherwise, and the client keeps the last."""
+    r = tool_rows.runs_after(c, call_ids, store.tool_words, reset=reset)
     return {"runs": r} if r else {}
 
 
@@ -95,7 +95,7 @@ def settle_open_calls(c: sqlite3.Connection, store, cid: str, turn_id: str,
                     {"tool_call_id": r["id"], "name": r["name"], "ok": False,
                      "state": "interrupted", "reason": why, "result": text,
                      "display": None, "withheld": False,
-                     "words": words.of_call(c, r["id"], "interrupted", None, text,
+                     "words": tool_rows.of_call(c, r["id"], "interrupted", None, text,
                                             store.tool_words),
                      # the turn's runs once, with the last: every call above has settled
                      **(runs_field(c, store, [x["id"] for x in rows]) if r is rows[-1] else {})})
@@ -574,7 +574,7 @@ async def record_tool_calls(store, cid: str, message_id: str, calls: list[dict])
                         {"tool_call_id": call["id"], "message_id": message_id,
                          "name": call["name"], "arguments": call["arguments"],
                          "started_at": started,
-                         "words": words.words(call["name"], call["arguments"], "running",
+                         "words": tool_rows.words(call["name"], call["arguments"], "running",
                                               own=store.tool_words)})
 
     await store.write(fn)
@@ -593,7 +593,7 @@ async def tool_started(store, cid: str, call_id: str) -> None:
                         {"tool_call_id": call_id, "message_id": row["message_id"],
                          "name": row["name"], "arguments": row["arguments"],
                          "started_at": ts,
-                         "words": words.words(row["name"], row["arguments"], "running",
+                         "words": tool_rows.words(row["name"], row["arguments"], "running",
                                               own=store.tool_words)})
 
     await store.write(fn)
@@ -649,7 +649,7 @@ async def finish_tool_call(store, cid: str, parent_message_id: str, call_id: str
             {"tool_call_id": call_id, "name": name, "ok": verdict == "ok",
              "state": verdict, "result": content_, "display": mark.for_client(display),
              "withheld": bool(withheld), "finished_at": ts,
-             "words": words.of_call(c, call_id, verdict, display, content_, store.tool_words),
+             "words": tool_rows.of_call(c, call_id, verdict, display, content_, store.tool_words),
              **runs_field(c, store, [call_id])})
         store.event(c, cid, MESSAGE_CREATED,
                     {"message_id": mid, "parent_id": parent_message_id, "role": "tool",

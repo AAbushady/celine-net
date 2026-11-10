@@ -11,7 +11,7 @@ from ..core.turn_queue import QUEUE_ORDER
 from .. import approvals, homes
 from ..guard import mark, store as guard_rows
 from ..plans import store as plans
-from ..skills import words
+from ..skills import tool_rows
 from ..turns import compactions as comps
 from . import samples, tree
 from ..core.event_types import (
@@ -57,7 +57,7 @@ async def snapshot(store, cid: str, llm=None) -> dict:
             f"SELECT {cols} ORDER BY t.created_at DESC, t.rowid DESC LIMIT 1",
             (cid,)).fetchone()
         calls: dict[str, list[dict]] = {}
-        runs: dict[str, list[dict]] = {}       # by turn: its runs (skills/words.py)
+        runs: dict[str, list[dict]] = {}       # by turn: its runs (skills/tool_rows.py)
         for m in messages:
             if m["role"] == "assistant":         # "Love this" (conversations/samples.py)
                 m["sample"] = c.execute("SELECT 1 FROM kv WHERE k=?",
@@ -71,7 +71,7 @@ async def snapshot(store, cid: str, llm=None) -> dict:
             if rows:
                 calls[m["id"]] = [_call(c, r, store.tool_words) for r in rows]
                 if m.get("turn_id") and m["turn_id"] not in runs:
-                    runs[m["turn_id"]] = words.runs_of_turn(c, m["turn_id"], store.tool_words)
+                    runs[m["turn_id"]] = tool_rows.runs_of_turn(c, m["turn_id"], store.tool_words)
         # a call still at work (here or as a job) shows its latest progress line
         working = {tc["id"]: tc for tcs in calls.values() for tc in tcs
                    if tc["state"] in ("pending", "running", "detached")}
@@ -243,12 +243,12 @@ def continuable(c: sqlite3.Connection, cid: str, turn) -> dict:
 
 
 def _call(c: sqlite3.Connection, r: sqlite3.Row, own: dict) -> dict:
-    """One tool call as the transcript shows it, its row in words (skills/words.py). A
+    """One tool call as the transcript shows it, its row in words (skills/tool_rows.py). A
     call that names a conversation with a link (a sub-agent's) gets the link as homes.of
     gives it now: the one stored with the call is where it opened when the call was made."""
     display = json.loads(r["display"]) if r["display"] else None
     if isinstance(display, dict) and display.get("conversation_id") and "link" in display:
         display["link"] = homes.of(c, display["conversation_id"])["link"]
     return {**dict(r), "display": mark.for_client(display),
-            "words": words.words(r["name"], r["arguments"], r["state"], display, r["result"], own)}
+            "words": tool_rows.words(r["name"], r["arguments"], r["state"], display, r["result"], own)}
 

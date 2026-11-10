@@ -16,7 +16,7 @@ from ..api.deps import GONE, page_frames
 from .. import homes
 from ..errors import CelineError, not_set_up
 from ..settings.services import unreachable
-from ..skills import ToolContext, words
+from ..skills import ToolContext, tool_rows
 from . import sync, tabs
 from .sync import BrowserRefused
 from ..core.event_types import BROWSER_STATE
@@ -201,7 +201,7 @@ async def history(request: Request, q: str = "", failed: bool = False,
         calls.append({"id": r["id"], "tool": r["name"].partition("__")[2],
                       "tab": display.get("tab") or args.get("tab"),
                       "line": call_line(r["name"], args) if box else services.cfg.substitute(
-                          words.sentence(r["name"], args, {}, own=services.store.tool_words)),
+                          tool_rows.sentence(r["name"], args, {}, own=services.store.tool_words)),
                       "state": state, "at": r["at"],
                       "shots": len(display.get("steps") or []), "display": display,
                       "conversation": {"id": r["conversation_id"], "title": r["title"],

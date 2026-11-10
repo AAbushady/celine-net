@@ -197,7 +197,7 @@ async def test_search_down_points_at_the_agents_browser_when_it_has_one():
 async def test_save_attaches_the_file_at_the_url_to_the_call(store, monkeypatch):
     from celine import attachments
     from celine.conversations import tree
-    from celine.skills import words
+    from celine.skills import tool_rows
     data = b"\x89PNG\r\n\x1a\nnot really"
 
     def files(req: httpx.Request) -> httpx.Response:
@@ -227,7 +227,7 @@ async def test_save_attaches_the_file_at_the_url_to_the_call(store, monkeypatch)
     assert attachments.blob_path(cfg, row["sha256"]).read_bytes() == data
     big = await w.read_page(ctx, "https://pics.example.com/big.zip", save=True)
     assert big.is_error and "over the 0 MB limit" in big.content
-    assert words.sentence("web__read_page", {"url": "https://pics.example.com/a.png",
+    assert tool_rows.sentence("web__read_page", {"url": "https://pics.example.com/a.png",
                                              "save": True}, {}) == \
         "Saved a file from pics.example.com/a.png"
 

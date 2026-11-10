@@ -16,7 +16,7 @@ Three things a server block can add:
   its that is not read-only is not offered to Celine.
 - `guides/<server>.md` (skills/guides): the skill's description and guide.
 - `[servers.<id>.words]` and `[servers.<id>.groups]`: its tools' rows, by tool
-  (skills/words.py `fill`): `start_process = "Ran {command|a command} on the Mac"`, and
+  (skills/tool_rows.py `fill`): `start_process = "Ran {command|a command} on the Mac"`, and
   the words of a run of them, `{n}` their count.
 
 A plugin's `[servers.<id>]` blocks (plugin.toml, the same keys) run under its runner
@@ -85,7 +85,7 @@ class McpServerConfig:
     cls: str = "sensitive"
     sends: str = "public"
     outside: str = "always"
-    # its tools' rows (skills/words.py): a sentence per tool ("Ran {command} on the Mac")
+    # its tools' rows (skills/tool_rows.py): a sentence per tool ("Ran {command} on the Mac")
     # and the words of a run of them ("Used the shell on the Mac {n} times")
     words: dict[str, str] = field(default_factory=dict)
     groups: dict[str, str] = field(default_factory=dict)
@@ -143,7 +143,7 @@ def read_servers(file: str, raw: dict[str, Any], problems: list[Problem],
 def row_words(cfg, plugins) -> dict[str, dict[str, dict[str, str]]]:
     """Every server's `words` and `groups` (mcp.toml's and the plugins', on or off), their
     texts only: {server: {"words": {tool: text}, "groups": {tool: text}}}, Config.tool_words
-    (skills/words.py)."""
+    (skills/tool_rows.py)."""
     raw = {sid: {"words": s.words, "groups": s.groups} for sid, s in cfg.mcp.items()}
     for p in plugins:
         servers = p.manifest.get("servers")

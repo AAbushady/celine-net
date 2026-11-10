@@ -33,7 +33,7 @@ sends     = "house"
 [servers.macscreen.headers]
 Authorization = "Bearer ${TOKEN}"
 
-# Each server's rows (server/celine/skills/words.py fill): a sentence per tool, {argument}
+# Each server's rows (server/celine/skills/tool_rows.py fill): a sentence per tool, {argument}
 # the call's argument (its first line, cut), {argument|text} with what it says without
 # one; and the words of a run of calls in a row, {n} their count.
 [servers.macscreen.words]

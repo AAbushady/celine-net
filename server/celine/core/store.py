@@ -103,7 +103,7 @@ class Store:
 
     @property
     def tool_words(self) -> dict:
-        """Every MCP server's own row words (Config.tool_words, skills/words.py)."""
+        """Every MCP server's own row words (Config.tool_words, skills/tool_rows.py)."""
         return self.cfg.tool_words if self.cfg is not None else {}
 
     @property

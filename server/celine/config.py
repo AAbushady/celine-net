@@ -168,7 +168,7 @@ class Config:
     kb: dict[str, dict[str, Any]] = field(default_factory=dict)
     embeddings: dict[str, Any] = field(default_factory=dict)
     mcp: dict[str, Any] = field(default_factory=dict)    # id -> mcp.McpServerConfig
-    # every MCP server's rows, mcp.toml's and the plugins' (mcp.row_words, skills/words.py)
+    # every MCP server's rows, mcp.toml's and the plugins' (mcp.row_words, skills/tool_rows.py)
     tool_words: dict[str, Any] = field(default_factory=dict)
     # the tool calls MCP servers show in a UI place (mcp.placed): {wire name: {place, where}}
     tool_places: dict[str, Any] = field(default_factory=dict)

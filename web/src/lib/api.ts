@@ -483,7 +483,7 @@ export type ToolCall = {
    *  (the command, or the first line typed), `keys`, `read` (a shell__read); a listing
    *  carries `terminals` instead */
   display: Record<string, unknown> | null
-  /** the row in words, the server's (skills/words.py) */
+  /** the row in words, the server's (skills/tool_rows.py) */
   words: ToolWords
   /** the complete result, as Celine got it (null while it runs) */
   result?: string | null
@@ -500,11 +500,11 @@ export type ToolCall = {
 /** a call in words: `running` while it is at work ("Reading the note x"), `settled` once
  *  it ended ("Read the note x", "Could not read the note x", "Not run: ..."), `step` the
  *  tool alone at work ("Reading the note"), `where` the places a search was kept to */
-/** a call's words from the server (skills/words.py words); `why`: a failed call's reason,
+/** a call's words from the server (skills/tool_rows.py words); `why`: a failed call's reason,
  *  its result's first line in the server's own words */
 export type ToolWords = { running: string; settled: string; step: string; where: string | null; why: string | null }
 
-/** calls alike in a row, shown as one row (skills/words.py runs): its calls, its words
+/** calls alike in a row, shown as one row (skills/tool_rows.py runs): its calls, its words
  *  ("Ran 8 commands in terminal main"), how many of them failed */
 export type ToolRun = { ids: string[]; words: string; failed: number }
 /** a turn's runs as a tool event carries them, all of them each time */

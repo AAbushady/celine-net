@@ -1,4 +1,4 @@
-"""A tool call's row in words (skills/words.py): the same sentence the row has always
+"""A tool call's row in words (skills/tool_rows.py): the same sentence the row has always
 said, at work, done, failed and not run."""
 import json
 import sqlite3
@@ -8,8 +8,8 @@ from types import SimpleNamespace
 
 
 from celine.mcp import read_servers, row_words
-from celine.skills import words as words_mod
-from celine.skills.words import VERBS, fill, forming, group, runs, step, words
+from celine.skills import tool_rows
+from celine.skills.tool_rows import VERBS, fill, forming, group, runs, step, words
 
 
 def w(name, args, state, display=None, result=None, own=None):
@@ -227,21 +227,21 @@ def test_runs_of_a_turn():
     message("m4", "Now the rest.", call(5))
     message("m5", "", call(6))
     message("m7", "Last one.", call(7))
-    assert words_mod.runs_of_turn(c, "t1") == [
+    assert tool_rows.runs_of_turn(c, "t1") == [
         {"ids": ["c1", "c2", "c3", "c4"], "words": "Ran 4 commands in terminal main",
          "failed": 0},
         {"ids": ["c5", "c6"], "words": "Ran 2 commands in terminal main", "failed": 0}]
     # an event says the runs only when the calls that settled changed them: a call alone
     # in its stretch changes none
-    assert words_mod.runs_after(c, ["c7"]) is None
+    assert tool_rows.runs_after(c, ["c7"]) is None
     c.execute("UPDATE tool_calls SET state='ok', display=? WHERE id='c4'", ('{"exit": 1}',))
-    assert words_mod.runs_after(c, ["c4"]) == {"turn": "t1", "list": [
+    assert tool_rows.runs_after(c, ["c4"]) == {"turn": "t1", "list": [
         {"ids": ["c1", "c2", "c3", "c4"], "words": "Ran 4 commands in terminal main",
          "failed": 1},
         {"ids": ["c5", "c6"], "words": "Ran 2 commands in terminal main", "failed": 0}]}
     # a call at work again: the runs go with the event, whatever they are
     c.execute("UPDATE tool_calls SET state='pending' WHERE id='c3'")
-    assert words_mod.runs_after(c, ["c3"], reset=True) == {"turn": "t1", "list": [
+    assert tool_rows.runs_after(c, ["c3"], reset=True) == {"turn": "t1", "list": [
         {"ids": ["c1", "c2", "c4"], "words": "Ran 3 commands in terminal main", "failed": 1},
         {"ids": ["c5", "c6"], "words": "Ran 2 commands in terminal main", "failed": 0}]}
 
@@ -260,12 +260,12 @@ def test_every_mac_tool_has_words_and_a_group():
         for tool, text in server["words"].items():
             assert text.partition(" ")[0] in VERBS, text
             # a hole names a real argument, or its subject silently drops
-            for hole in words_mod._HOLE.finditer(text):
+            for hole in tool_rows._HOLE.finditer(text):
                 assert hole.group(2) in tools[tool], f"{sid} {tool}: {{{hole.group(2)}}}"
 
 
 def test_rows_name_models_by_label_and_settings_by_page_never_a_host():
-    from celine.skills.words import words
+    from celine.skills.tool_rows import words
     asked = words("models__ask", '{"model": "proxy.example.co/Qwen3.8-Flash"}', "ok",
                   {"model": "proxy.example.co/Qwen3.8-Flash", "label": "Qwen Flash on proxy"})
     assert asked["settled"] == "Asked Qwen Flash on proxy"
@@ -279,7 +279,7 @@ def test_rows_name_models_by_label_and_settings_by_page_never_a_host():
 
 
 def test_a_failed_call_carries_its_reason_in_the_servers_words():
-    from celine.skills.words import words
+    from celine.skills.tool_rows import words
     w = words("web__search", '{"query": "lake loop"}', "error", None,
               "SearXNG at searxng:8080 returned 503: The model server is paused.\nmore")
     assert w["why"] == "SearXNG at searxng:8080 returned 503: The model server is paused."

@@ -67,8 +67,8 @@ def test_tools_of_one_skill_that_share_a_verb_page_alike(registry):
 
 def test_every_tool_has_its_own_sentence_in_the_chat(registry):
     """A row is a sentence: a built-in tool never falls back to
-    the MCP line "Used <skill> <tool>" (skills/words.py)."""
-    from celine.skills.words import SENTENCES, VERB
+    the MCP line "Used <skill> <tool>" (skills/tool_rows.py)."""
+    from celine.skills.tool_rows import SENTENCES, VERB
     bare = sorted(t.wire_name for t in registry.tools.values()
                   if t.wire_name not in VERB and t.name not in SENTENCES.get(t.skill, {}))
     assert bare == []

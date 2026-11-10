@@ -70,7 +70,7 @@ const scopeChats = (d: Record<string, unknown> | null): ScopeChat[] => (Array.is
 const notRun = (call: ToolCall) => call.state === 'gated' || (call.state === 'error' &&
   call.display?.time_up === true)
 
-/** the row's words, by its state, as the server says them (skills/words.py) */
+/** the row's words, by its state, as the server says them (skills/tool_rows.py) */
 const rowWords = (call: ToolCall): string => (busy(call) ? call.words.running : call.words.settled)
 
 /* a sub-agent's turn, as the colour of its row: at work, failed, or ended otherwise */
@@ -331,7 +331,7 @@ export function ToolGroup({ calls }: { calls: ToolCall[] }) {
   )
 }
 
-/* The runs the server made of each turn's calls (skills/words.py runs): a stretch of work
+/* The runs the server made of each turn's calls (skills/tool_rows.py runs): a stretch of work
    between two things it says, one row with the server's words ("Read 2 notes, ran 4
    commands") and its failed count. The Transcript gives them, with every call of the
    conversation, since a stretch can span the steps of a reply; elsewhere (Activity) each
