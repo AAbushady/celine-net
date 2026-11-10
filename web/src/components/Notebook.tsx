@@ -24,6 +24,7 @@ import {
 } from '../ui'
 import { LongEditor, TextHistory, type HistorySource } from './editor'
 import { Markdown } from './Markdown'
+import { saveText } from '../lib/download'
 import './Notebook.css'
 
 /** a note as the tree has it: when it last changed and the line its index keeps of it */
@@ -69,14 +70,6 @@ const historyOf = (path: string): HistorySource => ({
     .then(({ current, ...page }) => ({ ...page, versions: current ? [current, ...page.versions] : page.versions })),
   get: id => request<TextVersionFull>(`/notebook/versions/${encodeURIComponent(String(id))}${query({ path })}`),
 })
-
-function download(name: string, text: string) {
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(new Blob([text], { type: 'text/markdown' }))
-  a.download = name
-  a.click()
-  URL.revokeObjectURL(a.href)
-}
 
 export function Notebook({ active, note, edit, history }: { active: boolean; note?: string; edit: boolean; history: boolean }) {
   const nav = useNav()
@@ -402,7 +395,7 @@ function NotePage({ path, note, name, menu, onEdit, onFolder, onOpenEditor, want
                                      onChange={v => { if (v === 'edit') onEdit() }}
                                      options={[{ value: 'view', label: 'View', icon: Eye }, { value: 'edit', label: 'Edit', icon: Pencil }]} />}
                  more={[...menu.filter(m => m === 'sep' || !('label' in m) || (m.label !== 'Open' && m.label !== 'Edit')),
-                        ...(doc ? [{ label: 'Download', icon: Download, onSelect: () => download(leaf(path), doc.content) }] : [])]} />
+                        ...(doc ? [{ label: 'Download', icon: Download, onSelect: () => saveText(doc.content, leaf(path), 'text/markdown') }] : [])]} />
       <div className="page">
         <div className="page__col page__col--prose">
           {file.missing ? <EmptyState icon={NotebookPen} title="Not found">Nothing at this link.</EmptyState>

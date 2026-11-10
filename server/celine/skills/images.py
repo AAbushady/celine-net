@@ -175,23 +175,18 @@ async def batch_stop(app, ctx: ToolContext, role: str, batch: str,
     return ToolResult(content=text(b, False), display=batches_mod.view(b))
 
 
-class ImageGenerator:
-    name = "image_generator"
-    guide = guide("image_generator")
-    description = described()
+class Generator:
+    """What the image and the music generator share: the presets of their `role` and
+    whether one is set."""
+    role: str       # the presets' role: images, music
 
     app = None      # the running app (core/services.py), from skills.build
 
     def __init__(self, cfg):
         self.cfg = cfg
-        if ids := tuple(p.id for p in self._presets()):
-            self.generate = types.MethodType(_with_presets(ids), self)
 
     def _presets(self) -> list[presets_mod.Preset]:
-        return role_presets(self.cfg, "images")
-
-    def _text(self, b: dict, started: bool, chat: bool = True) -> str:
-        return batch_text(b, self.cfg.user, started=started, chat=chat)
+        return role_presets(self.cfg, self.role)
 
     @property
     def status(self) -> str:
@@ -203,6 +198,21 @@ class ImageGenerator:
             return None
         return (f"No preset is set. {self.cfg.user} chooses presets in Settings, Images & "
                 f"Music.")
+
+
+class ImageGenerator(Generator):
+    name = "image_generator"
+    guide = guide("image_generator")
+    description = described()
+    role = "images"
+
+    def __init__(self, cfg):
+        super().__init__(cfg)
+        if ids := tuple(p.id for p in self._presets()):
+            self.generate = types.MethodType(_with_presets(ids), self)
+
+    def _text(self, b: dict, started: bool, chat: bool = True) -> str:
+        return batch_text(b, self.cfg.user, started=started, chat=chat)
 
     @property
     def docs(self) -> dict[str, str]:

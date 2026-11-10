@@ -12,6 +12,7 @@ import { Button, IconButton } from './Button'
 import { CloseButton, useModal } from './Dialog'
 import { MenuButton, useContextMenu, type MenuItem } from './Menu'
 import { leave, OUT, useLeave } from './motion'
+import { saveFile } from '../lib/download'
 import './Viewer.css'
 
 type View = { s: number; x: number; y: number }
@@ -29,12 +30,6 @@ async function copyPicture(src: string) {
     }, no)
   })
   await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })])
-}
-
-function save(src: string, name: string) {
-  const a = document.createElement('a')
-  a.href = src; a.download = name
-  document.body.append(a); a.click(); a.remove()
 }
 
 export function Viewer({ src, name, caption, more = [], actions, panel, onClose, onPrev, onNext, index, total }: {
@@ -131,7 +126,7 @@ export function Viewer({ src, name, caption, more = [], actions, panel, onClose,
 
   const items: MenuItem[] = [
     { label: 'Copy image', icon: Copy, onSelect: () => void copyPicture(src).catch(() => undefined) },
-    { label: 'Download', icon: Download, onSelect: () => save(src, name) },
+    { label: 'Download', icon: Download, onSelect: () => saveFile(src, name) },
     { label: 'Open original', icon: ExternalLink, onSelect: () => window.open(src, '_blank', 'noopener') },
     ...(more.length ? ['sep' as const, ...more] : []),
   ]

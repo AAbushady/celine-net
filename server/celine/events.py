@@ -35,6 +35,7 @@ from fastapi import APIRouter, Request
 
 from . import homes
 from .core.ids import iso
+from .core.store import json_object
 from .api.cursor import page_cursor
 from .clock import day_label, zone
 from .core.bus import NOTEBOOK_TOOLS
@@ -68,14 +69,6 @@ def notice(store, c: sqlite3.Connection, kind: str, title: str | None, body: str
 def _first(text, n: int = LINE) -> str:
     s = str(text or "").strip().split("\n")[0].strip()
     return s if len(s) <= n else s[:n - 1].rstrip() + "…"
-
-
-def _loads(text: str | None) -> dict:
-    try:
-        out = json.loads(text or "{}")
-    except ValueError:
-        return {}
-    return out if isinstance(out, dict) else {}
 
 
 def _took(start: str | None, end: str | None) -> str:
@@ -161,7 +154,7 @@ def _turn(r, cfg) -> dict:
 
 def _call(r, cfg) -> dict:
     word, tone = _CALL.get(r["state"], ("Running", RUNNING))
-    args = _loads(r["arguments"])
+    args = json_object(r["arguments"])
     # the first plain argument says what it was about: a command, a url, a query
     what = next((v for v in args.values() if isinstance(v, str) and v.strip()), "")
     return {"title": _label(r["name"]), "outcome": word, "tone": tone, "detail": _first(what)}
@@ -172,7 +165,7 @@ _NOTE_VERB = {"write": "Wrote", "edit": "Edited", "delete": "Deleted"}
 
 def _note(r, cfg) -> dict:
     word, tone = _CALL.get(r["state"], ("Running", RUNNING))
-    args, tool = _loads(r["arguments"]), r["name"].removeprefix("notebook__")
+    args, tool = json_object(r["arguments"]), r["name"].removeprefix("notebook__")
     path = str(args.get("path") or args.get("src") or "")
     title = f"Moved {path} to {args.get('dst') or ''}" if tool == "move" \
         else f"{_NOTE_VERB.get(tool, tool.title())} {path}"

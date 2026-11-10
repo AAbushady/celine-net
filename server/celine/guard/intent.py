@@ -8,7 +8,7 @@ import sqlite3
 
 from ..conversations import tree
 from . import caps, sources
-from .store import args_of
+from ..core.store import json_object
 
 NOTES = ("notebook__", "mind__")     # its notes: never read by a judge after the fact
 
@@ -97,7 +97,7 @@ def finished(c: sqlite3.Connection, turn: dict) -> tuple[dict, str, str, list] |
             if r["name"].startswith(NOTES):
                 continue
             d = json.loads(r["display"] or "{}")
-            calls.append({"name": r["name"], "args": args_of(r["arguments"]),
+            calls.append({"name": r["name"], "args": json_object(r["arguments"]),
                           "display": d if isinstance(d, dict) else {}})
             line = agent_name(c, turn, caps.head(
                 f"{{{{agent_name}}}} called {r['name']} {' '.join((r['arguments'] or '').split())}",

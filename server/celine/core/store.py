@@ -36,6 +36,18 @@ _PRAGMAS = (
 )
 
 
+def json_object(value: Any) -> dict:
+    """A JSON object column as a dict: {} when it is empty, no JSON or no object. A dict
+    passes through."""
+    if isinstance(value, dict):
+        return value
+    try:
+        got = json.loads(value or "{}")
+    except (TypeError, ValueError):
+        return {}
+    return got if isinstance(got, dict) else {}
+
+
 def attach(conn: sqlite3.Connection, path: Path) -> None:
     """log.db beside `path` as `log` (events, global_events, raw_responses, requests,
     terminal_commands) and the notebook's index as `notebook` (notebook_index,

@@ -125,8 +125,7 @@ class Dispatcher:
         """max_concurrent_turns (Settings, Advanced), plus one for each turn that waits
         for the user's answer to a request (approvals.py): a waiting turn takes no slot,
         so the user's own turn starts beside it."""
-        waits = sum(1 for a in list(self.approvals.waiting.values())
-                    if a.expires is None) if self.approvals is not None else 0
+        waits = self.approvals.in_turns() if self.approvals is not None else 0
         return max(1, int(self.cfg.r("max_concurrent_turns"))) + waits
 
     async def stop(self, grace: float | None = None) -> None:

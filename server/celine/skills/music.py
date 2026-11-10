@@ -10,7 +10,7 @@ from typing import Annotated, Required, TypedDict
 
 from ..comfyui import batches as batches_mod, presets as presets_mod
 from . import ToolContext, ToolResult, guide, tool, described
-from .images import batch_generate, batch_read, batch_stop, role_presets
+from .images import Generator, batch_generate, batch_read, batch_stop
 
 SHORT = batches_mod.SHORT
 
@@ -56,32 +56,14 @@ def batch_text(b: dict, user: str, *, started: bool, chat: bool = True) -> str:
     return "\n".join([head] + [item_line(i) for i in items])
 
 
-class MusicGenerator:
+class MusicGenerator(Generator):
     name = "music_generator"
     guide = guide("music_generator")
     description = described()
-
-    app = None      # the running app (core/services.py), from skills.build
-
-    def __init__(self, cfg):
-        self.cfg = cfg
-
-    def _presets(self) -> list[presets_mod.Preset]:
-        return role_presets(self.cfg, "music")
+    role = "music"
 
     def _text(self, b: dict, started: bool, chat: bool = True) -> str:
         return batch_text(b, self.cfg.user, started=started, chat=chat)
-
-    @property
-    def status(self) -> str:
-        return "up" if self._presets() else "unset"
-
-    @property
-    def error(self) -> str | None:
-        if self.status == "up":
-            return None
-        return (f"No preset is set. {self.cfg.user} chooses presets in Settings, Images & "
-                f"Music.")
 
     @property
     def docs(self) -> dict[str, str]:

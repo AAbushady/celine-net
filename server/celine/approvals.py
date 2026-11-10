@@ -358,7 +358,7 @@ class Approvals:
     def in_turns(self) -> int:
         """How many wait inside a turn: those turns hold no turn slot
         (turns/dispatcher.py)."""
-        return sum(1 for a in self.waiting.values() if a.expires is None)
+        return sum(1 for a in list(self.waiting.values()) if a.expires is None)
 
     def roots(self) -> frozenset[str]:
         """The roots a request waits under inside a turn: a mission's time limit counts

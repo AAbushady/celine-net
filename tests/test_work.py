@@ -379,7 +379,8 @@ async def test_a_turn_waiting_for_an_answer_takes_no_turn_slot(store):
                 await go.wait()
             async for ev in super().stream(messages, tools, body):
                 yield ev
-    asks = SimpleNamespace(waiting={})
+    waits: list[str] = []          # the turns that wait for the user's answer
+    asks = SimpleNamespace(in_turns=lambda: len(waits))
     d = dispatcher_mod.Dispatcher(store, cfg, EventBus(), Blocks, None)
     d.approvals = asks
     first, second = await conversations.create(store), await conversations.create(store)
@@ -388,7 +389,7 @@ async def test_a_turn_waiting_for_an_answer_takes_no_turn_slot(store):
         await user_says(store, first, "wait for me")
         d.notify()
         await until(lambda: len(d._active) == 1)
-        asks.waiting["a"] = SimpleNamespace(expires=None)   # its tool asks the user
+        waits.append("a")              # its tool asks the user
         d.resize()
         await user_says(store, second, "hello")
         d.notify()

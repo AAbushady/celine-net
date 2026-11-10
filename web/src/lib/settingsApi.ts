@@ -355,8 +355,6 @@ export const settingsApi = {
   services: () => request<ServicesView>('/services'),
   /** one service's url, "" clears it, null forgets it (Use the default); the others stay */
   putService: (id: string, url: string | null) => request<ServicesView>(`/services/${enc(id)}`, json('PUT', { url })),
-  /** one service, asked now with what is saved */
-  testService: (id: string) => post<Probe>(`/services/${enc(id)}/test`),
 
   tools: () => request<{ skills: SkillView[]; defaults: Record<string, ToolDefault>; version: string }>('/tool-defaults'),
   /** a skill or a tool; null: follow the skill / config again */

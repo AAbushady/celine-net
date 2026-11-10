@@ -27,6 +27,8 @@ from collections.abc import Callable
 from typing import Any
 from urllib.parse import urlsplit
 
+from ..core.store import json_object
+
 Args = dict[str, Any]
 BUSY = ("pending", "running", "detached")
 _ELLIPSIS = "…"
@@ -866,7 +868,7 @@ def _apart(call: dict) -> bool:
     (Cancel), a batch of pictures, a page, a share, files it sent."""
     if call["name"] in APART:
         return True
-    d = _dict(_args(call.get("display")))
+    d = _dict(json_object(call.get("display")))
     return isinstance(d.get("items"), list) or bool(d.get("artifact")) or \
         bool(d.get("share")) or isinstance(d.get("blocks"), list)
 
@@ -877,7 +879,7 @@ def _stretch_words(calls: list[dict], own: Own | None) -> str:
     says its own sentence."""
     parts: dict[str, list[dict]] = {}
     for c in calls:
-        a = _args(c["arguments"])
+        a = json_object(c["arguments"])
         key = group(c["name"], a if c["name"] == "shell__run" else {}, own) or f"\0{c['id']}"
         parts.setdefault(key, []).append(c)
     out: list[tuple[str, bool]] = []      # (words, as_written: its own words keep their casing)
@@ -886,8 +888,8 @@ def _stretch_words(calls: list[dict], own: Own | None) -> str:
             out.append((key.replace("{n}", f"{len(members):,}"), False))
         else:
             c = members[0]
-            a = _args(c["arguments"])
-            out.append((sentence(c["name"], a, _dict(_args(c.get("display"))), "", own),
+            a = json_object(c["arguments"])
+            out.append((sentence(c["name"], a, _dict(json_object(c.get("display"))), "", own),
                         c["name"] == "shell__run" and bool(_str(a.get("about")))))
     return ", ".join([out[0][0], *(p if as_written else _lower(p) for p, as_written in out[1:])])
 
@@ -954,16 +956,6 @@ def runs_after(c, call_ids: list[str], own: Own | None = None, *,
     return {"turn": r["turn_id"], "list": now_}
 
 
-def _args(arguments: Any) -> Args:
-    if isinstance(arguments, dict):
-        return arguments
-    try:
-        v = json.loads(arguments or "{}")
-    except (TypeError, ValueError):
-        return {}
-    return v if isinstance(v, dict) else {}
-
-
 def step(name: str, own: Own | None = None) -> str:
     """The tool alone at work: "Reading the note"."""
     return ongoing(VERB.get(name) or sentence(name, {}, {}, "", own))
@@ -974,7 +966,7 @@ def words(name: str, arguments: Any, state: str, display: Any = None,
     """The row's words: {running, settled, step, where, why} (the module's docstring).
     `why`: a failed call's reason, the first line of its result as it came (a server's
     own words, errors.said), else None."""
-    a, d, r = _args(arguments), _dict(display), result or ""
+    a, d, r = json_object(arguments), _dict(display), result or ""
     where = scope_words(d, a)
     failed = state == "error" and not not_run(state, d)
     return {"running": row(name, a, d, r, "running", own),

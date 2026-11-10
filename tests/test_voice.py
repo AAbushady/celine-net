@@ -123,9 +123,3 @@ def test_off_or_another_server_or_nothing_banned_sends_none():
                           model="big", raw={"provider_kind": "openai"})
     assert voice.apply(other, voice.validate({"banned": [" delve"]})) is other
 
-
-def test_merge_keeps_the_base_and_adds_its_own_once():
-    base = {"banned": ["\u2014", " delve"], "bias": -8.0}
-    got = voice.merge_voice(base, {"banned": ["moist", " delve"], "bias": -20})
-    assert got == {"banned": ["\u2014", " delve", " moist"], "bias": -20}
-

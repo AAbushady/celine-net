@@ -20,6 +20,7 @@ from ..skills import ToolContext, tool_rows
 from . import sync, tabs
 from .sync import BrowserRefused
 from ..core.event_types import BROWSER_STATE
+from ..core.store import json_object
 
 log = logging.getLogger("celine.browser")
 
@@ -135,14 +136,6 @@ STATE = {"pending": "running", "running": "running", "detached": "running", "ok"
          "error": "failed", "gated": "failed", "cancelled": "cancelled", "interrupted": "cancelled"}
 
 
-def _loads(text: str | None) -> dict:
-    try:
-        out = json.loads(text or "{}")
-    except ValueError:
-        return {}
-    return out if isinstance(out, dict) else {}
-
-
 def call_line(name: str, args: dict) -> str:
     """The agent's call as a line: `open example.org`, `look screen: Where is Play?`, `click e14,
     type e2: python` (as the Browser page lists it)."""
@@ -195,7 +188,7 @@ async def history(request: Request, q: str = "", failed: bool = False,
     rows, links = await request.app.state.services.store.read(fn)
     calls = []
     for r in rows:
-        args, display = _loads(r["arguments"]), _loads(r["display"])
+        args, display = json_object(r["arguments"]), json_object(r["display"])
         state = "failed" if display.get("refused") else STATE.get(r["state"], "done")
         box = r["name"].startswith("browser__")
         calls.append({"id": r["id"], "tool": r["name"].partition("__")[2],

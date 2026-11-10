@@ -10,7 +10,7 @@ import pytest
 
 from celine import boot
 from celine.conversations import store as conversations, view
-from celine.intercom import Intercom
+from celine.intercom import Intercom, deliver
 from celine.triggers import Event, Triggers, Watch, declared
 from celine.turns import store as turns
 from chat_fixtures import until
@@ -55,7 +55,7 @@ async def test_a_fire_is_a_background_task_hidden_from_the_chat_list(store, api)
     assert await t.fire("email", "mail.new", "More mail.") == cid
     turn = await turns.claim(store, "w")
     await turns.transition(store, turn["id"], cid, "done")
-    await t.app.intercom.deliver_idle(cid)
+    await deliver.deliver_idle(store, cid)
     users = [m for m in (await view.snapshot(store, cid))["messages"] if m["role"] == "user"]
     assert [(m["intercom"]["kind"], m["intercom"]["from"]) for m in users] == [
         ("trigger", "system:email")] * 2

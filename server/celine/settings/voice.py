@@ -104,13 +104,3 @@ def apply(bc, voice: dict[str, Any]):
                                    for b in voice["banned"]]}
     return out
 
-
-def merge_voice(base: dict, added: dict | None) -> dict:
-    """A base's Banned words with `added` laid over it: the words of both, each once, an
-    added plain word given a leading space (" delve", the way it stands mid-sentence);
-    any other key `added` gives wins."""
-    added = added or {}
-    new = [f" {w}" if isinstance(w, str) and w[:1].isalnum() else w
-           for w in added.get("banned") or []]
-    return {**base, **added,
-            "banned": list(dict.fromkeys([*(base.get("banned") or []), *new]))}

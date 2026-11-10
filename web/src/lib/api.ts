@@ -262,8 +262,6 @@ export const api = {
     } while (cursor)
     return all
   },
-  /** the model queue as it is now */
-  llmQueue: () => request<QueueSnapshot>('/llm-queue'),
   /** one conversation's background jobs, running first, then the newest */
   jobs: (conversation: string, limit: number) =>
     request<Page<'jobs', Job>>(`/jobs?conversation=${encodeURIComponent(conversation)}&limit=${limit}`),
@@ -404,10 +402,6 @@ export type Job = {
   /** on a stopped job: who stopped it. 'user' (the row or the panel), 'celine' (its stop tool), 'turn' (Stop on the reply) */
   stopped_by: 'user' | 'celine' | 'turn' | null
 }
-
-/** the LLM queue: what runs and waits on the models right now */
-type QueueEntry = { turn_id: string | null; role: string; priority: 'interactive' | 'agent' | 'background'; model: string }
-type QueueSnapshot = { running: QueueEntry[]; waiting: QueueEntry[] }
 
 type ConversationHit = {
   conversation_id: string
@@ -669,9 +663,6 @@ export const conversationApi = {
   edit: (id: string, message_id: string, text: string) =>
     request<{ message_id: string; turn_id: string | null; seq: number }>(`/conversations/${id}/messages/${message_id}/versions`,
       json('POST', { text })),
-  /** its last reply carried on, as a new version of it; `refused` says why not */
-  continueMessage: (id: string, message_id: string) =>
-    post<{ message_id: string; turn_id: string; seq: number } | { refused: string }>(`/conversations/${id}/messages/${message_id}/continue`),
   /** its reply as a sample of its voice in its notebook (on), or out of it again */
   sample: (id: string, message_id: string, on: boolean) =>
     request<{ sample: boolean }>(`/conversations/${id}/messages/${message_id}/voice-sample`, { method: on ? 'PUT' : 'DELETE' }),

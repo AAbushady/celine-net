@@ -27,6 +27,7 @@ from datetime import datetime, timedelta
 
 from ..core.event_types import GUARD_BANNER
 from ..core.ids import iso, now
+from ..core.store import json_object
 from ..events import added
 from . import bastet, view
 from .rules import REPEATABLE
@@ -173,7 +174,7 @@ async def stopped(store, conversation_id: str, since: str, until: str, call_id: 
                 f"g.tool_call_id <> ? AND {not_overruled('g')} ORDER BY g.id DESC LIMIT 20",
                 (conversation_id, decision, *REPEATABLE, since, until, call_id)):
             d = dict(r)
-            d["args"] = args_of(d.pop("arguments"))
+            d["args"] = json_object(d.pop("arguments"))
             out.append(d)
         return out
     return await store.read(fn)
@@ -268,7 +269,7 @@ async def one(store, rid: int) -> dict | None:
         if r is None:
             return None
         d = _row(r)
-        d["arguments"] = args_of(r["arguments"])
+        d["arguments"] = json_object(r["arguments"])
         d.update(kind=view.kind(r), line=view.line(r), actions=view.actions(r))
         return d
     return await store.read(fn)
@@ -287,19 +288,10 @@ def row(c: sqlite3.Connection, rid: int | None) -> sqlite3.Row | None:
     return c.execute("SELECT * FROM guard_decisions WHERE id=?", (rid,)).fetchone()
 
 
-def args_of(text: str | None) -> dict:
-    """A tool_calls row's arguments JSON as a dict ({} when it is none or not one)."""
-    try:
-        got = json.loads(text or "{}")
-    except ValueError:
-        return {}
-    return got if isinstance(got, dict) else {}
-
-
 def call_args(c: sqlite3.Connection, tool_call_id: str) -> dict:
     """A call's arguments as stored ({} when it has no row)."""
     r = c.execute("SELECT arguments FROM tool_calls WHERE id=?", (tool_call_id,)).fetchone()
-    return args_of(r[0]) if r else {}
+    return json_object(r[0]) if r else {}
 
 
 async def close_ask(store, rid: int) -> None:

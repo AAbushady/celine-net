@@ -14,7 +14,6 @@ import sqlite3
 
 from .clock import day_of
 
-HOMES = ("agent", "missions", "routines")
 # A mission's name as people and the agent read it, over missions `m` and its conversation
 # `c`: the title the title role gave it while its own name is still the one made from its
 # brief (title_auto), else the name it was started or renamed with. NULL where `m` is no

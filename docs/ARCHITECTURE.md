@@ -1407,8 +1407,7 @@ through a temp file and a rename.
 flag, retry. Events go to the global feed as `kb.task`, `kb.job` and `kb.changed` through
 `loop.call_soon_threadsafe`, because the bus is not thread safe. Tasks do not survive a
 restart; every task is idempotent. A run ends done, cancelled, failed or unreachable
-(`Unreachable` is a normal end). A quiet task is never listed; `due_at()` is the one retry
-rule for scheduled work.
+(`Unreachable` is a normal end). A quiet task is never listed.
 
 ### Skills
 

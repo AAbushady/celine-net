@@ -36,15 +36,6 @@ def _stored_call(c: sqlite3.Connection, r: sqlite3.Row) -> dict:
     return call
 
 
-async def calls_of(store, message_id: str) -> dict[str, dict]:
-    """The calls of one reply as the context builder reads them, by id."""
-    def fn(c: sqlite3.Connection) -> dict[str, dict]:
-        return {r["id"]: _stored_call(c, r) for r in c.execute(
-            "SELECT tc.id, tc.name, tc.display, tc.result_message_id FROM tool_calls tc "
-            "WHERE tc.message_id=? ORDER BY tc.rowid", (message_id,))}
-    return await store.read(fn)
-
-
 async def context_view(store, cid: str, path: list[dict] | None = None) -> dict:
     """What the context builder needs, in one read: the active path (root first; `path`
     when the turn read it already) with every reply's calls and their stored results,

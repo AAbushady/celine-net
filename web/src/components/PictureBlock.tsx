@@ -21,6 +21,7 @@ import { Button, InlineError, MenuButton, Notice, Picture, cx, toast, type MenuI
 import { GalleryContext } from './Batch'
 import { madeMenu } from './PhotoViewer'
 import { settingOf } from './Status'
+import { saveFile } from '../lib/download'
 import './PictureBlock.css'
 
 export function PictureBlock({ pic, onStop, onRetry, className }: {
@@ -48,7 +49,7 @@ export function PictureBlock({ pic, onStop, onRetry, className }: {
   const src = file ? fileUrl(file) : ''
   const items: MenuItem[] = file ? [
     ...madeMenu({ prompt: pic.prompt, details: made, onPortrait: () => void portrait.run() }),
-    { label: 'Download', icon: Download, onSelect: () => download(src, file.filename) },
+    { label: 'Download', icon: Download, onSelect: () => saveFile(src, file.filename) },
   ] : []
 
   return (
@@ -93,10 +94,4 @@ export function PictureBlock({ pic, onStop, onRetry, className }: {
       )}
     </figure>
   )
-}
-
-function download(src: string, name: string) {
-  const a = document.createElement('a')
-  a.href = src; a.download = name
-  document.body.append(a); a.click(); a.remove()
 }

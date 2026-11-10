@@ -36,17 +36,6 @@ log = logging.getLogger("celine.kb.tasks")
 
 KEEP_FINISHED = 50
 DONE_TTL_MS = 3_600_000          # a finished visible task leaves the list after an hour
-UNREACHABLE_RETRY_MS = 300_000   # a job that found its connection unreachable: every 5 min
-
-
-def due_at(every_ms: float, *, last_ok: int | None, last_attempt: int | None,
-           unreachable: bool) -> int:
-    """When a scheduled job runs next. The schedule is the only retry policy: one
-    interval after the last run, or every UNREACHABLE_RETRY_MS while the last run
-    found its connection unreachable (never later than the interval)."""
-    if unreachable:
-        return int((last_attempt or 0) + min(UNREACHABLE_RETRY_MS, every_ms))
-    return int(max(last_ok or 0, last_attempt or 0) + every_ms)
 
 
 def sentence(e: BaseException) -> str:
