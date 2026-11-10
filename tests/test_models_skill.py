@@ -3,6 +3,7 @@ prompt and temperature go out as they are, through the queue at its turn's prior
 and the call fails when that model fails, with no other model tried."""
 from __future__ import annotations
 
+import math
 import types
 
 import pytest
@@ -74,6 +75,12 @@ async def test_ask_sends_its_messages_to_exactly_that_model(skill):
                                 {"role": "user", "content": "a cat name?"}]
     r = await skill.ask(CTX, model="main/big", messages="just a line")
     assert Rec.calls[-1][1]["messages"] == [{"role": "user", "content": "just a line"}]
+
+
+def test_ask_runs_as_long_as_the_turn_has_time():
+    """A model's reply is not a tool's work: no tool time limit cuts it (turns/tools.py
+    bounds a call by the turn's time left when its own limit is longer)."""
+    assert Models.ask.__celine_tool__["timeout"] == math.inf
 
 
 async def test_only_chat_models_and_a_failure_is_the_calls(skill):

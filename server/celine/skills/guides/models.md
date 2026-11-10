@@ -25,7 +25,8 @@ answer as text.
 
 The model sees exactly what you send: none of your notes, none of this conversation. The
 request waits in the model queue with your other calls and runs on exactly the model you
-name. When that model fails, the call fails and says why.
+name. When that model fails, the call fails and says why. The call runs as long as your
+turn has time: the tool time limit does not cut a long answer.
 
 Example:
 models__ask(model="local/my-model", system="Answer in one line.", messages=[{"role":

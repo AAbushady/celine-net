@@ -90,7 +90,9 @@ class Models:
             return " ".join(f for f in facts if f)
         return ToolResult(content="\n".join(line(r) for r in refs), display={"models": refs})
 
-    @tool()
+    # a model's reply, so it runs as long as the turn has time (turns/tools.py), like the
+    # agent's own: no tool time limit of its own cuts a long answer
+    @tool(timeout=math.inf)
     async def ask(
         self,
         ctx: ToolContext,
@@ -103,6 +105,7 @@ class Models:
         """Ask one of your models directly: your messages go in, its answer comes back as
         text. Example: models__ask(model="local/my-model", messages=[{"role": "user",
         "content": "Three names for a grey cat."}])
+        It may take as long as your turn has time.
         Returns: the answer alone."""
         s = self.cfg.settings
         allowed = agent_models.allowed(s)

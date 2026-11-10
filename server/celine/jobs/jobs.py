@@ -75,8 +75,9 @@ class Jobs:
                 result = out
                 state = "failed" if out.is_error else "done"
             except TimeoutError:
-                result = ToolResult(content=f"timed out after {deadline:.0f}s",
-                                    is_error=True)
+                result = ToolResult(
+                    content=f"{spec.name} was stopped at the job time limit of {deadline:g} s "
+                            f"(Settings, Advanced, Job time limit).", is_error=True)
                 state = "timeout"
             except Exception as e:
                 log.warning("step raised", exc_info=True,

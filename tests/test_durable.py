@@ -153,7 +153,8 @@ async def test_unasked_a_detach_tool_runs_in_the_turn_and_is_stopped_at_its_time
     assert await job_rows.list(store) == []
     [text] = await store.read(lambda c: [r["content"] for r in c.execute(
         "SELECT content FROM messages WHERE conversation_id=? AND role='tool'", (cid,))])
-    assert text.startswith("timed out after")
+    assert text == ("slow__detach was stopped at the tool time limit of 0.4 s "
+                    "(Settings, Advanced, Tool time limit)."), "it names the limit and its place"
     assert (await view.snapshot(store, cid))["turn"]["state"] == "done"
 
 

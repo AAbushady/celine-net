@@ -470,8 +470,15 @@ async def _run_call(turn, call, spec, args, store, cfg, token, jobs):
     asked = bool(spec.background and args.get(spec.background) is True)
     if not asked:
         ctx = replace(ctx, user_wrote=getattr(token, "user_wrote", None))
-    timeout = float(spec.timeout or cfg.r("tool_timeout_seconds"))
-    expired = f"timed out after {timeout:.0f}s"
+    # the result names the limit that stopped it and where it is set: a model's slow
+    # answer must not read as a broken model
+    if spec.timeout:
+        timeout = float(spec.timeout)
+        expired = f"{name} was stopped at its own time limit of {timeout:g} s."
+    else:
+        timeout = float(cfg.r("tool_timeout_seconds"))
+        expired = (f"{name} was stopped at the tool time limit of {timeout:g} s "
+                   f"(Settings, Advanced, Tool time limit).")
     if left is not None and left < timeout:
         timeout, expired = left, "Stopped: the time for this turn is up."
     handoff = spec.mode if jobs is not None else "blocking"
