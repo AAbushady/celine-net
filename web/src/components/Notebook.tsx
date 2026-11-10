@@ -97,7 +97,8 @@ export function Notebook({ active, note, edit, history }: { active: boolean; not
   const boxes = useRef<Record<string, HTMLDivElement | null>>({})
   const [leaving, setLeaving] = useState<string | null>(null)
 
-  const goList = (f: string | null = folder) => { setFolder(f); setView('notes'); nav.go({ section: 'notebook' }) }
+  // the list of one folder, or of every note (null): an empty name is no folder, it is every note
+  const goList = (f: string | null = folder) => { setFolder(f || null); setView('notes'); nav.go({ section: 'notebook' }) }
   const goNote = (path: string, then: { edit?: boolean; history?: boolean } = {}) => nav.go({ section: 'notebook', note: path, ...then })
   const act = async (p: Promise<unknown>) => {
     try { await p; setError(null); tree.reload() } catch (e) { setError(errorText(e)) }
@@ -377,7 +378,8 @@ function NotePage({ path, note, name, menu, onEdit, onFolder, onOpenEditor, want
   name: string
   menu: MenuItem[]
   onEdit: () => void
-  onFolder: (f: string) => void
+  /** the list of a folder; null: every note */
+  onFolder: (f: string | null) => void
   /** the text as stored, for the editor the route asks for */
   onOpenEditor: (text: string) => void
   wantsEditor: boolean
@@ -386,7 +388,7 @@ function NotePage({ path, note, name, menu, onEdit, onFolder, onOpenEditor, want
   const locked = note?.locked ?? !!file.data?.protected
   useEffect(() => { if (wantsEditor && file.data && !locked) onOpenEditor(file.data.content) }, [wantsEditor, file.data, locked]) // eslint-disable-line react-hooks/exhaustive-deps
   const folder = parentOf(path)
-  const crumbs = [{ label: 'Notebook', onClick: () => onFolder('') },
+  const crumbs = [{ label: 'Notebook', onClick: () => onFolder(null) },
                   ...(folder ? [{ label: folder, onClick: () => onFolder(folder) }] : [])]
   // its own notes in its words; "Who it is" for identity.md
   const title = path === 'identity.md' && name ? `Who ${name} is` : bare(leaf(path))
