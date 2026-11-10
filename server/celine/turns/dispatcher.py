@@ -196,7 +196,7 @@ class Dispatcher:
         runs, and its sub-agents' conversations the same way. Returns the stopped
         turn's id, or None when no turn was live. The queued briefs of the whole family
         go first, so a sub-agent that ends here starts none of its siblings."""
-        from ..sub_agents.skill import drop_queued
+        from ..sub_agents.store import drop_queued
         await self.store.write(lambda c: drop_queued(c, cid))
         tid = await turns.request_abort(self.store, cid)
         if tid:

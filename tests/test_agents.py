@@ -22,7 +22,8 @@ from celine.intercom import Intercom
 from celine.intercom.skill import IntercomSkill
 from celine.skills.gating import READ_ONLY_REFUSAL
 from celine.sub_agents import report
-from celine.sub_agents.skill import SubAgents, agents_of
+from celine.sub_agents.skill import SubAgents
+from celine.sub_agents.store import agents_of
 from celine.skills.notebook import Notebook
 from celine.turns.dispatcher import Dispatcher
 from celine.skills.gating import overrides_for

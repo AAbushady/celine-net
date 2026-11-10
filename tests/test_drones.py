@@ -26,7 +26,8 @@ from celine.skills import Registry
 from celine.sub_agents import drone, skill as skill_mod
 from celine.sub_agents.drone import Unseen, tally
 from celine.sub_agents.report import head, work
-from celine.sub_agents.skill import SubAgents, agents_of
+from celine.sub_agents.skill import SubAgents
+from celine.sub_agents.store import agents_of
 from chat_fixtures import until
 from settings_fixtures import scratch
 

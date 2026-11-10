@@ -199,7 +199,7 @@ async def offered(registry, store, cid: str, turn_id: str | None = None
     offered by name is what it may call."""
     from ..skills.gating import read_mode_has
     from ..skills.places import offered as offered_at
-    from ..sub_agents.skill import reads_only
+    from ..sub_agents.store import reads_only
     at = "chat" if store is None else await store.read(lambda c: place(c, cid, turn_id))
     out: dict[str, list] = {}
     for spec in registry.tools.values():

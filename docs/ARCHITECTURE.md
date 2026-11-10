@@ -1226,7 +1226,7 @@ the status `active`, `needs_you` (Waiting for you) or `done`, and what it delive
 (`offered_in` gives the rest only in the mission's own conversation): `read` finds one by
 name or conversation id (`store.find_sync`) and gives its status, brief, report
 conversation, limits, artifact, plan steps, sub-agents with their latest report
-(`sub_agents/skill.agents_of`) and its newest intercom messages to and from the user.
+(`sub_agents/store.agents_of`) and its newest intercom messages to and from the user.
 
 **Plans** (`plans/`, core): one plan per conversation, table `plans`: `text`, `steps` [{title,
 state todo|doing|done, checkpoint none|ask, model, by}], `waiting`; `by` is who set the

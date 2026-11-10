@@ -115,7 +115,7 @@ _PLAN_STEP_SHOWN = {
 
 
 class AgentState(Shown):
-    """Where a sub-agent stands (sub_agents/skill.py `_look` works it out; nothing stores it)."""
+    """Where a sub-agent stands (sub_agents/store.py `look` works it out; nothing stores it)."""
     QUEUED = "queued"
     WORKING = "working"
     DONE = "done"

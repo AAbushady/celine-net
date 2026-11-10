@@ -22,7 +22,7 @@ TWO_WAY = {
     ("comfyui", "image_catalog"), ("comfyui", "settings"),
     ("conversations", "guard"), ("conversations", "intercom"),
     ("conversations", "settings"), ("conversations", "skills"),
-    ("conversations", "sub_agents"), ("conversations", "turns"), ("events", "guard"),
+    ("conversations", "turns"), ("events", "guard"),
     ("events", "intercom"), ("guard", "intercom"), ("guard", "settings"),
     ("guard", "skills"), ("guard", "turns"), ("intercom", "missions"),
     ("jobs", "turns"), ("missions", "plans"),

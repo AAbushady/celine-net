@@ -32,7 +32,7 @@ The map of the code and the rules it follows.
 | `kb/` | knowledge bases: the chat archive, documents, instant and semantic search, the connectors' feed |
 | `settings/` | `var/settings` and `var/secrets`: shapes, validation, `registry.py` (every setting), `features.py` (the feature catalog and probes), `services.py` (box addresses), `prompts.py` (Settings, Advanced, Prompts: the user's edits in var/prompts) |
 | `agent.py`, `prompts.py` | the agent's row: name, pronouns, persona, talk, voice, portrait; `text(__file__, name)` reads a `.md` beside the module that sends it |
-| `missions/`, `sub_agents/` | missions and sub-agents: `sub_agents/skill.py` the tool, `report.py` the report up, `cli.py` an agent CLI in the box, `drone.py` opencode on a device, `api.py` the routes |
+| `missions/`, `sub_agents/` | missions and sub-agents: `sub_agents/skill.py` the tool, `store.py` its queries, `report.py` the report up, `cli.py` an agent CLI in the box, `drone.py` opencode on a device, `api.py` the routes |
 | `devices.py`, `plugins.py` | the agent's devices (plugins with a `[drones]` block); plugins, base and yours, and the keys of a `plugin.toml` (MANIFEST) |
 | `plans/` | the plan, one per conversation |
 | `schedules/`, `triggers/` | routines: schedules and their runs (a failed run runs again only as its "When a run fails" setting says, or by Retry); watch and event triggers |

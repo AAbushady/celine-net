@@ -127,8 +127,7 @@ async def _conversation(state, send, cid: str, after: int) -> None:
                 await send({"type": "error", "conversation": cid, "code": "not_found"})
                 return
             if last == 0:
-                await send({"type": "snapshot",
-                            **view.for_client(got, getattr(state.cfg, "settings", None))})
+                await send({"type": "snapshot", **got})
             elif "resync" in got:
                 await send({"type": "resync", "conversation": cid, "reason": got["resync"]})
                 return

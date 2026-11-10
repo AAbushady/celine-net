@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..core.statuses import AgentState
 from ..errors import CelineError, NotFound
-from .skill import agents_of, labelled, tree_of
+from .store import agents_of, labelled, tree_of
 
 router = APIRouter(prefix="/api")
 
@@ -57,7 +57,7 @@ async def list_agents(request: Request, conversation: str | None = None,
 @router.get("/conversations/{cid}/sub-agents")
 async def agent_tree(request: Request, cid: str) -> dict:
     """The sub-agents under the top of `cid`'s chain, and the missions they started, as
-    a tree (skill.tree_of): {top, origin, agents, missions, total}, each with its depth,
+    a tree (store.tree_of): {top, origin, agents, missions, total}, each with its depth,
     state, reason, model (its label), tokens, seconds and link."""
     services = request.app.state.services
     out = await services.store.read(lambda c: tree_of(c, cid, services.store.tool_words))

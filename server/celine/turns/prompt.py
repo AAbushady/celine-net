@@ -44,7 +44,7 @@ async def tool_specs(registry, store, cid: str, carried, without=frozenset()
     names = {s.wire_name for n in [*carried.skills, *carried.others]
              for s in here.get(n, ())} - set(without)
     tools = {k: s for k, s in registry.tools.items() if k in names}
-    from ..sub_agents.skill import reads_only
+    from ..sub_agents.store import reads_only
     return tools, await reads_only(store, cid)
 
 

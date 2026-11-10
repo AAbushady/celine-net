@@ -245,7 +245,7 @@ class Missions:
         what it delivered, its plan with each step's state, its sub-agents with their
         latest report, and the newest messages between it and {{username}} (what it
         asked, what they answered)."""
-        from ..sub_agents.skill import agents_of
+        from ..sub_agents.store import agents_of
         store = ctx.store
 
         def fn(c):

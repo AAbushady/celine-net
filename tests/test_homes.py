@@ -12,7 +12,7 @@ from celine.conversations import store as conversations
 from celine.db.migrate import migrate
 from celine.intercom.store import source_of
 from celine.skills.places import offered, place_of
-from celine.sub_agents.skill import agents_of
+from celine.sub_agents.store import agents_of
 from runs_fixtures import add_run
 
 pytestmark = pytest.mark.anyio
@@ -162,7 +162,7 @@ async def test_a_loop_in_the_chain_stops_the_walk(store):
 
 async def test_the_tree_holds_a_runs_sub_agents_and_missions_their_reasons_and_the_total(store):
     from celine.missions import store as missions
-    from celine.sub_agents.skill import tree_of
+    from celine.sub_agents.store import tree_of
     ids = await _tree(store)
     run = ids["run"]
     deep = await conversations.create(store, agent_of=ids["run-agent"], agent_name="deep",

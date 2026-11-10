@@ -95,9 +95,7 @@ async def test_agents_and_missions_are_managed_over_http_with_events(db_path, mo
             tree = (await c.get(f"/api/conversations/{deep}/sub-agents")).json()
             assert tree["agents"][1]["model"] == "Flash-Next", "its label, not its id"
             listed = (await c.get(f"/api/sub-agents?conversation={parent}")).json()["agents"]
-            snap = (await c.get(f"/api/conversations/{parent}")).json()["conversation"]["agents"]
-            for rows in (listed, snap):
-                assert {a["id"]: a["model"] for a in rows}[chain[1]] == "Flash-Next"
+            assert {a["id"]: a["model"] for a in listed}[chain[1]] == "Flash-Next"
             assert (await c.get("/api/conversations/nope/sub-agents")).status_code == 404
             await store.write(lambda c: c.execute(
                 "DELETE FROM conversations WHERE agent_of IS NOT NULL AND id <> ?", (sub,)))
@@ -122,7 +120,8 @@ async def test_agents_and_missions_are_managed_over_http_with_events(db_path, mo
             assert (snap["agent_of"], snap["agent_name"], snap["access"]) == \
                 (parent, "car scout", "read")
             snap = (await c.get(f"/api/conversations/{parent}")).json()["conversation"]
-            assert [a["id"] for a in snap["agents"]] == [sub] and snap["mission"] is None
+            assert snap["mission"] is None
+            assert "agents" not in snap, "its sub-agents are GET /api/sub-agents' to list"
 
             assert (await c.post(f"/api/sub-agents/{sub}/stop")).json() == {"stopped": True}
             assert (await c.post("/api/sub-agents/nope/stop")).status_code == 404

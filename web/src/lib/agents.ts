@@ -47,7 +47,7 @@ export type AgentState = 'queued' | 'working' | 'done' | 'stopped' | 'failed' | 
 export type Agents = { agents: Agent[]; filters: { value: string; label: string; count: number }[] }
 
 /** one sub-agent in the tree under a conversation's top (GET /api/conversations/{id}/sub-agents,
-    server/celine/sub_agents/skill.py tree_of) */
+    server/celine/sub_agents/store.py tree_of) */
 export type TreeAgent = {
   id: string
   parent: string

@@ -44,8 +44,6 @@ async def snapshot(store, cid: str, llm=None) -> dict:
                             "FROM missions m JOIN conversations c ON c.id = m.conversation_id "
                             "WHERE m.conversation_id=?", (cid,)).fetchone()
         from ..intercom.store import source_of
-        from ..sub_agents.skill import agents_of
-        agents = agents_of(c, cid, own=store.tool_words)
         messages = tree.path(c, cid)
         # the live turns in the order they run (the first is the one running or next);
         # the snapshot's turn is the first, else the newest
@@ -114,7 +112,6 @@ async def snapshot(store, cid: str, llm=None) -> dict:
         guard = [b for b in guard_rows.banners(c, cid) if b["message_id"] in on_path]
         return {"conversation": {**dict(conv), "notes_off": json.loads(conv["notes_off"]),
                                  "mission": dict(mission) if mission else None,
-                                 "agents": agents,
                                  # the app path that shows it (intercom source_of)
                                  "link": (source_of(c, f"agent:{cid}") or {}).get("link"),
                                  # where it sits, from the top down to itself (homes.path)
@@ -131,12 +128,6 @@ async def snapshot(store, cid: str, llm=None) -> dict:
 
     return await store.read(fn)
 
-def for_client(snap: dict, settings) -> dict:
-    """A snapshot as a client gets it: its sub-agents' models as labels
-    (sub_agents/skill.labelled)."""
-    from ..sub_agents.skill import labelled
-    conv = snap["conversation"]
-    return {**snap, "conversation": {**conv, "agents": labelled(settings, conv["agents"])}}
 
 
 async def resume(store, cid: str, after_seq: int) -> dict:

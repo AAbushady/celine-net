@@ -515,13 +515,10 @@ export type Compaction = {
   text: string; tokens_before: number | null; tokens_after: number | null; focus: string | null; created_at: string
 }
 
-/** a sub-agent as the snapshot lists it (sub_agents agents_of) */
-type SubAgent = { id: string; name: string; access: 'read' | 'work'; folder: string | null }
-
 export type Snapshot = {
   conversation: {
     id: string; title: string; seq: number; archived_at: string | null
-    agent_of: string | null; agents: SubAgent[]
+    agent_of: string | null
     /** a sub-agent's name, null for any other */
     agent_name?: string | null
     /** where it sits, from the top down to itself (server/celine/homes.py path): a
