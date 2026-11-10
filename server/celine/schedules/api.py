@@ -11,9 +11,9 @@ from ..errors import CelineError, NotFound
 from ..settings import files, seed
 from ..settings.files import Invalid
 from ..settings.registry import ROLES
-from ..clock import day_of, zone
+from ..clock import zone
 from . import VARIABLES, fill, run_date, run_roles, shown, words
-from .runs import IDLE_MINUTES, ON_DAYS, ROW, STOPPED, day_span, first_slot, results, \
+from .runs import IDLE_MINUTES, ROW, STOPPED, first_slot, results, \
     view as run_view
 
 router = APIRouter(prefix="/api")
@@ -175,8 +175,8 @@ async def preview(request: Request) -> dict:
 @router.get("/runs")
 async def list_runs(request: Request, day: str | None = None,
                     schedule: str | None = None, until: str | None = None) -> dict:
-    """{runs, days, today}: the runs whose slot is on `day` (a calendar date in the app's
-    zone, midnight to midnight; default: today) or of one `schedule` (its newest 50),
+    """{runs, days, today}: the runs of `day` (a calendar date in the app's zone, midnight
+    to midnight: a run's `day`; default: today) or of one `schedule` (its newest 50),
     oldest slot first; `days` the DAYS days up to `until` (default and at most today),
     newest first, each {day, failed: the newest try of one of its schedules on that day
     failed}. A run's `asked`: an approval waits in it or in a sub-agent of it
@@ -186,7 +186,6 @@ async def list_runs(request: Request, day: str | None = None,
     cfg, store = services.cfg, services.store
     waits = asked(services)
     held = getattr(services.schedules, "held", None)
-    tz = zone(cfg)
     today = _today(cfg)
     which = _date(day, "day") if day else today
     last = min(_date(until, "until"), today) if until else today
@@ -196,13 +195,13 @@ async def list_runs(request: Request, day: str | None = None,
             rows = c.execute(f"{ROW} WHERE r.schedule = ? ORDER BY r.slot DESC LIMIT 50",
                              (schedule,)).fetchall()[::-1]
         else:
-            rows = c.execute(f"{ROW} WHERE {ON_DAYS} ORDER BY r.slot",
-                             day_span(which, which, tz)).fetchall()
+            rows = c.execute(f"{ROW} WHERE r.day = ? ORDER BY r.slot",
+                             (which.isoformat(),)).fetchall()
         # each schedule's newest try of each day (a later slot replaces an earlier one)
         newest: dict[tuple[str, str], str] = {}
-        for d in c.execute(f"SELECT r.slot, r.schedule, r.state FROM runs r WHERE {ON_DAYS} "
-                           "ORDER BY r.slot", day_span(first, last, tz)):
-            newest[(day_of(d["slot"], tz), d["schedule"])] = d["state"]
+        for d in c.execute("SELECT day, schedule, state FROM runs WHERE day >= ? AND "
+                           "day <= ? ORDER BY slot", (first.isoformat(), last.isoformat())):
+            newest[(d["day"], d["schedule"])] = d["state"]
         return [run_view(r, cfg, r["id"] == held) for r in rows], newest
     runs, newest = await store.read(fn)
     failed = {n for (n, _), state in newest.items() if state == "failed"}

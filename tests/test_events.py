@@ -58,8 +58,8 @@ async def _rows(store) -> tuple[str, str]:
                created_at=_at("10:10"))     # not to the user
         for rid, state, at in (("r1", "failed", "2026-09-30T23:30:00.000+00:00"),
                                ("r2", "waiting", _at("20:00"))):
-            add_run(c, rid, "news", label="World news", slot=at, night="2026-10-01", state=state,
-                    error="The search failed", started_at=at)
+            add_run(c, rid, "news", label="World news", slot=at, night="2026-10-01",
+                    day="2026-10-01", state=state, error="The search failed", started_at=at)
         c.execute("INSERT INTO guard_decisions(conversation_id, turn_id, message_id, "
                   "tool_call_id, tool, mode, layer, rule, does, decision, why, created_at) "
                   "VALUES(?, 't1', ?, 'b', 'browser__open', 'on', 2, 'hijack', 'stop', 'stop', "

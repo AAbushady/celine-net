@@ -1576,8 +1576,9 @@ agent's `{{name}}` and `{{pronouns}}`, and `{{username}}`. When the run starts, 
 **Runs** (table `runs`): one schedule at one slot, its planned time (UTC); `night` is the
 night of the slot (`night_of`: before 12:00 in the app's zone belongs to that date's
 night, from 12:00 on to the next date's): its dates and results come from it. The
-Routines page lists a run under the calendar day of its slot, midnight to midnight in
-the app's zone (a run's `day`). `state` waiting, running, done, failed, skipped
+`day` is the calendar date of the slot in the app's zone, written with the run: the
+Routines page and `routines__list` give a run under it, midnight to midnight, and every
+link to a run carries it. `state` waiting, running, done, failed, skipped
 or stopped; `reason` why it waits; `conversation_id` its one conversation; `result`,
 `error`; `started_at`, `finished_at`; `again_of` the run a retry retries; unique
 (schedule, slot). Every change is `run.state {run}` on the global feed; its view adds

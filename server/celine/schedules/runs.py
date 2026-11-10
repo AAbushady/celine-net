@@ -103,7 +103,7 @@ import logging
 import posixpath
 import re
 import sqlite3
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import anyio
 from croniter import croniter
@@ -152,19 +152,6 @@ ROW = ("SELECT r.*, a.slot AS again_slot, x.id AS retried, x.slot AS retried_slo
        "(SELECT y.id FROM runs y WHERE y.again_of = r.id ORDER BY y.slot DESC LIMIT 1)")
 WAITED_ON = ("((c.kind = 'mission' AND {mission}) OR (c.kind = 'chat' AND "
              "c.trigger_key IS NULL))")
-
-# the runs `r` whose slot is on some calendar days: its two values are day_span's. Slots
-# are compared as moments, whatever the precision they were written with
-ON_DAYS = "datetime(r.slot) >= datetime(?) AND datetime(r.slot) < datetime(?)"
-
-
-def day_span(first: date, last: date, tz) -> tuple[str, str]:
-    """The first moment of `first` and of the day after `last` in the app's zone: the
-    calendar days `first` to `last`, midnight to midnight (ON_DAYS). The Routines page
-    and routines__list give a day's runs so."""
-    return (iso(datetime.combine(first, time.min, tz)),
-            iso(datetime.combine(last + timedelta(days=1), time.min, tz)))
-
 
 def _repeated(slot: datetime, tz) -> bool:
     """The second 02:00 of the night the clocks go back: that wall time already ran."""
@@ -253,8 +240,9 @@ def why_alone(reason: str) -> str:
 
 def view(r: sqlite3.Row | dict, cfg, held: bool = False) -> dict:
     """A run as the API and the feed give it (a ROW): `at` its slot's time of day in the
-    app's zone and `day` the calendar date that time is on, the day the Routines page lists
-    it under (`night` is the night its dates and results come from, night_of);
+    app's zone and `day` the calendar date that time is on, as the row holds it: the day
+    the Routines page lists it under (`night` is the night its dates and results come
+    from, night_of);
     `label` its schedule's (the one it kept once the schedule is gone);
     `state` waiting and `reason` HELD while it runs and its work waits for a model
     (`held`, its RunClock), `reason_why` its reason without the "Waiting" (why_alone);
@@ -268,7 +256,7 @@ def view(r: sqlite3.Row | dict, cfg, held: bool = False) -> dict:
         return datetime.fromisoformat(slot).astimezone(zone(cfg)).strftime("%H:%M")
     return {"id": r["id"], "schedule": r["schedule"],
             "label": shown(s) if s else r["label"], "slot": r["slot"], "at": at(r["slot"]),
-            "day": day_of(r["slot"], zone(cfg)),
+            "day": r["day"],
             "night": r["night"], "state": "waiting" if waits else r["state"],
             "reason": reason, "reason_why": why_alone(reason),
             "conversation_id": r["conversation_id"], "result": r["result"],
@@ -307,19 +295,21 @@ def _insert(c: sqlite3.Connection, store, cfg, name: str, slot: datetime,
             tz, state: str = "waiting", reason: str = "", by: str = "clock",
             night: str | None = None, again_of: str | None = None) -> dict | None:
     """The run of `name` at `slot`, None when it is there already; `by` who started it:
-    the clock, the user (Run now, Retry) or it (routines__run). A run again (`again_of`)
+    the clock, the user (Run now, Retry) or it (routines__run). Its `day` is the calendar
+    date of its slot in the app's zone, written here once and read everywhere (the
+    Routines page, routines__list, every link to it). A run again (`again_of`)
     keeps the `night` of the run it runs again. A Skip routine's new waiting run ends its
     older waiting ones skipped (NEXT_DUE): after days off it runs once, for its newest
     slot. A run the user started neither ends others so nor is ended so."""
     rid = new_id()
     s = (getattr(cfg, "schedules", None) or {}).get(name)
     made = c.execute(
-        "INSERT INTO runs(id, schedule, label, slot, night, state, reason, "
-        "created_at, started_by, again_of) VALUES (?,?,?,?,?,?,?,?,?,?) "
+        "INSERT INTO runs(id, schedule, label, slot, night, day, state, reason, "
+        "created_at, started_by, again_of) VALUES (?,?,?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT(schedule, slot) DO NOTHING",
         (rid, name, shown(s) if s else name, iso(slot),
-         night or night_of(slot, tz).isoformat(), state, reason, now(), by,
-         again_of)).rowcount
+         night or night_of(slot, tz).isoformat(), day_of(iso(slot), tz), state, reason,
+         now(), by, again_of)).rowcount
     if not made:
         return None
     if state == "waiting" and s is not None and s.on_fail == "skip" and by != "user":

@@ -14,7 +14,7 @@ from ..errors import CelineError
 from ..skills import ToolContext, ToolResult, guide, tool, described
 from ..turns.compact import one_line
 from . import shown
-from .runs import ON_DAYS, ROW, day_span, view as run_view
+from .runs import ROW, view as run_view
 
 RUNS_SHOWN = 5
 RUNS_MAX = 50       # runs one routines__list(runs=) gives at most
@@ -84,16 +84,15 @@ class Routines:
         return ToolResult(content="\n".join(lines), display={"routines": len(every)})
 
     async def _runs(self, ctx: ToolContext, day: str | None, n: int, tz) -> ToolResult:
-        """routines__list's runs: those whose slot is on the calendar day `day`, else the
+        """routines__list's runs: those of the calendar day `day` (a run's `day`), else the
         newest `n`."""
         if day:
             try:
-                on = dt.date.fromisoformat(day.strip())
+                day = dt.date.fromisoformat(day.strip()).isoformat()
             except ValueError:
                 return ToolResult(content=f"{day!r} is not a day. Use 2026-11-08.",
                                   is_error=True)
-            day = on.isoformat()
-            sql, args = f"{ROW} WHERE {ON_DAYS} ORDER BY r.slot", day_span(on, on, tz)
+            sql, args = f"{ROW} WHERE r.day = ? ORDER BY r.slot", (day,)
         else:
             sql, args = f"{ROW} ORDER BY r.slot DESC LIMIT ?", (min(max(n, 1), RUNS_MAX),)
         rows = await ctx.store.read(lambda c: [run_view(r, self.app.cfg)

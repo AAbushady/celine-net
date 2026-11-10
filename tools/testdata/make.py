@@ -606,11 +606,11 @@ class Gen:
                 cid = self.conversation(f"{label}, {night_words(night)}", self.at(mins),
                                         kind="background",
                                         trigger_key=f"run:{rid}")
-            self.x("INSERT INTO runs(id, schedule, label, slot, night, state, reason, "
+            self.x("INSERT INTO runs(id, schedule, label, slot, night, day, state, reason, "
                    "conversation_id, result, error, created_at, started_at, "
-                   "finished_at, started_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                   "finished_at, started_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                    (rid, schedule, label, slot.isoformat(timespec="milliseconds"), night,
-                    state, reason, cid,
+                    slot.astimezone(self.tz).date().isoformat(), state, reason, cid,
                     "Thought about the lighthouse dream and wrote it down." if state == "done"
                     else None, error, self.at(mins + 1),
                     self.at(mins) if cid else None, self.at(mins - 12),

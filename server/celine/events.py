@@ -36,7 +36,7 @@ from fastapi import APIRouter, Request
 from . import homes
 from .core.ids import iso
 from .api.cursor import page_cursor
-from .clock import day_label, day_of, zone
+from .clock import day_label, zone
 from .core.bus import NOTEBOOK_TOOLS
 from .errors import CelineError
 from .core.event_types import EVENTS_ADDED, NOTICE
@@ -206,7 +206,7 @@ def _run(r, cfg) -> dict:
     return {"title": r["label"], "outcome": word, "tone": tone,
             "detail": _join(by, _first(r["error"] or r["reason"]) or
                             _took(r["at"], r["finished_at"])),
-            "open": homes.run_link(day_of(r["slot"], zone(cfg)), r["rid"])}
+            "open": homes.run_link(r["day"], r["rid"])}
 
 
 def _guard(r, cfg) -> dict:
@@ -291,7 +291,7 @@ SOURCES = {s.kind: s for s in (
     Source("run", "Runs",
            "SELECT 'run:' || r.id AS id, coalesce(r.started_at, r.finished_at, r.created_at) "
            "AS at, r.state = 'failed' AS failed, r.conversation_id AS cid, NULL AS mid, "
-           "NULL AS tid, 'background' AS tab, r.id AS rid, r.label, r.slot, r.state, r.reason, r.error, "
+           "NULL AS tid, 'background' AS tab, r.id AS rid, r.label, r.day, r.state, r.reason, r.error, "
            "r.finished_at, r.started_by FROM runs r WHERE r.state != 'waiting'", _run),
     Source("guard", "Bastet",
            "SELECT 'guard:' || g.id AS id, g.created_at AS at, "

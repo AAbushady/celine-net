@@ -24,7 +24,7 @@ EXPECTED_TABLES = {
 }
 LOG_TABLES = {"events", "global_events", "raw_responses", "requests", "terminal_commands"}
 NOTEBOOK_TABLES = {"notebook_index", "notebook_fts"}
-LATEST = 29
+LATEST = 30
 
 
 def _version(db) -> int:
@@ -200,7 +200,6 @@ def test_0004_gives_each_sub_agent_call_the_link_of_its_conversation(tmp_path, m
     """A sub-agent's call names where its conversation opens (homes.of), as its display
     does from now on."""
     import json
-    from celine import homes
     d = tmp_path / "migrations"
     d.mkdir()
     for f in ("0001_schema.sql", "0002_no_message_trash.sql", "0003_turn_end_hooks.sql"):
@@ -241,8 +240,10 @@ def test_0004_gives_each_sub_agent_call_the_link_of_its_conversation(tmp_path, m
         "SELECT display FROM tool_calls WHERE id != 'other'")]
     got = {x["conversation_id"]: x.get("link", "-") for x in shown}
     assert got.pop("s-br") == "/chat/s-br", "a bridged chat's (a chat after 0005) opens with the agent's chats"
-    assert got == {sub: homes.of(c, sub)["link"] for sub in subs}
-    assert got["s-run"] == "/routines/2026-10-22/task/s-run" and got["gone"] is None
+    # the links as homes.of gave them when this step was written (a run's by its night)
+    assert got == {"s-chat": "/chat/s-chat", "s-mis": "/mission/s-mis",
+                   "s-run": "/routines/2026-10-22/task/s-run",
+                   "s-task": "/routines/2026-10-21/task/s-task", "gone": None}
     assert "link" not in json.loads(c.execute(
         "SELECT display FROM tool_calls WHERE id='other'").fetchone()[0]), "only the agent's calls"
     c.close()
@@ -567,3 +568,46 @@ def test_0028_keeps_a_missions_check_in_time_and_reads_its_old_check_ins(tmp_pat
     assert dict(c.execute("SELECT intercom_id, state FROM intercom_deliveries")) == {
         1: "read", 2: "pending"}, "a check-in stops waiting, a question still waits"
     c.close()
+
+
+def test_0030_gives_every_run_the_calendar_day_of_its_slot_in_the_apps_zone(tmp_path, monkeypatch):
+    import importlib.util
+    from zoneinfo import ZoneInfo
+    d = tmp_path / "migrations"
+    d.mkdir()
+    for f in sorted(MIGRATIONS_DIR.iterdir()):
+        if f.suffix in (".sql", ".py") and f.name < "0030":
+            shutil.copy(f, d)
+    monkeypatch.setattr(m, "MIGRATIONS_DIR", d)
+    db = tmp_path / "celine.db"
+    assert migrate_all(db) == 29
+    (tmp_path / "settings").mkdir()
+    (tmp_path / "settings" / "general.toml").write_text('timezone = "America/New_York"\n')
+    rows = (("evening", "2026-11-09T22:00:00.000+00:00", "2026-11-10"),   # 17:00 on the 9th
+            ("late", "2026-11-10T03:00:00.000+00:00", "2026-11-10"),      # 22:00 on the 9th
+            ("early", "2026-11-10T06:00:00.000+00:00", "2026-11-10"),     # 01:00 on the 10th
+            ("clocks", "2026-11-01T04:30:00.000+00:00", "2026-11-01"))    # 00:30, the clocks go back
+    c = sqlite3.connect(db)
+    for rid, slot, night in rows:
+        c.execute("INSERT INTO runs(id, schedule, label, slot, night, state, created_at) "
+                  "VALUES(?, ?, 'A run', ?, ?, 'done', ?)", (rid, rid, slot, night, slot))
+    c.commit()
+    c.close()
+    shutil.copy(MIGRATIONS_DIR / "0030_run_day.py", d)
+    assert migrate_all(db) == 30
+    c = sqlite3.connect(db, isolation_level=None)
+    assert dict(c.execute("SELECT id, day FROM runs")) == {
+        "evening": "2026-11-09", "late": "2026-11-09", "early": "2026-11-10",
+        "clocks": "2026-11-01"}, "the date of its slot where the app is, whatever its night"
+    assert [tuple(r) for r in c.execute("SELECT id, slot, night FROM runs ORDER BY id")] == \
+        sorted(rows), "nothing else in the row changed"
+    assert "runs_day" in {r[1] for r in c.execute("PRAGMA index_list(runs)")}
+    spec = importlib.util.spec_from_file_location("run_day", MIGRATIONS_DIR / "0030_run_day.py")
+    step = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(step)
+    c.execute("UPDATE runs SET day = 'kept' WHERE id = 'early'")
+    step.up(c, db)
+    assert c.execute("SELECT day FROM runs WHERE id = 'early'").fetchone() == ("kept",), \
+        "run again, it writes nothing over a day that is there"
+    c.close()
+    assert step._zone(tmp_path / "nowhere" / "celine.db") == ZoneInfo("UTC"), "no setting: UTC"
