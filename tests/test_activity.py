@@ -46,7 +46,7 @@ async def test_a_turn_runs_and_a_queued_one_the_hold_keeps_aside_does_not(store)
     await store.write(lambda c: _row(c, "turns", id="t2", conversation_id=background,
                                      state="queued", created_at=AT))
     [task] = await conversations.background(store)
-    assert (task["working"], task["state"]) == (False, {"tone": "warn", "words": "Frozen"}), \
+    assert (task["working"], task["display"]) == (False, {"tone": "warn", "words": "Frozen"}), \
         "the background list says the same as the chat list"
 
 

@@ -50,6 +50,36 @@ LIVE_TURNS_SQL = sql_list(LIVE_TURNS)
 CLAIMED_TURNS_SQL = sql_list(CLAIMED_TURNS)
 
 
+class RunState(StrEnum):
+    """Where a routine's run stands (runs.state)."""
+    WAITING = "waiting"
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+    STOPPED = "stopped"
+
+    @property
+    def display(self) -> dict:
+        """{words, tone}: this state as a row carries it for the page."""
+        words, tone = _RUN[self]
+        return {"words": words, "tone": tone.value}
+
+
+_RUN = {
+    RunState.WAITING: ("Queued", Tone.MUTED),
+    RunState.RUNNING: ("Running", Tone.RUNNING),
+    RunState.DONE: ("Done", Tone.SUCCESS),
+    RunState.FAILED: ("Failed", Tone.ERROR),
+    RunState.SKIPPED: ("Skipped", Tone.MUTED),
+    RunState.STOPPED: ("Stopped", Tone.MUTED),
+}
+# a row whose work waits on the user (a request in it), whatever its own status
+WAITING_FOR_YOU = {"words": "Waiting for you", "tone": Tone.WARN.value}
+# a slot of a schedule that has not come yet: no run, so no RunState
+SCHEDULED = {"words": "Scheduled", "tone": Tone.MUTED.value}
+
+
 class MissionStatus(StrEnum):
     """Where a mission stands (missions.status)."""
     ACTIVE = "active"

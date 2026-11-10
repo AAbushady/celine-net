@@ -55,7 +55,8 @@ async def background(request: Request) -> dict:
     """{background: [{id, title, kind, trigger, working, last_line, updated_at}]}: the
     background tasks (not the runs, which Routines lists), newest activity first;
     `trigger` the trigger's name, `working` while a turn runs there (not one the hold
-    keeps aside: activity.py), `state` how its turn stands in words, `last_line` its
+    keeps aside: activity.py), `display` how it stands as the page shows it (Waiting for
+    you while `asked`), `last_line` its
     newest line (its log line when it ended quietly), `asked` while an approval waits in
     it or in a sub-agent of it (approvals.asked)."""
     from ..approvals import asked
@@ -64,5 +65,7 @@ async def background(request: Request) -> dict:
     services = request.app.state.services
     waits = asked(services)
     models = answering(getattr(services, "llm", None))
-    return {"background": [{**r, "asked": r["id"] in waits}
+    from ..core.statuses import WAITING_FOR_YOU
+    return {"background": [{**r, "asked": r["id"] in waits,
+                            **({"display": WAITING_FOR_YOU} if r["id"] in waits else {})}
                            for r in await rows(services.store, models)]}

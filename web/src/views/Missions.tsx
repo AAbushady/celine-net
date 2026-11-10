@@ -219,7 +219,7 @@ function MissionsList({ shelf, setShelf, lists, agents, onNew, onChange }: {
             <VirtualList items={rows} estimate={i => ('head' in rows[i]! ? 56 : 68)} getKey={r => r.key} label="Missions" resetOn={`${shelf}|${show}|${group}`}
                          renderRow={r => 'head' in r ? <GroupHead title={r.head} count={missionsNoun(r.n)} />
                            : shelf !== 'list' ? (
-                             <ShelfRow shelf={shelf} density="lg" title={r.m.name} subtitle={`${r.m.state.words}, ${listTime(r.m.updated_at)}`}
+                             <ShelfRow shelf={shelf} density="lg" title={r.m.name} subtitle={`${r.m.display.words}, ${listTime(r.m.updated_at)}`}
                                        onClick={() => open(r.m)} pick={picker.row(r.m.conversation_id)} onSelect={() => picker.start(r.m.conversation_id)}
                                        onRestore={() => void act.run(() => shelf === 'archive' ? api.archiveConversation(r.m.conversation_id, false)
                                          : missionsApi.restore(r.m.conversation_id))}
@@ -230,7 +230,7 @@ function MissionsList({ shelf, setShelf, lists, agents, onNew, onChange }: {
                                       subtitle={r.m.note || firstLine(r.m.brief)} muted={r.m.status === 'done' || r.m.status === 'stopped'}
                                       column={<span className="missions-column">{kids.get(r.m.conversation_id) ? agentsNoun(kids.get(r.m.conversation_id)!) : ''}
                                         {r.m.artifact && <FileText size={ICON.sm} aria-label="Result" />}</span>}
-                                      cell={<StateWord tone={r.m.state.tone}>{r.m.state.words}</StateWord>} meta={<time dateTime={r.m.updated_at}>{listTime(r.m.updated_at)}</time>}
+                                      cell={<StateWord tone={r.m.display.tone}>{r.m.display.words}</StateWord>} meta={<time dateTime={r.m.updated_at}>{listTime(r.m.updated_at)}</time>}
                                       href={format({ section: 'missions', conversation: r.m.conversation_id })} onClick={click(() => open(r.m))}
                                       pick={picker.row(r.m.conversation_id)} onContextMenu={e => ctx.open(e, menu(r.m), r.m.name)}
                                       trailing={!picker.on && <MenuButton icon={MoreHorizontal} label="More" items={menu(r.m)} size="sm" />} />
@@ -376,7 +376,7 @@ function MissionPage({ m, agents, active, onChange }: { m: Mission; agents: Agen
   return (
     <div className="missions-page">
       <PlaceHead level={1} crumbs={work ? [...crumbs, page] : crumbs} title={work ? 'Chat' : m.name} titleAttr={work ? undefined : m.name}
-                 detail={<StateWord tone={m.state.tone}>{m.state.words}</StateWord>}
+                 detail={<StateWord tone={m.display.tone}>{m.display.words}</StateWord>}
                  actions={<>
                    {work && !gone && <ModelRow cid={m.conversation_id} live={convo.settings} head />}
                    {work && <PlanButton plan={convo.plan} />}

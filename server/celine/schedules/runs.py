@@ -114,7 +114,7 @@ from ..backends.base import Done, TextDelta, ToolCallDelta
 from ..backends.llm import HeldClock
 from ..conversations import store as conversations, tree
 from ..core.ids import iso, new_id, now
-from ..core.statuses import LIVE_TURNS_SQL
+from ..core.statuses import LIVE_TURNS_SQL, RunState
 from ..skills import ToolContext
 from ..clock import day_of, zone
 from ..activity import busy
@@ -245,6 +245,7 @@ def view(r: sqlite3.Row | dict, cfg, held: bool = False) -> dict:
     the Routines page lists it under (`night` is the night its dates and results come
     from, night_of);
     `label` its schedule's (the one it kept once the schedule is gone);
+    `display` its state's words and tone for the page (RunState.display);
     `state` waiting and `reason` HELD while it runs and its work waits for a model
     (`held`, its RunClock), `reason_why` its reason without the "Waiting" (why_alone);
     `again_of` the run it runs again and `retried` the run that runs it again, each
@@ -259,6 +260,7 @@ def view(r: sqlite3.Row | dict, cfg, held: bool = False) -> dict:
             "label": shown(s) if s else r["label"], "slot": r["slot"], "at": at(r["slot"]),
             "day": r["day"],
             "night": r["night"], "state": "waiting" if waits else r["state"],
+            "display": RunState("waiting" if waits else r["state"]).display,
             "reason": reason, "reason_why": why_alone(reason),
             "conversation_id": r["conversation_id"], "result": r["result"],
             "error": r["error"], "created_at": r["created_at"],

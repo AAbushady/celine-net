@@ -355,6 +355,9 @@ export type Message = {
   meta: { quiet: boolean }
 }
 
+/** a status as the page shows it: the server's words and their tone (server/celine/core/statuses.py) */
+export type Display = { words: string; tone: 'running' | 'warn' | 'error' | 'success' | 'muted' }
+
 /** One intercom message: from `user`, `agent:<conversation id>` or `system:<name>`;
  *  `kind` says how it is headed. `from_name` is the sender's name as people read it,
  *  `mine` that the conversation showing it sent it itself. `due_at`: it was set

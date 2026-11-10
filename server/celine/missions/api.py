@@ -179,7 +179,7 @@ async def list_missions(request: Request, status: str | None = None,
     `counts`: the page's numbers (store.counts), whatever the filters. `asked`: it waits
     for the user beyond its status: an approval waits in it or in a sub-agent of it
     (approvals.asked), or a message of its own does (intercom/store.py missions_asking),
-    as Waiting for you and the chat list say. `state`: its words and tone as the page
+    as Waiting for you and the chat list say. `display`: its words and tone as the page
     shows them (MissionStatus.display), Waiting for you while `asked`."""
     from ..approvals import asked
     from ..intercom.store import missions_asking
@@ -187,7 +187,7 @@ async def list_missions(request: Request, status: str | None = None,
     settings = getattr(request.app.state.services.cfg, "settings", None)
     waits = asked(request.app.state.services) | await store.read(missions_asking)
     return {"missions": [{**_labelled(settings, r), "asked": r["conversation_id"] in waits,
-                          **({"state": MissionStatus.NEEDS_YOU.display}
+                          **({"display": MissionStatus.NEEDS_YOU.display}
                              if r["conversation_id"] in waits else {})}
                          for r in await missions.list(store, status, trashed, archived)],
             "counts": await missions.counts(store)}

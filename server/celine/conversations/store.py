@@ -12,7 +12,7 @@ from .. import homes
 from ..activity import family_running_sql, running
 from ..hold import held
 from ..core.ids import iso, new_id, now
-from ..core.statuses import LIVE_TURNS_SQL
+from ..core.statuses import LIVE_TURNS_SQL, RunState
 from ..kb.chat import fts_candidates, is_query_error
 from . import tree
 from ..core.event_types import (
@@ -712,9 +712,10 @@ async def count(store, archived: bool = False, trashed: bool = False,
 async def background(store, models: frozenset[str] | None = None) -> list[dict]:
     """The background conversations but the runs' (`run:<id>`, they are in
     Routines), newest activity first: {id, title, kind, trigger (a fired trigger's name,
-    from `trigger:<name>`), working (a turn of it runs: activity.py), state (state_of: how
-    its turn stands in the server's words, as a chat's row has it; None when its last turn
-    ended well), last_line, updated_at}. `models`: hold.answering."""
+    from `trigger:<name>`), working (a turn of it runs: activity.py), display (how its
+    turn stands as the page shows it: state_of's words and tone, as a chat's row has them,
+    Running for a turn with no step to name, Done when its last turn ended well),
+    last_line, updated_at}. `models`: hold.answering."""
     def fn(c: sqlite3.Connection) -> list[dict]:
         rows = c.execute(_SUMMARY + "WHERE c.kind = 'background' AND "
                          "coalesce(c.trigger_key, '') NOT LIKE 'run:%' "
@@ -722,10 +723,13 @@ async def background(store, models: frozenset[str] | None = None) -> list[dict]:
         out = []
         for r in rows:
             kind, _, rest = (r["trigger_key"] or "").partition(":")
+            stands = state_of(c, dict(r), models=models) or RunState.DONE.display
+            if not stands["words"]:         # a turn that writes: no step to name
+                stands = {**stands, "words": RunState.RUNNING.display["words"]}
             out.append({"id": r["id"], "title": r["title"], "kind": r["kind"],
                         "trigger": rest or None if kind == "trigger" else None,
                         "working": running(c, r["id"], models),
-                        "state": state_of(c, dict(r), models=models),
+                        "display": stands,
                         "last_line": last_line(c, r["active_leaf_id"]),
                         "updated_at": r["updated_at"]})
         return out

@@ -3,8 +3,7 @@
    on the feed). Every state, reason and time is the server's; the page says them as they are.
    docs/ARCHITECTURE.md, Schedules. */
 import { LOCALE } from './format'
-import { del, json, post, request } from './api'
-import type { WordTone } from '../ui'
+import { del, json, post, request, type Display } from './api'
 
 export type Schedule = {
   name: string
@@ -76,6 +75,8 @@ export type Run = {
   at: string
   /** the calendar day that time is on, the day the page lists it under */
   day: string
+  /** its state as the page shows it, the server's words and tone (Waiting for you while `asked`) */
+  display: Display
   state: RunState
   /** why it waits or why it was skipped, in words; '' when nothing holds it */
   reason: string
@@ -97,9 +98,10 @@ export type Run = {
 export type Day = { day: string; failed: boolean }
 
 /** a slot still to come today: its schedule's name and title, the time (UTC) and its time of day ("14:00") */
-export type Planned = { schedule: string; label: string; slot: string; at: string }
-/** `planned`: every slot still to come today, the server's list; empty for another day */
-export type Runs = { runs: Run[]; planned: Planned[]; days: Day[]; today: string }
+export type Planned = { schedule: string; label: string; slot: string; at: string; display: Display }
+/** `planned`: every slot still to come today, the server's list; empty for another day.
+    `filters`: the State options of the day's list with their labels and counts */
+export type Runs = { runs: Run[]; planned: Planned[]; filters: { value: string; label: string; count: number }[]; days: Day[]; today: string }
 
 /** GET /schedules: a field's choices and its "?" text, the server's */
 export type ScheduleWords = { choices: { on_fail: { value: OnFail; label: string }[] }; help: Record<'on_fail' | 'idle_only' | 'wall_minutes', string> }
@@ -142,20 +144,6 @@ export const routinesApi = {
 /** a server event that changes a run */
 export const isRunEvent = (ev: { type: string }) => ev.type === 'run.state' || ev.type === 'approvals.changed'
 
-/** a row an approval waits in */
-export const ASKED_WORD = 'Waiting for you'
-
-/** the one word for a run's state */
-export const STATE_WORD: Record<RunState | 'planned', string> = {
-  waiting: 'Queued', running: 'Running', done: 'Done', failed: 'Failed', skipped: 'Skipped', stopped: 'Stopped',
-  planned: 'Scheduled',
-}
-
-/** the tone of a run's state word */
-export const RUN_TONE: Record<RunState | 'planned', WordTone> = {
-  waiting: 'muted', running: 'running', done: 'success', failed: 'error', skipped: 'muted', stopped: 'muted', planned: 'muted',
-}
-
 /** a run that is over: Retry or Run now instead of Stop */
 export const FINISHED: (RunState | 'planned')[] = ['done', 'failed', 'skipped', 'stopped']
 
@@ -174,8 +162,8 @@ export type EventTask = {
   /** the event's name */
   trigger: string | null
   working: boolean
-  /** how its turn stands, the server's words and tone (as a chat's row); null: its last turn ended well */
-  state: { tone: 'running' | 'error' | 'warn'; words: string } | null
+  /** how it stands as the page shows it, the server's words and tone */
+  display: Display
   last_line: string
   updated_at: string
   /** an approval waits in it or in a sub-agent of it */

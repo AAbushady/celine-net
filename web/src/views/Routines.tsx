@@ -21,7 +21,7 @@ import {
   ArrowUpRight, Bot, Braces, CalendarClock, ChevronLeft, ChevronRight, CircleStop, History, MoreHorizontal, NotebookPen, Pencil,
   Play, Plus, RotateCcw, SearchX, Trash2, Zap,
 } from 'lucide-react'
-import type { Message as ChatMessage } from '../lib/api'
+import type { Display, Message as ChatMessage } from '../lib/api'
 import { LOCALE, listTime, shortDate, turnStep } from '../lib/format'
 import { AGENT_STATE, agentsApi, useAgents } from '../lib/agents'
 import { click } from '../components/ConversationList'
@@ -29,7 +29,7 @@ import { TreeLine, Work, treeOrder } from './Missions'
 import { isSaveKey, isTyping } from '../lib/keys'
 import { format, useNav, type Route } from '../lib/nav'
 import {
-  ASKED_WORD, FINISHED, RETRIES, RUN_TONE, STATE_WORD, isRunEvent, dayWords, routinesApi, type EventTask, type Day, type OnFail, type Run, type Runs, type RunState,
+  FINISHED, RETRIES, isRunEvent, dayWords, routinesApi, type EventTask, type Day, type OnFail, type Run, type Runs, type RunState,
   type Schedule, type ScheduleBody, type ScheduleWords, type Trigger,
 } from '../lib/routines'
 import { OFFLINE_TITLE, useOnline } from '../lib/socket'
@@ -57,6 +57,8 @@ type Node = {
   /** its place in the day: its slot (ms), then the runs-after order */
   sort: number
   state: State
+  /** its state as the page shows it, the server's words and tone */
+  display: Display
   reason: string
   run?: Run
   schedule?: Schedule
@@ -130,11 +132,11 @@ export function Routines({ active }: { active: boolean }) {
   const byName = useMemo(() => new Map((schedules.data?.schedules ?? []).map(s => [s.name, s])), [schedules.data])
   const nodes = useMemo<Node[]>(() => {
     const out: Node[] = (runs.data?.runs ?? []).map(r => ({
-      key: r.id, label: r.label, at: r.at, sort: Date.parse(r.slot), state: r.state, reason: r.reason, run: r, schedule: byName.get(r.schedule),
+      key: r.id, label: r.label, at: r.at, sort: Date.parse(r.slot), state: r.state, display: r.display, reason: r.reason, run: r, schedule: byName.get(r.schedule),
     }))
     // today also shows every slot still to come, the server's list
     for (const p of runs.data?.planned ?? []) {
-      out.push({ key: `p:${p.schedule}:${p.slot}`, label: p.label, at: p.at, sort: Date.parse(p.slot), state: 'planned', reason: '', schedule: byName.get(p.schedule) })
+      out.push({ key: `p:${p.schedule}:${p.slot}`, label: p.label, at: p.at, sort: Date.parse(p.slot), state: 'planned', display: p.display, reason: '', schedule: byName.get(p.schedule) })
     }
     // how many runs-after deep a schedule is: in the same minute, one that runs after another comes after it
     const depth = (name = '', seen: string[] = []): number => {
@@ -294,12 +296,7 @@ function RunsDay({ list, day, today, days, nodes, runs, all, active, go, onEarli
                      })} />
           <IconButton icon={ChevronRight} size="sm" label="Later" disabled={newest >= today} onClick={onLater} />
         </div>
-        <Toolbar compact state={{ label: 'State', value: show, onChange: setShow, options: [
-                   { value: 'all', label: 'All', count: ran.length },
-                   { value: 'running', label: STATE_WORD.running, count: ran.filter(n => n.state === 'running').length },
-                   { value: 'waiting', label: STATE_WORD.waiting, count: ran.filter(n => n.state === 'waiting').length },
-                   { value: 'failed', label: STATE_WORD.failed, count: ran.filter(n => n.state === 'failed').length },
-                   { value: 'done', label: STATE_WORD.done, count: ran.filter(n => n.state === 'done').length }] }}
+        <Toolbar compact state={{ label: 'State', value: show, onChange: setShow, options: runs.data?.filters ?? [] }}
                  filters={[{ label: 'Schedule', icon: CalendarClock, picked: of ? label(of) : undefined, onClear: () => setOf(null),
                              items: all.map(s => ({ label: s.title, current: s.name === of, onSelect: () => setOf(s.name) })) }]} />
       </div>
@@ -322,7 +319,7 @@ function RunsDay({ list, day, today, days, nodes, runs, all, active, go, onEarli
                                         ? <LiveStep run={r} turns={n.schedule?.reviewer ? n.schedule.turns : 0} active={active} />
                                         : r?.reason_why || (r?.error ?? (r?.result ? r.result.split('\n')[0] : n.schedule?.after.length
                                           ? `Runs after ${label(n.schedule.after[0]!)}` : n.schedule?.every))}
-                                      cell={r?.asked ? <StateWord tone="warn">{ASKED_WORD}</StateWord> : <StateWord tone={RUN_TONE[n.state]}>{STATE_WORD[n.state]}</StateWord>}
+                                      cell={<StateWord tone={n.display.tone}>{n.display.words}</StateWord>}
                                       meta={n.at}
                                       href={n.run ? format({ section: 'routines', day, run: n.run.id })
                                         : n.schedule ? format({ section: 'routines', day, schedule: n.schedule.name }) : undefined}
@@ -349,7 +346,7 @@ function LiveStep({ run, turns, active }: { run: Run; turns: number; active: boo
   const convo = useConversation(active ? run.conversation_id : null)
   const calls = Object.values(convo.toolCalls).flat()
   const tool = [...calls].reverse().find(c => c.state === 'running' || c.state === 'pending')
-  const words = waitLine(convo.waiting) || run.reason_why || tool?.words.step || turnStep(convo.turn?.state) || STATE_WORD.running
+  const words = waitLine(convo.waiting) || run.reason_why || tool?.words.step || turnStep(convo.turn?.state) || run.display.words
   const said = (convo.messages as ChatMessage[]).filter(m => m.role === 'user' && m.intercom?.from?.startsWith('system:')
     && m.intercom.from !== 'system:schedules').length
   return <>{words}{turns > 0 && said > 0 && `, turn ${Math.min(said, turns)} of ${turns}`}</>
@@ -481,9 +478,7 @@ function TriggersList({ list, triggers, tasks, day, go }: {
                            ) : (
                              <ListRow density="lg" title={taskTitle(r.row.b)}
                                       subtitle={r.row.b.last_line || undefined} column={byName(r.row.b.trigger) === taskTitle(r.row.b) ? '' : byName(r.row.b.trigger)}
-                                      cell={r.row.b.asked ? <StateWord tone="warn">{ASKED_WORD}</StateWord>
-                                        : r.row.b.state ? <StateWord tone={r.row.b.state.tone}>{r.row.b.state.words || STATE_WORD.running}</StateWord>
-                                          : <StateWord tone="success">{STATE_WORD.done}</StateWord>}
+                                      cell={<StateWord tone={r.row.b.display.tone}>{r.row.b.display.words}</StateWord>}
                                       meta={listTime(r.row.b.updated_at)}
                                       muted={!r.row.b.working}
                                       href={format({ section: 'routines', day, task: r.row.b.id })}
@@ -571,7 +566,7 @@ function RunPage({ id, day, go, active, schedules }: {
   return (
     <div className="routines-page">
       <PlaceHead level={1} crumbs={crumbs} title={r?.label ?? ''} titleAttr={r?.label}
-                 detail={r && <StateWord tone={RUN_TONE[r.state]}>{`${STATE_WORD[r.state]}, ${r.at}`}</StateWord>}
+                 detail={r && <StateWord tone={r.display.tone}>{`${r.display.words}, ${r.at}`}</StateWord>}
                  actions={r && (!FINISHED.includes(r.state)
                    ? <Button icon={CircleStop} loading={stop.busy} disabled={!online} onClick={() => void stop.run()}>Stop</Button>
                    : s && RETRIES.includes(r.state) && !r.retried
@@ -590,7 +585,7 @@ function RunPage({ id, day, go, active, schedules }: {
               {r.reason && <p className="routines-prose routines-prose--quiet">{r.reason}</p>}
               {r.error && r.error !== r.reason && <InlineError compact message={r.error} />}
               {r.result ? <div className="prose"><Markdown text={r.result} /></div>
-                : !r.reason && <p className="routines-prose routines-prose--quiet">{LIVE.includes(r.state) ? STATE_WORD[r.state] : 'No result'}</p>}
+                : !r.reason && <p className="routines-prose routines-prose--quiet">{LIVE.includes(r.state) ? r.display.words : 'No result'}</p>}
               <Facts grid items={[
                 ...(d.note && r.state === 'done' ? [{ label: 'Note', value: (
                   <a className="routines-link" href={format({ section: 'notebook', note: d.note })}
@@ -604,7 +599,7 @@ function RunPage({ id, day, go, active, schedules }: {
             </Section>
             {(s?.reviewer || cid) && (
               <Section id="r-talk" title="Turns">
-                {cid ? <Talk key={cid} cid={cid} active={active} waits={r.reason} /> : <p className="routines-prose routines-prose--quiet">{STATE_WORD.waiting}</p>}
+                {cid ? <Talk key={cid} cid={cid} active={active} waits={r.reason || r.display.words} /> : <p className="routines-prose routines-prose--quiet">{r.display.words}</p>}
               </Section>
             )}
             {nodes.length > 0 && (
@@ -633,7 +628,7 @@ function Talk({ cid, active, waits }: { cid: string; active: boolean; waits: str
   const convo = useConversation(active ? cid : null)
   const items = (convo.messages as ChatMessage[]).filter(m => (m.role === 'user' || m.role === 'assistant') && m.intercom?.from !== 'system:schedules'
     && m.content.trim())
-  const working = waitLine(convo.waiting) || waits || STATE_WORD.running
+  const working = waitLine(convo.waiting) || waits
   if (!items.length) return convo.conversation ? <p className="routines-prose routines-prose--quiet">{convo.running ? working : 'No turns'}</p> : <LoadingRow />
   return (
     <div className="routines-talk">
@@ -801,7 +796,7 @@ function SchedulePage({ name, s, all, roles, words, day, draft, onDraft, save: s
                 <div className="routines-rows">
                   {theirs.map(r => (
                     <ListRow key={r.id} density="lg" title={dayShort(r.day)} subtitle={r.reason_why || r.error || undefined}
-                             cell={<StateWord tone={RUN_TONE[r.state]}>{STATE_WORD[r.state]}</StateWord>} meta={r.at}
+                             cell={<StateWord tone={r.display.tone}>{r.display.words}</StateWord>} meta={r.at}
                              href={format({ section: 'routines', day: r.day, run: r.id })} onClick={click(() => go({ day: r.day, run: r.id }))} />
                   ))}
                 </div>

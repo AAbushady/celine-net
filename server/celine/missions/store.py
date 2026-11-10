@@ -149,7 +149,7 @@ def _view(r) -> dict:
                        None)
     row.pop("title_auto")
     row["name"] = row.pop("shown")
-    row["state"] = MissionStatus(row["status"]).display     # its words and tone, the page's to show
+    row["display"] = MissionStatus(row["status"]).display   # its words and tone, the page's to show
     row["auto_context"] = bool(row["auto_context"])
     return row
 

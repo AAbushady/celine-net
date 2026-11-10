@@ -287,7 +287,8 @@ def test_today_lists_every_slot_still_to_come(cfg):
         ("daydream", at) for at in ("10:00", "12:00", "16:00", "18:00", "20:00", "22:00")], \
         "each slot left today but the one with its run; not tomorrow's 02:00, not a schedule that is off"
     assert got[0] == {"schedule": "daydream", "label": "Daydream",
-                      "slot": "2026-11-10T15:00:00.000+00:00", "at": "10:00"}
+                      "slot": "2026-11-10T15:00:00.000+00:00", "at": "10:00",
+                      "display": {"words": "Scheduled", "tone": "muted"}}
     late = schedules_api._planned(cfg, set(), datetime(2026, 11, 10, 22, 0, tzinfo=ny))
     assert late == [], "at 22:00 the 22:00 slot has come, and nothing is left today"
 
@@ -815,6 +816,12 @@ async def test_the_api_ships_four_schedules_and_edits_previews_runs_and_deletes(
         assert len(listed["days"]) == 14 and listed["days"][0]["day"] == listed["today"]
         assert (await api.get("/api/runs?day=Friday")).json()["error"]["detail"]["field"] == "day"
         assert isinstance(listed["planned"], list), "today comes with what is still to come"
+        assert listed["runs"][0]["display"] == {"words": "Queued", "tone": "muted"}, \
+            "a run carries its state as the page shows it"
+        assert listed["filters"][:3] == [
+            {"value": "all", "label": "All", "count": 1},
+            {"value": "running", "label": "Running", "count": 0},
+            {"value": "waiting", "label": "Queued", "count": 1}], "the State options are the server's"
         assert (await api.get("/api/runs?day=2026-01-20")).json()["planned"] == [], "today only"
         earlier = (await api.get("/api/runs?until=2026-01-20")).json()["days"]
         assert [earlier[0]["day"], earlier[-1]["day"]] == ["2026-01-20", "2026-01-07"]

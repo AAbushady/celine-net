@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Request
 
 from ..core.ids import iso
+from ..core.statuses import SCHEDULED, WAITING_FOR_YOU, RunState
 from ..errors import CelineError, NotFound
 from ..settings import files, seed
 from ..settings.files import Invalid
@@ -80,7 +81,7 @@ def _planned(cfg, taken: set[tuple[str, str]], now_: datetime) -> list[dict]:
                 break
             if (s.name, iso(at)) not in taken and not _repeated(at, now_.tzinfo):
                 out.append({"schedule": s.name, "label": shown(s), "slot": iso(at),
-                            "at": f"{at:%H:%M}"})
+                            "at": f"{at:%H:%M}", "display": SCHEDULED})
     return sorted(out, key=lambda p: (p["slot"], p["schedule"]))
 
 
@@ -194,6 +195,8 @@ async def list_runs(request: Request, day: str | None = None,
     midnight to midnight: a run's `day`; default: today) or of one `schedule` (its newest
     50), oldest slot first; `planned` what is still to come today, when `day` is today
     (`_planned`: every slot left of every schedule that is on), else nothing;
+    `filters` the State options of the day's list, each {value, label, count} (the
+    server's words, counted over the day's runs);
     `days` the DAYS days up to `until` (default and at most today),
     newest first, each {day, failed: the newest try of one of its schedules on that day
     failed}. A run's `asked`: an approval waits in it or in a sub-agent of it
@@ -224,10 +227,17 @@ async def list_runs(request: Request, day: str | None = None,
     failed = {n for (n, _), state in newest.items() if state == "failed"}
     days = [{"day": n, "failed": n in failed} for n in
             ((last - timedelta(days=i)).isoformat() for i in range(DAYS))]
-    runs = [{**r, "asked": r["conversation_id"] in waits} for r in runs]
+    runs = [{**r, "asked": r["conversation_id"] in waits,
+             **({"display": WAITING_FOR_YOU} if r["conversation_id"] in waits else {})}
+            for r in runs]
+    filters = [{"value": "all", "label": "All", "count": len(runs)},
+               *({"value": s.value, "label": s.display["words"],
+                  "count": sum(1 for r in runs if r["state"] == s)}
+                 for s in (RunState.RUNNING, RunState.WAITING, RunState.FAILED, RunState.DONE))]
     planned = _planned(cfg, {(r["schedule"], r["slot"]) for r in runs},
                        datetime.now(zone(cfg))) if schedule is None and which == today else []
-    return {"runs": runs, "planned": planned, "days": days, "today": today.isoformat()}
+    return {"runs": runs, "planned": planned, "filters": filters, "days": days,
+            "today": today.isoformat()}
 
 
 @router.get("/runs/{rid}")

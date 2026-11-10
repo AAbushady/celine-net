@@ -3,7 +3,7 @@
    permanently as one), the row types and the words a mission's state is said in
    (docs/ARCHITECTURE.md). A mission is its instructions: it writes the plan, works with its
    sub-agents and delivers an artifact. */
-import { del, json, post, request, type PlanStep } from './api'
+import { del, json, post, request, type Display, type PlanStep } from './api'
 
 export type MissionStatus = 'active' | 'needs_you' | 'done' | 'stopped'
 
@@ -14,7 +14,7 @@ export type Mission = {
   /** in the list: an approval waits in it or in a sub-agent of it */
   asked?: boolean
   /** its state as the page shows it, the server's words and tone (core/statuses.py MissionStatus.display) */
-  state: { words: string; tone: 'running' | 'warn' | 'error' | 'success' | 'muted' }
+  display: Display
   /** its default terminal's name in this conversation */
   terminal: string
   brief: string
