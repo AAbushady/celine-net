@@ -331,6 +331,81 @@ async def test_a_track_is_kept_and_its_line_says_so(app, store):
             ).exists()
 
 
+async def test_a_deleted_conversation_frees_its_files_and_a_strangers_stay(app, store):
+    cfg = app.cfg
+    cfg.settings.general["generated_keep_days"] = 0       # only the delete frees files here
+    cid = await conversations.create(store)
+    ctx, _ = await _call(store, cid, "c1")
+    skill, b = await _images(app, ctx, n=2)
+    made, kept = [i["attachment"] for i in b["items"]]
+    await skill.keep(ctx, images=[kept["id"][:8]])
+    other = await conversations.create(store)
+    _, ob = await _images(app, (await _call(store, other, "c2"))[0])
+    stays = ob["items"][0]["attachment"]
+    files = {}
+    for a in (made, kept, stays):
+        folder = await store.read(lambda c, aid=a["id"]: c.execute(
+            "SELECT folder_path FROM attachments WHERE id=?", (aid,)).fetchone()[0])
+        files[a["id"]] = (attachments.blob_path(cfg, a["sha256"]), cfg.data_dir / folder)
+    kept_entry = life.kept_entry(cfg, "images", kept["id"], kept["filename"])
+    day = files[made["id"]][1].parent
+    strangers = [day / "holiday.png", cfg.data_dir / "images" / "kept" / "mine.png",
+                 day / "notes" / "a.txt"]
+    for f in strangers:
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(b"a person's own")
+    assert kept_entry.exists()
+
+    await store.write(lambda c: c.execute(
+        "UPDATE turns SET state='done' WHERE conversation_id=?", (cid,)))
+    assert await conversations.delete(store, cid)
+    assert await conversations.purge(store, cfg, cid)
+    assert await attachments.get(store, made["id"]) is None, "its rows go with it"
+    await attachments.gc(cfg, store, at=LATER)
+    await life.clear(cfg, store, at=LATER)
+    for aid in (made["id"], kept["id"]):
+        blob, entry = files[aid]
+        assert not blob.exists() and not entry.exists()
+    assert not kept_entry.exists(), "the bytes are gone from disk"
+    blob, entry = files[stays["id"]]
+    assert blob.exists() and entry.exists() and os.path.samefile(blob, entry), \
+        "an entry whose row exists stays"
+    assert all(f.exists() for f in strangers), "what a person put there stays"
+
+
+async def test_rows_are_marked_before_files_go_and_a_file_left_goes_at_the_next_look(
+        app, store, monkeypatch):
+    cfg = app.cfg
+    cid = await conversations.create(store)
+    ctx, _ = await _call(store, cid, "c1")
+    _, b = await _images(app, ctx)
+    att = b["items"][0]["attachment"]
+    blob = attachments.blob_path(cfg, att["sha256"])
+    [entry] = (cfg.data_dir / "images").rglob("*.png")
+    await _made_at(store, T0)
+
+    publish, drop_blob = life._publish, life.drop_blob
+
+    def broken(*_):
+        raise RuntimeError("the write failed")
+    monkeypatch.setattr(life, "_publish", broken)
+    with pytest.raises(RuntimeError):
+        await life.clear(cfg, store, at=T0 + DAYS)
+    assert (await _life(store, att["id"]))[0] == "temporary"
+    assert blob.exists() and entry.exists(), "a failed write removes nothing"
+    monkeypatch.setattr(life, "_publish", publish)
+
+    def stuck(*_):
+        raise OSError("busy")
+    monkeypatch.setattr(life, "drop_blob", stuck)
+    assert await life.clear(cfg, store, at=T0 + DAYS) == 1
+    assert (await _life(store, att["id"]))[0] == "cleared"
+    assert blob.exists() and not entry.exists(), "the row first, then the files"
+    monkeypatch.setattr(life, "drop_blob", drop_blob)
+    assert await life.clear(cfg, store, at=T0 + DAYS) == 0 and not blob.exists(), \
+        "what stayed goes at the next look"
+
+
 async def test_the_setting_at_0_clears_nothing(app, store):
     cfg = app.cfg
     cfg.settings.general["generated_keep_days"] = 0

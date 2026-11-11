@@ -253,7 +253,7 @@ def build_app(cfg: config_mod.Config, dev: bool) -> FastAPI:
             await attachments.gc(cfg, store)
             from .comfyui import life              # what a batch made, past its days
             await life.clear(cfg, store)
-            tg.start_soon(life.keep_clearing, cfg, store)   # and every so often
+            tg.start_soon(life.keep_clearing, cfg, store)   # both every hour
             await conversations.prune_events(store, keep=int(cfg.r("events_keep")),
                                              requests_days=int(cfg.r("requests_keep")))
             tg.start_soon(conversations.keep_pruned, store, cfg)    # and every so often

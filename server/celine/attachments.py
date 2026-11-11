@@ -24,7 +24,8 @@ picture a tool keeps for the user, like a browser shot (skills/browser.py), belo
 the call alone: no message holds it, so only the call's row shows it, and its image
 list and edits never see it.
 
-What stays (`gc`, at each start; KEEP is 30 days). A file stays while an attachment of a
+What stays (`gc`, at each start and every hour after, comfyui/life.py keep_clearing; KEEP
+is 30 days). A file stays while an attachment of a
 message, a tool call or a batch, or its portrait, points at it. A draft (an upload not
 sent yet) keeps its file until it is sent, discarded or KEEP old; one an intercom message
 carries (a file the agent sent the user there) stays. A file nothing points
