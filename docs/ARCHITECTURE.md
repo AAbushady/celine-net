@@ -883,7 +883,10 @@ background and only write rows; a closed gate still holds) or `on` (Enforce).
   call waits for your answer or Stop, and the turn's wall clock and the tool's time do
   not run meanwhile: a chat or a mission waits until you answer (a mission's time limit
   counts the wait off), a routine's run ends at its own time limit (reason
-  `ASK_LAPSED`). Only a request outside a turn waits `ASK_FOR` seconds (120).
+  `ASK_LAPSED`). Only a request outside a turn waits `ASK_FOR` seconds (120), or what its
+  caller gives: a model file (kind `model_file`, asked from the app's own background so
+  the tool answers at once) waits a day and beside any other request of its chat. A
+  preset the agent proposes is kind `preset`. A fact with an address opens it.
 - `GET /api/waits` `{items, count, unread}` (`api/waits.py`, `waits.py`): everything that
   needs you (Waiting for you), and how many Intercom threads hold something unread
 
@@ -1620,6 +1623,60 @@ music). One code path for both (`batches.Batches`).
   the agent stopped itself, says nothing. `read` shows a batch, `stop` stops one. `image_generator__list_presets` lists
   the presets or a preset's models and LoRAs (`image_catalog.py`), `list_images` the images
   of the conversation.
+- **Model files the agent finds and asks for** (`comfyui/model_files.py`, `hubs.py`, table
+  `model_requests`), only through the comfy helper of a ComfyUI that starts on demand:
+  - Looking around a hub (Civitai, Hugging Face): `image_generator__search_models` (words,
+    or none for the hub's listing by `sort`, `period`, `tag`; a page of 10, its last line the
+    call for the next), `read_model` (facts, versions, each file, the description and the
+    example prompts, numbered, in parts) and `look_examples` (at most four example
+    pictures, attachments of the call as `shell__look`'s are: `ToolResult.images` to a
+    model that sees, a description by the vision role to one that does not). Their results
+    are outside text for the guard, labelled as web results are (`guard/sources.py`
+    `OUTSIDE_TOOLS`), class `public`, `nsfw` where the hub marks a result mature; the app's
+    own head line says whose words the description and prompts are, and none of them goes
+    on a card, a notice or a row's words.
+  - One value names a file everywhere: `civitai:<version>[/<file>]` or
+    `hf:<owner>/<name>[@<revision>]/<path>`, printed by the search and the read and taken
+    by `image_generator__request_model` as it is; a Civitai page address with
+    `modelVersionId` and a Hugging Face file address map onto it.
+  - A request is checked at once with no card on a refusal (the preset takes files of that
+    kind, its ComfyUI starts on demand, the helper's `POST /models/look` finds and takes
+    it, Civitai's type fits the kind, nothing is there or asked for under its name). Its
+    place is the preset's first catalog folder for the kind, `loras/<prefix><name>` or
+    `diffusion_models/<prefix><name>`; the id the agent then gives in `loras` or `model`
+    is that place without folder and extension. The card (kind `model_file`) is asked from
+    the service's own task group, so the tool answers at once and no turn waits; it waits
+    a day or until a restart. Approved: `POST /models` with the look's resolved source and
+    sha256 and the request's id as `holder`, then the job is followed every 5 s in the same
+    task group (fetching, listing, ready, failed), each change stored, shown on the call's
+    row (its display and words, `model_file.state`) and on the page (`model_files.changed`).
+    Ready: the catalog is read anew and the conversation gets one notice from the app with
+    the id and the hub's trigger words; failed, one with the helper's sentence; denied or
+    not answered, one with the approval's sentence.
+  - Why this way: a download outlives any turn and holds nothing of the agent's, so it is
+    neither a job (a job ends at its time limit and posts one result) nor a turn; it runs
+    like a batch, in a task group of the feature's runner (`model_files`, while Images is
+    on), and its state lives in its row. The helper keeps its jobs across its own restart
+    and keeps downloading while the app is down, so at every start `ModelFiles.resume`
+    follows each request still downloading again, hands one approved and not yet handed
+    over again, and settles one whose card the restart closed as not answered, with its
+    notice.
+  - Settings, Images & Music lists what came by request (`GET /api/model-files`: the
+    helper's `GET /models` with each file's request, and the requests on their way; the
+    free space) and removes one (`DELETE /api/model-files/{path}`, the helper's `DELETE
+    /models/files/<path>`); the provider's key stays on the server.
+- **The agent's own presets** (`comfyui/proposals.py`): `read_preset` gives a preset as the
+  editor has it (values and the workflow with its placeholders), `look_up_node` what
+  ComfyUI's `/object_info` says of a node or which nodes match some words (through the
+  role's ComfyUI; the helper answers from its saved copy while ComfyUI is down), and
+  `propose_preset` (on both generators) checks a proposal at once with the page's own
+  checks (`presets.drafted`: an upload's placeholders, the editor's values, the preset as
+  `load` reads it), with every sentence and no card on a problem. Then it waits in the
+  turn for the card (kind `preset`), and approved is saved by the upload's own save
+  (`comfyui/adding.py`): one of the user's presets, origin `own` with `proposed = true` in its
+  TOML (the card on the page says proposed by the agent), at the end of its role. With
+  `replaces` it is written over a preset the agent proposed before, which keeps its place;
+  a shipped preset or one the user made is never replaced.
 
 **The agent's portrait** (`agent.set_portrait`): one image, a blob its row names, png, jpg or
 webp, the kind read from its bytes. The user sets it (`PUT /api/agent/portrait`); it sets it itself with the `appearance` skill's

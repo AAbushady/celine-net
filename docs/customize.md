@@ -231,3 +231,19 @@ for the GPU as long as it takes, its slots say "Waiting for the GPU" and why, an
 batch the agent started that had to wait tells it once it is done. While ComfyUI is
 stopped the helper answers the Settings check and the model listings from ComfyUI's
 last start.
+
+Behind the helper, the agent can also look for new models itself: it searches and reads
+Civitai and Hugging Face, looks at a model's example pictures, and asks you for a LoRA or
+a diffusion model for one of its presets. Each download waits for your Approve on its
+card, which shows the file, where it comes from (Civitai's page opens from the card), its
+size and licence, where it is saved and the free space after it; nothing comes before
+you approve. The file goes into the preset's first catalog folder (Models or LoRAs in its
+settings), and the agent hears when it is ready. Civitai gives some files only to a
+signed-in account: the helper then says which of its commands takes your Civitai key.
+Settings, Images & Music lists every file that came this way, with Remove.
+
+The agent can propose a preset of its own the same way: it reads a preset's workflow,
+looks up ComfyUI's nodes, and sends you its workflow with placeholders and its texts. It
+is checked as an upload is, and once you approve it, it is one of your presets, on at the
+end of its list, marked as proposed by the agent on its card. You edit or remove it like
+any of yours; the agent can replace only a preset it proposed.
