@@ -17,6 +17,7 @@ the same object as `app.state.services`.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -40,6 +41,7 @@ class LLM(Protocol):
     def bind(self) -> Call: ...         # a backend bound to the queue for one caller
     @property
     def gpu_lease(self) -> Call: ...    # the GPU held for a provider on the same card
+    def turn_paused(self, turn_id: str | None) -> AbstractContextManager[None]: ...  # its clock held
 
 
 class KBs(Protocol):

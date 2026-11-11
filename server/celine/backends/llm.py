@@ -354,6 +354,11 @@ class LLM:
         self.turn_run.pop(turn_id, None)
         self.turn_waits.pop(turn_id, None)
 
+    def turn_paused(self, turn_id: str | None) -> contextlib.AbstractContextManager[None]:
+        """`paused` for a wait of work turn `turn_id` started (a GPU lease): its clock and
+        its run's stand still inside."""
+        return paused(self.turn_clock.get(turn_id or ""), self.turn_run.get(turn_id or ""))
+
     # ---- the GPU lease ----------------------------------------------------------------
 
     @contextlib.asynccontextmanager
@@ -373,7 +378,7 @@ class LLM:
                         priority=prio, lane=f"lease-{next(_leases)}", role=label,
                         label=label,
                         conversation_id=conversation_id, turn_id=turn_id, exclusive=True)
-        with paused(self.turn_clock.get(turn_id or ""), self.turn_run.get(turn_id or "")):
+        with self.turn_paused(turn_id):
             await self.scheduler.acquire(ticket, timeout=self.wait_timeout(
                 prio, turn_id is not None), on_wait=on_wait)
         try:
