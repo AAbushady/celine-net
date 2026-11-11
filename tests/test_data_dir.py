@@ -144,10 +144,12 @@ async def test_a_feature_switched_on_at_runtime_starts_its_loops_and_off_stops_t
     async with _running() as app:
         s = app.state.services
         base = f"http://127.0.0.1:{s.cfg.port}"
-        loops = ("routines", "missions", "guard", "media")
+        loops = ("routines", "missions", "guard", "media", "model_files")
 
         def running() -> dict:
-            return {"batches": s.batches is not None, "schedules": s.schedules is not None,
+            return {"batches": s.batches is not None,
+                    "model_files": s.model_files is not None,
+                    "schedules": s.schedules is not None,
                     "triggers": s.triggers is not None,
                     "talk": talk.KIND in s.dispatcher.work.handlers,
                     **{fid: s.runners[fid].running for fid in loops}}

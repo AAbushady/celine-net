@@ -4,7 +4,8 @@ The lifespan registers one Runner per feature that runs something on the service
 (`runners`): shellbox the TerminalSync loop, browser the browser watch, vault the login,
 discord and whatsapp their MCP server with its archive and feed, documents its index and
 watcher, routines the Scheduler and the triggers, missions the check-ins, guard the
-patrol and Bastet's answers, and `media` (images or music) the batches. A features PUT or
+patrol and Bastet's answers, `media` (images or music) the batches and `model_files`
+(images) the model files asked for. A features PUT or
 a services PUT calls `apply(on, changed)`: what became on starts, what became off stops,
 what changed its address stops and starts again. Each runner is one task in the
 lifespan's task group under its own CancelScope; stop cancels it and waits for it to end.

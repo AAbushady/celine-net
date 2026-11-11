@@ -20,11 +20,11 @@ EXPECTED_TABLES = {
     "intercom_archive",
     "message_context", "media_batches", "context_state", "runs", "moods",
     "guard_decisions", "agent", "text_versions", "compactions", "freezes", "guard_passes", "work",
-    "tabs", "bugreports", "plans", "push_subscriptions", "model_grants",
+    "tabs", "bugreports", "plans", "push_subscriptions", "model_grants", "model_requests",
 }
 LOG_TABLES = {"events", "global_events", "raw_responses", "requests", "terminal_commands"}
 NOTEBOOK_TABLES = {"notebook_index", "notebook_fts"}
-LATEST = 33
+LATEST = 34
 
 
 def _version(db) -> int:

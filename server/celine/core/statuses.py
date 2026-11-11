@@ -156,8 +156,37 @@ _MADE_LIFE_SHOWN = {
     MadeLife.CLEARED: ("Cleared", Tone.MUTED),
 }
 
+
+class ModelFileState(Shown):
+    """Where a model file the agent asked for stands (model_requests.state,
+    comfyui/model_files.py): its request waits for the user, was denied or not answered;
+    the comfy helper downloads it, has it and waits for ComfyUI to list it, has it listed,
+    or failed."""
+    ASKED = "asked"
+    DENIED = "denied"
+    UNANSWERED = "unanswered"
+    FETCHING = "fetching"
+    LISTING = "listing"
+    READY = "ready"
+    FAILED = "failed"
+
+
+_MODEL_FILE_SHOWN = {
+    ModelFileState.ASKED: ("Waiting for you", Tone.WARN),
+    ModelFileState.DENIED: ("Denied", Tone.MUTED),
+    ModelFileState.UNANSWERED: ("No answer", Tone.MUTED),
+    ModelFileState.FETCHING: ("Downloading", Tone.RUNNING),
+    ModelFileState.LISTING: ("Waiting for ComfyUI", Tone.RUNNING),
+    ModelFileState.READY: ("Ready", Tone.SUCCESS),
+    ModelFileState.FAILED: ("Failed", Tone.ERROR),
+}
+# a request that is over: nothing follows it any more
+MODEL_FILE_SETTLED = (ModelFileState.DENIED, ModelFileState.UNANSWERED, ModelFileState.READY,
+                      ModelFileState.FAILED)
+
 # each shown set's members as (words, tone); one table per set, since a member equals its
 # string and "done" of one set would be "done" of another in a shared table
 _DISPLAYS: dict[type[Shown], Mapping[Any, tuple[str, Tone]]] = {
     RunState: _RUN_SHOWN, MissionStatus: _MISSION_SHOWN,
-    PlanStepState: _PLAN_STEP_SHOWN, AgentState: _AGENT_SHOWN, MadeLife: _MADE_LIFE_SHOWN}
+    PlanStepState: _PLAN_STEP_SHOWN, AgentState: _AGENT_SHOWN, MadeLife: _MADE_LIFE_SHOWN,
+    ModelFileState: _MODEL_FILE_SHOWN}

@@ -183,6 +183,12 @@ async def load(base_url: str, headers: dict[str, str] | None = None, *,
     return cat
 
 
+def forget(base_url: str) -> None:
+    """The server's catalog is read anew at its next use: a model file came or went
+    (comfyui/model_files.py)."""
+    _cache.pop(base_url.rstrip("/"), None)
+
+
 async def _names(c: httpx.AsyncClient, cls: str, key: str) -> list[str]:
     entry = (await object_info(c, "", {cls}))[cls] or {}
     spec = (entry.get("input") or {}).get("required", {})

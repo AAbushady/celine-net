@@ -78,6 +78,9 @@ MESSAGE_REWRITTEN = "message.rewritten"
 
 MISSION_STATE = "mission.state"
 
+MODEL_FILE_STATE = "model_file.state"
+MODEL_FILES_CHANGED = "model_files.changed"
+
 MODEL_LOADED = "model.loaded"
 
 MODELS_STATE = "models.state"

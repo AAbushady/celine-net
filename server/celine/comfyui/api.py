@@ -15,17 +15,26 @@
   (life.py).
 
 A batch answers as `Batch`, the shape of batches.view.
+
+The model files the agent asked for (model_files.py), from the comfy helper of a ComfyUI
+that starts on demand, its key kept here:
+- GET /api/model-files: `ModelFileList`, every file that came by request and every
+  request still on its way, and the free space on the models disk;
+- DELETE /api/model-files/{path}: one that came by request, off the disk -> `Removed`.
 """
 
 from typing import Annotated, Literal
 
+import httpx
 from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..core.dto import Answer, Display
-from ..core.statuses import MadeLife
+from ..core.statuses import MadeLife, ModelFileState
 from ..errors import CelineError, NotFound
-from . import batches as batches_mod, life as life_mod, presets as presets_mod
+from . import batches as batches_mod, life as life_mod, model_files as files_mod
+from . import presets as presets_mod
+from .server import HelperRefused
 from ..core.route_params import TheConfig, TheServices, TheStore
 
 router = APIRouter(prefix="/api")
@@ -240,3 +249,60 @@ async def keep_item(store: TheStore, cfg: TheConfig, bid: str, index: int,
 async def stop_batch(store: TheStore, services: TheServices, bid: str) -> dict:
     await _batch(store, bid)
     return {"stopped": await _runner(services).stop(bid)}
+
+
+# ---- the model files the agent asked for -----------------------------------------------
+
+class ModelFile(Answer):
+    """A model file that came by request, or a request still on its way (model_files.py)."""
+    path: str = Field(description="where it is under the models folder")
+    id: str = Field(description="what a batch's loras or model takes")
+    kind: Literal["lora", "model"] | None
+    size: int | None = Field(description="bytes")
+    at: str | None = Field(description="when it came, or when it was asked for")
+    preset: str | None
+    preset_label: str | None
+    site: str | None = Field(description="where it came from: huggingface.co, civitai.red")
+    title: str | None = Field(description="the hub's title, or the Hugging Face repo")
+    address: str | None = Field(description="its page")
+    request: str | None
+    state: ModelFileState
+    display: Display
+    done: int | None = Field(description="bytes downloaded, while it downloads")
+    removable: bool
+
+
+class ModelFileList(Answer):
+    files: list[ModelFile]
+    free: int | None = Field(description="bytes free on the models disk")
+
+
+class Removed(Answer):
+    removed: bool
+
+
+def _helper_error(e: Exception) -> CelineError:
+    if isinstance(e, HelperRefused):
+        code = {404: "not_found", 409: "conflict"}.get(e.status, "bad_request")
+        return CelineError(code, str(e), e.status if e.status in (404, 409) else 400)
+    if isinstance(e, httpx.HTTPError):
+        return CelineError("unavailable", f"The comfy helper did not answer "
+                                          f"({type(e).__name__}).", 502)
+    return CelineError("conflict", str(e), 409)
+
+
+@router.get("/model-files")
+async def list_model_files(services: TheServices) -> ModelFileList:
+    try:
+        return ModelFileList.model_validate(await files_mod.listing(services))
+    except (files_mod.ImageError, httpx.HTTPError) as e:
+        raise _helper_error(e) from None
+
+
+@router.delete("/model-files/{path:path}")
+async def remove_model_file(services: TheServices, path: str) -> Removed:
+    try:
+        await files_mod.remove(services, path)
+    except (files_mod.ImageError, httpx.HTTPError) as e:
+        raise _helper_error(e) from None
+    return Removed(removed=True)

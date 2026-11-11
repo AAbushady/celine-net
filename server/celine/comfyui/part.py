@@ -1,12 +1,12 @@
-"""Images and music as the start-up sees them (core/parts.py): the routes, and the
-batches while either is on."""
+"""Images and music as the start-up sees them (core/parts.py): the routes, the batches
+while either is on, and the model files the agent asked for while Images is on."""
 from __future__ import annotations
 
 import anyio
 
 from ..core.parts import Part, Run
 from ..core.services import Services
-from . import api, batches
+from . import api, batches, model_files
 
 
 def _runs(services: Services) -> dict[str, Run]:
@@ -18,7 +18,18 @@ def _runs(services: Services) -> dict[str, Run]:
                 await anyio.sleep_forever()
             finally:
                 services.batches = None
-    return {"media": Run(run, features=("images", "music"), early=True)}
+
+    async def files() -> None:
+        # after the workers: a request it settles at the start sends a notice that wakes a turn
+        async with anyio.create_task_group() as g:
+            services.model_files = model_files.ModelFiles(services, g)
+            try:
+                await services.model_files.resume()
+                await anyio.sleep_forever()
+            finally:
+                services.model_files = None
+    return {"media": Run(run, features=("images", "music"), early=True),
+            "model_files": Run(files, features=("images",))}
 
 
 part = Part(name="comfyui", routes=(api.router,), runs=_runs)

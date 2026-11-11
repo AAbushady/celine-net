@@ -12,7 +12,12 @@ says so, `ahead` counts the leases asked for earlier that also wait), starting (
 is coming up), ready (ComfyUI answers) or failed (ComfyUI cannot be started; `why` says
 what happened). A lease lives 90 s past its last GET. Everything else is ComfyUI's own
 API, passed through while ComfyUI is up; while it is down the helper answers
-/object_info and the model listings from its last start, anything else with 503."""
+/object_info and the model listings from its last start, anything else with 503.
+
+The helper also downloads model files the user approved (comfyui/model_files.py): POST
+/models/look, POST /models, GET /models/jobs/<id>, GET /models and DELETE
+/models/files/<path>, reached with the same key; a refusal is {"error": its sentence}
+(HelperRefused)."""
 from __future__ import annotations
 
 import contextlib
@@ -21,6 +26,7 @@ import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import quote
 from uuid import uuid4
 
 import anyio
@@ -150,8 +156,90 @@ class Comfy:
                              f"helper?")
         return data
 
+    # ---- the comfy helper's model files (comfyui/model_files.py) ---------------------
+
+    async def look(self, source: dict[str, Any]) -> dict[str, Any]:
+        """POST /models/look: the file a source names, as the helper found it."""
+        return self._helper(await self.client.post(f"{self.url}/models/look",
+                                                   json={"source": source}))
+
+    async def fetch(self, source: dict[str, Any], sha256: str, saved_as: str,
+                    holder: str) -> dict[str, Any]:
+        """POST /models: the download of a file its look resolved, as a job."""
+        return self._helper(await self.client.post(f"{self.url}/models", json={
+            "source": source, "sha256": sha256, "saved_as": saved_as, "holder": holder}))
+
+    async def model_job(self, jid: str) -> dict[str, Any] | None:
+        """GET /models/jobs/<id>; None when the helper does not know the job."""
+        r = await self.client.get(f"{self.url}/models/jobs/{quote(jid, safe='')}")
+        return None if r.status_code == 404 else self._helper(r)
+
+    async def model_files(self) -> dict[str, Any]:
+        """GET /models: every model file, the free space and the limit."""
+        return self._helper(await self.client.get(f"{self.url}/models"))
+
+    async def remove_model_file(self, path: str) -> None:
+        """DELETE /models/files/<path>: a file that came through the helper."""
+        self._helper(await self.client.delete(f"{self.url}/models/files/{quote(path)}"))
+
+    async def search_models(self, body: dict[str, Any]) -> dict[str, Any]:
+        """POST /models/search: a page of a hub's files that the look would take."""
+        return self._helper(await self.client.post(f"{self.url}/models/search", json=body))
+
+    async def read_model(self, source: dict[str, Any]) -> dict[str, Any]:
+        """POST /models/read: what a hub says of one model."""
+        return self._helper(await self.client.post(f"{self.url}/models/read",
+                                                   json={"source": source}))
+
+    async def picture(self, hub: str, pid: Any, edge: int) -> tuple[bytes, str]:
+        """POST /models/picture: one example picture of a model, its bytes and media
+        type; HelperRefused with the helper's sentence when it does not give it."""
+        r = await self.client.post(f"{self.url}/models/picture",
+                                   json={"hub": hub, "id": pid, "edge": edge})
+        media = r.headers.get("content-type", "").split(";")[0].strip()
+        if r.is_error or not media.startswith("image/"):
+            self._helper(r)
+            raise ImageError(f"ComfyUI at {_host(self.url)} answered /models/picture with "
+                             f"something that is not a picture.")
+        return r.content, media
+
+    def _helper(self, r: httpx.Response) -> dict[str, Any]:
+        """The JSON object of a model files answer. HelperDown for a server error;
+        HelperRefused with the helper's own sentence for an error answer that has one
+        (`{"error": ...}`); ImageError for a server that has no such routes or answers
+        with something else."""
+        if r.status_code >= 500:
+            raise HelperDown(_who(r))
+        try:
+            data = r.json()
+        except ValueError:
+            data = None
+        if r.is_error:
+            if isinstance(data, dict) and isinstance(data.get("error"), str) and \
+                    data["error"].strip():
+                raise HelperRefused(" ".join(data["error"].split()), r.status_code)
+            if r.status_code in (404, 405):
+                raise ImageError(f"ComfyUI at {_host(self.url)} takes no model files "
+                                 f"({r.status_code}): only the comfy helper of a ComfyUI "
+                                 f"that starts on demand does.")
+            raise ImageError(_who(r))
+        if not isinstance(data, dict):
+            raise ImageError(f"ComfyUI at {_host(self.url)} answered {r.url.path} with "
+                             f"something that is not JSON: is {self.url} the comfy "
+                             f"helper?")
+        return data
+
 
 LEASE_STATES = ("waiting", "starting", "ready", "failed")
+
+
+class HelperRefused(ImageError):
+    """The comfy helper refused a request about a model file: its sentence as it is, and
+    the status of its answer."""
+
+    def __init__(self, sentence: str, status: int):
+        super().__init__(sentence)
+        self.status = status
 
 
 class HelperDown(ImageError):

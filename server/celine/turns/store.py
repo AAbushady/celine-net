@@ -599,6 +599,23 @@ async def tool_started(store, cid: str, call_id: str) -> None:
     await store.write(fn)
 
 
+def redisplay(c: sqlite3.Connection, store, cid: str, call_id: str, changes: dict,
+              type_: str) -> None:
+    """Inside a write: a call's display takes `changes`, for work that goes on after its
+    call returned (a model file it asked for, comfyui/model_files.py), and its
+    conversation hears `type_` with the display and the row's words as they read now."""
+    r = c.execute("SELECT state, display FROM tool_calls WHERE id=?", (call_id,)).fetchone()
+    if r is None:
+        return
+    display = {**(json.loads(r["display"]) if r["display"] else {}), **changes}
+    c.execute("UPDATE tool_calls SET display=? WHERE id=?",
+              (json.dumps(display, ensure_ascii=False), call_id))
+    store.event(c, cid, type_, {
+        "tool_call_id": call_id, "display": mark.for_client(display),
+        "words": tool_rows.of_call(c, call_id, r["state"], display, None, store.tool_words)},
+        touch=False)
+
+
 async def tool_progress(store, cid: str, tool_call_id: str, note: str, **data) -> int:
     """What a running tool says it is doing: the event for the transcript, and the
     same line on the job row when the step is a job (nothing until it is one)."""
