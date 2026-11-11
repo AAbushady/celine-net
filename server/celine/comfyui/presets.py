@@ -205,12 +205,21 @@ class Preset:
 
 
 def unwire(graph: dict[str, Any], node: str) -> dict[str, Any]:
-    """`graph` without `node` and without every input that takes from it (a second
-    image that is not given)."""
-    out = {k: v for k, v in graph.items() if k != node}
-    for n in out.values():
-        n["inputs"] = {k: v for k, v in n["inputs"].items()
-                       if not (isinstance(v, list) and v and v[0] == node)}
+    """`graph` without `node`, without every input that takes from it (a second image
+    that is not given), and without every node that took only from what went (that
+    image's scaling), the same way."""
+    out, gone = graph, {node}
+    while gone:
+        out = {k: v for k, v in out.items() if k not in gone}
+        orphans = set()
+        for nid, n in out.items():
+            links = [k for k, v in n["inputs"].items() if isinstance(v, list) and v]
+            cut = [k for k in links if n["inputs"][k][0] in gone]
+            if cut:
+                n["inputs"] = {k: v for k, v in n["inputs"].items() if k not in cut}
+                if len(cut) == len(links):
+                    orphans.add(nid)
+        gone = orphans
     return out
 
 

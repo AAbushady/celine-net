@@ -412,11 +412,13 @@ async def test_an_edit_of_three_images_finds_the_preset_that_takes_them(app, sto
     assert f"Edited from {ids[0][:8]}, {ids[1][:8]} and {ids[2][:8]}." in r.content
     assert app.fake.count("comfy POST /upload/image") == 3
     graph = app.fake.graphs[-1]
-    edit = graph["6"]["inputs"]
-    assert edit["prompt"] == prompt and edit["width"] == 832
-    assert "5" not in graph and "reference_4" not in edit, "a missing image's node goes"
-    assert edit["reference_3"] == ["4", 0] and graph["4"]["inputs"]["image"] == \
-        "celine-src.png"
+    edit, negative = graph["6"]["inputs"], graph["7"]["inputs"]
+    assert edit["prompt"] == prompt and graph["9"]["inputs"]["width"] == 832
+    assert "5" not in graph and "16" not in graph and "images.image_3" not in edit \
+        and "images.image_3" not in negative, "a missing image's node goes, with its scaling"
+    assert edit["images.image_2"] == negative["images.image_2"] == ["15", 0]
+    assert graph["15"]["inputs"]["image"] == ["4", 0]
+    assert graph["4"]["inputs"]["image"] == "celine-src.png"
 
     r = await skill.generate(ctx, items=[{"prompt": "x", "preset": "krea2-identity-edit",
                                           "source": ids[0][:8], "source2": ids[1][:8]}])
@@ -605,6 +607,15 @@ def test_krea2_turbo_encodes_the_prompt_as_written_or_its_rewrite_by_the_variant
                                  "on_true": ["16", 0]}
     assert g["18"]["inputs"]["system_prompt"] == ["17", 0]
     assert g["15"]["inputs"]["value"].startswith("You write prompts for an image model")
+
+
+def test_moss_image_fills_comfyuis_own_moss_nodes():
+    p = presets.of("images")["moss-image"]
+    g = p.build({"prompt": "a", "negative": "b", "seed": 3, "width": 1024, "height": 768})
+    assert (g["4"]["inputs"]["text"], g["5"]["inputs"]["text"]) == ("a", "b")
+    assert g["8"]["inputs"]["seed"] == 3 and g["8"]["inputs"]["model"] == ["7", 0]
+    assert (g["6"]["inputs"]["width"], g["6"]["inputs"]["height"]) == (1024, 768)
+    assert g["2"]["inputs"]["type"] == "moss_image"
 
 
 # ---- the user's presets (Settings, Images & Music) -------------------------------------

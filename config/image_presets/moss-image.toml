@@ -1,9 +1,9 @@
-# MOSS-Image-SFT, text to image (the MOSS-Image text to image workflow): the
-# MOSS-Image ComfyUI plugin's HF loader on the SFT folder, 50 steps, cfg 3, shift 5, euler,
-# sgm_uniform, negative-branch layer skip at 22. Base is the raw LoRA-training checkpoint;
-# SFT is the one tuned for pictures.
-# The model path in moss-image.json (/models/MOSS-Image-SFT) must be changed to where the
-# model lives on the ComfyUI server.
+# MOSS-Image SFT, text to image, on ComfyUI's own MOSS-Image support, after its "Text to
+# Image (MOSS-Image)" template with its prompt upsampler off: the SFT model in int8
+# (moss_image_sft_int8_convrot), the Qwen3.5 9B text encoder in W4A8
+# (qwen3.5_9b_w4a8_gptq), the small FLUX.2 VAE. The official settings, which the template
+# names for results closer to the official ones: 50 steps, cfg 3, euler, sgm_uniform, the
+# model's own shift of 5, negative-branch layer skip at 22.
 label = "MOSS-Image"
 family = "MOSS-Image"
 task = "generate"
@@ -13,13 +13,16 @@ prompting = """
 English works best; Chinese works. Three ways to write, mixable:
 
 - A plain description, a few sentences: subject and action, place, light.
-- A tag list in this order: quality, character, series, artist, general ("best quality,
-  highres, 1girl, silver hair, running through rain").
+- A tag list in this order: quality, score, meta, year, character, series, artist,
+  general ("best quality, highres, 1girl, silver hair, running through rain").
 - A JSON layout for exact placement: {"summary": {"meta": ["poster"], "canvas":
-  "single", "caption": "..."}, "bbox_format": "yxyx", "bbox_coord_space":
-  "abs_centralized", "items": [{"type": "text", "text": "TITLE", "description": "...",
-  "bbox": [y1, x1, y2, x2]}]}. Coordinates are pixels from the canvas center, so a
-  1024x1024 picture runs from -512 to 512; use the same width and height you ask for.
+  "single", "caption": "the whole picture and its style"}, "items": [{"label": "text",
+  "caption": "large dark-blue title at the top", "text": "TITLE", "bbox": [y1, x1, y2,
+  x2]}, {"label": "object", "caption": "...", "bbox": [...]}], "bbox_coord_space":
+  "abs_centralized", "bbox_format": "yxyx"}. An item's label is text, object or
+  character; a text item has its words in text. Coordinates are pixels from the canvas
+  center, y down and x right, so a 1024x1024 picture runs from -512 to 512; use the same
+  width and height you ask for.
 
 Text to render goes in double quotes, line breaks and all. A negative prompt that helps:
 "worst quality, bad anatomy, watermark, jpeg artifact". Best at 1 to 2 megapixels.
@@ -34,7 +37,7 @@ inputs = [["4", "text"]]
 inputs = [["5", "text"]]
 
 [parameters.seed]
-inputs = [["16", "seed"]]
+inputs = [["8", "seed"]]
 
 [parameters.width]
 inputs = [["6", "width"]]

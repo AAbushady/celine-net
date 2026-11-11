@@ -1,75 +1,86 @@
 {
   "1": {
+    "class_type": "UNETLoader",
     "inputs": {
-      "model_path": "/models/MOSS-Image-SFT",
-      "weight_dtype": "default",
-      "text_device": "default"
+      "unet_name": "moss_image_sft_int8_convrot.safetensors",
+      "weight_dtype": "default"
     },
-    "class_type": "MOSSImageHFLoader"
+    "_meta": {"title": "Model (MOSS-Image SFT, int8)"}
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3.5_9b_w4a8_gptq.safetensors",
+      "type": "moss_image",
+      "device": "default"
+    },
+    "_meta": {"title": "Text encoder (Qwen3.5 9B, W4A8)"}
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "flux2-vae_small.safetensors"
+    },
+    "_meta": {"title": "VAE"}
   },
   "4": {
+    "class_type": "CLIPTextEncode",
     "inputs": {
       "text": "",
       "clip": [
-        "1",
-        1
+        "2",
+        0
       ]
     },
-    "class_type": "CLIPTextEncode"
+    "_meta": {"title": "Prompt"}
   },
   "5": {
+    "class_type": "CLIPTextEncode",
     "inputs": {
       "text": "",
       "clip": [
-        "1",
-        1
+        "2",
+        0
       ]
     },
-    "class_type": "CLIPTextEncode"
+    "_meta": {"title": "Negative prompt"}
   },
   "6": {
+    "class_type": "EmptyFlux2LatentImage",
     "inputs": {
       "width": 1024,
       "height": 1024,
       "batch_size": 1
     },
-    "class_type": "EmptyFlux2LatentImage"
+    "_meta": {"title": "Size"}
   },
-  "13": {
+  "7": {
+    "class_type": "SkipLayerGuidanceDiTSimple",
     "inputs": {
-      "double_layers": "",
-      "single_layers": "22",
-      "start_percent": 0,
-      "end_percent": 1,
-      "model": [
-        "15",
-        0
-      ]
-    },
-    "class_type": "SkipLayerGuidanceDiTSimple"
-  },
-  "15": {
-    "inputs": {
-      "shift": 5,
       "model": [
         "1",
         0
-      ]
+      ],
+      "double_layers": "",
+      "single_layers": "22",
+      "start_percent": 0.0,
+      "end_percent": 1.0
     },
-    "class_type": "ModelSamplingSD3"
+    "_meta": {"title": "Negative-branch layer skip at 22"}
   },
-  "16": {
+  "8": {
+    "class_type": "KSampler",
     "inputs": {
-      "seed": 0,
-      "steps": 50,
-      "cfg": 3,
-      "sampler_name": "euler",
-      "scheduler": "sgm_uniform",
-      "denoise": 1,
       "model": [
-        "13",
+        "7",
         0
       ],
+      "seed": 0,
+      "steps": 50,
+      "cfg": 3.0,
+      "sampler_name": "euler",
+      "scheduler": "sgm_uniform",
+      "denoise": 1.0,
       "positive": [
         "4",
         0
@@ -83,26 +94,26 @@
         0
       ]
     },
-    "class_type": "KSampler"
+    "_meta": {"title": "Sampler"}
   },
-  "17": {
+  "9": {
+    "class_type": "VAEDecode",
     "inputs": {
       "samples": [
-        "16",
+        "8",
         0
       ],
       "vae": [
-        "1",
-        2
+        "3",
+        0
       ]
-    },
-    "class_type": "VAEDecode"
+    }
   },
-  "18": {
+  "10": {
     "class_type": "PreviewImage",
     "inputs": {
       "images": [
-        "17",
+        "9",
         0
       ]
     }
