@@ -1020,14 +1020,20 @@ async def test_a_call_hears_once_of_a_batch_that_waited_and_never_of_one_that_di
         await od.batches.wait(b["id"])
     assert await _notices(store) == []
 
+    import math
+    from types import SimpleNamespace
+    turn_clock = SimpleNamespace(deadline=100.0)
+    od.llm.turn_clock[ctx.turn_id] = turn_clock
     od.helper.states = ["waiting"]
     await skill.generate(ctx, items=[{"style": "ambient"}])
     [b] = [x for x in await batches_mod.list_batches(store, "music", conversation=cid)
            if x["state"] == "running"]
     await until(lambda: od.batches.waits_for_gpu(b["id"]))
+    assert turn_clock.deadline == math.inf, "the wait for the GPU is not the turn's work"
     od.clock.t += 30
     od.helper.states = ["ready"]
     await od.batches.wait(b["id"])
+    assert 100.0 < turn_clock.deadline < math.inf
     [(to, text)] = await _notices(store)
     assert to == f"agent:{cid}" and text.startswith(
         f"Batch {b['id'][:8]} waited 30 s for the GPU and is done: 1 of 1 made.\n1. track ")
