@@ -656,6 +656,7 @@ VIDEO: dict[str, Sentence] = {
     "watch": lambda a, d, r: "Watched a video" +
         (f": {_str(a.get('source'))}" if _str(a.get("source")) else ""),
     "wait": lambda a, d, r: "Waited for a watch",
+    "continue_watch": lambda a, d, r: "Continued a watch",
     "read": lambda a, d, r: "Read what it watched" +
         (f" from {_str(a.get('at'))}" if _str(a.get("at")) else ""),
     "list": lambda a, d, r: "Listed its watches",

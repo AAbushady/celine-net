@@ -31,6 +31,8 @@ DETACHED = ("Watching {source} in the background as job {job}; you get the log's
             "done. video__list shows how far it is, by its source until the helper has its title.")
 WAIT_DETACHED = ("Waiting for watch {id} in the background as job {job}; you get the log's first stretch "
                  "when it is done.")
+CONTINUE_DETACHED = ("Watch {id} goes on in the background as job {job}; you get the first stretch it adds "
+                     "when it is done.")
 CLOCK = re.compile(r"^(?:(\d+):)?(\d{1,3}):(\d{2})$")
 
 
@@ -182,9 +184,37 @@ class Video:
         """Wait for a watch to finish, then get its first stretch (as video__read)."""
         return await self._until_done(ctx, id.strip().lstrip("#"), in_job=background)
 
-    async def _until_done(self, ctx: ToolContext, jid: str, in_job: bool) -> ToolResult:
+    @tool(mode="detach", read_only=False, destructive=False, open_world=True, background="background",
+          timeout=600, detached=CONTINUE_DETACHED)
+    async def continue_watch(
+        self,
+        ctx: ToolContext,
+        id: Annotated[str, "The id of a watch that failed or was stopped, from video__list."],  # noqa: A002
+        background: Annotated[bool, "true: wait for it in the background; the first stretch it adds comes to "
+                                    "you when it is done. false: start it and come back with video__wait."]
+        = False,
+    ) -> ToolResult:
+        """Take up a watch that stopped early (it failed, you stopped it, or the helper restarted under it): it
+        goes on from where its log ends, into the same log, under the same id. What it had stays readable the
+        whole time. A watch that is done takes video__watch with start for more of the video."""
+        jid = id.strip().lstrip("#")
+        try:
+            j = await self._call("POST", f"/jobs/{jid}/resume")
+        except HelperError as e:
+            return ToolResult(content=str(e), is_error=True)
+        edge = j.get("done_to")
+        if not background:
+            where = f" from {clock(edge)}" if edge else ""
+            return ToolResult(content=f"Watch #{jid} goes on{where}. video__wait(id=\"{jid}\", background=true) "
+                                      f"brings it when it is done; video__list shows how far it is.",
+                              display={"watch": jid})
+        return await self._until_done(ctx, jid, in_job=True, at=edge)
+
+    async def _until_done(self, ctx: ToolContext, jid: str, in_job: bool,
+                          at: float | None = None) -> ToolResult:
         """Look every POLL seconds until the watch ends, or until the wait's own limit nears, then say where it
-        stands: in a job, the job's limit; in the turn, the tool's and the turn's."""
+        stands: in a job, the job's limit; in the turn, the tool's and the turn's. A watch that is done gives
+        its first stretch, from `at` when it was taken up again there."""
         if in_job:
             limit = float(self.cfg.r("job_timeout_seconds")) - WAIT_MARGIN
         else:
@@ -208,7 +238,7 @@ class Video:
             waited += self.poll
         if j["state"] != "done":
             return ToolResult(content=self._line(j), is_error=j["state"] == "failed")
-        return await self._stretch(ctx, jid, None)
+        return await self._stretch(ctx, jid, at)
 
     @tool()
     async def read(

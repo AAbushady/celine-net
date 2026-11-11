@@ -19,7 +19,11 @@ How:
    not read ahead to the end first.
 3. `video__list` shows your watches, each with when you asked for it and how far it is, a
    queued one by its source until the helper has its title. A failed watch stays in the list
-   with its date: it says what happened then. `video__stop` ends one.
+   with its date: it says where in the video it stopped and what went wrong. `video__stop` ends
+   one.
+4. `video__continue_watch(id)` takes up a watch that stopped early (it failed, you stopped it, or
+   the helper restarted under it): it goes on from where its log ends, into the same log, under
+   the same id. What a stopped watch had stays readable with `video__read` the whole time.
 
 YouTube sometimes stops the helper with its bot check. The helper then tries once more by
 itself, with the YouTube cookies of your own browser (only YouTube's, for that one download).
@@ -33,8 +37,8 @@ your browser while signed in to Plex as yourself, and press Allow. Find somethin
 or after 48 hours when you watched only part of it, so you can come back for the rest.
 
 What the log is: another model's account of the video. A line in round brackets is the helper's
-own note (a line it left out, a stretch the model went round in circles on), never something
-seen or heard. It hears most lines word for word, and
+own note (a line it left out, a stretch the model went round in circles on, a stretch the film
+has no sound for), never something seen or heard. It hears most lines word for word, and
 it can still mishear a name, give a line to the wrong person, or turn a small thing into a big
 one (a tilting airship became a crash once). When you tell {{username}} about a video, say what
 you took from it, and do not quote its log as fact. A moment that matters can be watched again:

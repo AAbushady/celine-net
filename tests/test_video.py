@@ -26,6 +26,7 @@ class Helper:
         self.posted: list[dict] = []
         self.seen: list[str] = []
         self.plex = {"linked": False, "user": None, "servers": []}
+        self.stopped_at: float | None = None      # where a watch that stopped early ends, None: it is done
 
     def job(self, state="queued"):
         return {"id": "abc123def456", "source": {"kind": "youtube", "url": "https://www.youtube.com/watch?v=x"},
@@ -43,6 +44,12 @@ class Helper:
             if "youtu" not in body["source"] and not body["source"].startswith("plex:"):
                 return httpx.Response(400, json={"error": "source is a YouTube link or a plex:... id."})
             return httpx.Response(201, json=self.job())
+        if (method, path) == ("POST", "/jobs/abc123def456/resume"):
+            if self.stopped_at is None:
+                return httpx.Response(400, json={"error": "That watch is done. A new watch with start watches "
+                                                           "more of the video."})
+            self.looks = 0
+            return httpx.Response(200, json={**self.job("queued"), "done_to": self.stopped_at})
         if (method, path) == ("GET", "/jobs/abc123def456"):
             self.looks += 1
             return httpx.Response(200, json=self.job("done" if self.looks >= self.steps else "watching"))
@@ -107,6 +114,31 @@ async def test_a_watch_starts_and_its_first_stretch_comes_back_in_order(store, c
     out = await v.read(_ctx(store, cfg), "#abc123def456", at="3:00")
     assert "[3:00] A bird lands" in out.content and out.content.endswith('at="6:00")')
     assert "at=180" in h.seen[-1]
+
+
+async def test_a_watch_that_stopped_early_goes_on_under_its_id_from_where_its_log_ends(store, cfg):
+    h = Helper()
+    h.stopped_at = 360.0
+    v = _video(cfg, h)
+    out = await v.continue_watch(_ctx(store, cfg), "#abc123def456")
+    assert not out.is_error and out.content.startswith("Watch #abc123def456 goes on from 6:00. ")
+    assert out.display == {"watch": "abc123def456"} and "POST /jobs/abc123def456/resume?" in h.seen
+    # in the background: the first stretch it adds, read from where it stopped
+    out = await v.continue_watch(_ctx(store, cfg), "abc123def456", background=True)
+    assert out.content.splitlines()[0] == "#abc123def456 A short film (Blender), 6:00 to 9:00 of 0:00-10:00"
+    assert "at=360" in h.seen[-1] and h.looks == 2, "it looked until the watch was done"
+    # a watch that is done says so in the helper's words; one it does not know too
+    h.stopped_at = None
+    out = await v.continue_watch(_ctx(store, cfg), "abc123def456")
+    assert out.is_error and out.content.startswith("That watch is done.")
+    out = await v.continue_watch(_ctx(store, cfg), "nope")
+    assert out.is_error and out.content == "There is no such route."
+    from celine.skills import Registry
+    reg = Registry()
+    reg.add(Video(cfg))
+    said = reg.tools["video__continue_watch"].detached.format_map(
+        {"id": "abc123def456", "background": True, "job": "406381a2"})
+    assert said.startswith("Watch abc123def456 goes on in the background as job 406381a2;")
 
 
 def test_a_queued_watch_reads_by_its_source_and_a_background_one_names_it(cfg):
