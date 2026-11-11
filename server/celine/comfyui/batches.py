@@ -12,7 +12,13 @@ renders the items that wait, one after the other:
 1. Before the first item of a ComfyUI provider: its GPU lease, when the provider shares
    its GPU with a llama-swap provider (backends/llm.py `gpu_lease`): this app's
    requests there finish, new ones wait, llama-swap unloads its models. The lease is
-   held to the end of the batch: one unload and one reload per batch.
+   held to the end of the batch: one unload and one reload per batch. Then, for a
+   provider that starts on demand, the comfy helper's lease (server.lease): the batch
+   waits in line until the helper has the GPU and ComfyUI is up, with no limit of its
+   own (a Stop ends it), and holds the lease to its end. While either lease waits, the
+   item's note says "Waiting for the GPU" and the clock of the turn that started the
+   batch stands still. Queue-based load leveling: the batches line up in front of the
+   one GPU, and a busy GPU makes a batch wait, never fail.
 2. Each item: an edit uploads its source image (POST /upload/image), the workflow is
    queued (POST /prompt), followed until it ends, and what it made is fetched
    (server.run). A failed item (ComfyUI refused or failed, the timeout, a model or LoRA
@@ -21,7 +27,11 @@ renders the items that wait, one after the other:
    list and edits find it), or of the batch alone (one the user started). It is also
    kept as a file in images/<date>/ or music/<date>/.
 4. At the end, also after a Stop, an error or a restart's cut: ComfyUI frees its models
-   and memory (POST /free), then the lease is released.
+   and memory (POST /free), then the leases are released.
+5. A batch of the agent's call that had to wait for the comfy helper's GPU and settled
+   after its call returned: its conversation gets one notice from the app, what was made
+   and how long it waited (`begin`'s `report`). It wakes the agent as a job's result
+   does. A batch that did not wait says nothing.
 
 """
 from __future__ import annotations
@@ -33,12 +43,14 @@ import re
 import secrets
 import sqlite3
 import time
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 import anyio
+import anyio.abc
 import httpx
 
 from .. import homes
@@ -57,6 +69,9 @@ SHORT = 8                   # a batch's and an image's short id: the first chara
 STOP_WAIT = 15.0            # seconds a Stop waits for the batch to settle
 WAIT_MAX = 3600.0           # seconds its call with wait=true holds its turn at most
 ANSWER = 5.0                # seconds of its turn kept to answer after such a wait
+GPU_TRY = 20.0              # seconds such a call waits before it returns a batch that
+                            # waits for the GPU
+clock = time.monotonic      # the clock of an item's time and a batch's wait for the GPU
 _EXT = {"image/jpeg": ".jpg", "image/webp": ".webp"}    # a media type's file name end, else .png
 
 
@@ -205,9 +220,15 @@ class Batches:
     with its task group, where every batch runs."""
 
     def __init__(self, app, tg=None):
-        self.app = app                  # core/services.py: cfg, store, llm
+        self.app = app                  # core/services.py: cfg, store, llm, intercom
         self.tg = tg
         self.running: dict[str, tuple[anyio.CancelScope, anyio.Event]] = {}
+        # a running batch -> set while it waits for the comfy helper's GPU; a fresh one
+        # replaces it when it stops waiting (_gpu_wait)
+        self.gpu: dict[str, anyio.Event] = {}
+        self.waited: dict[str, float] = {}      # a running batch -> its seconds of that wait
+        self.awaited: set[str] = set()          # the batches whose call waits for them now
+        self.reports: dict[str, Callable[[dict, float], str]] = {}     # begin's `report`
 
     # ---- create ----------------------------------------------------------------------
 
@@ -456,23 +477,61 @@ class Batches:
             await hit[1].wait()
 
     async def begin(self, b: dict, *, wait: bool, time_left: float | None,
-                    wrote=None) -> dict:
-        """The agent's call's batch, started; with `wait`, waited for as long as its turn's time
-        allows, ANSWER seconds kept to answer, until `wrote` is set (the user's message,
-        ToolContext.user_wrote). -> the batch as it is then."""
+                    wrote=None, report: Callable[[dict, float], str] | None = None) -> dict:
+        """The agent's call's batch, started; with `wait`, waited for as long as its turn's
+        time allows, ANSWER seconds kept to answer, until `wrote` is set (the user's
+        message, ToolContext.user_wrote), and past GPU_TRY seconds only while it does not
+        wait for the GPU (_made). `report(batch, seconds)`: the words of the notice its
+        conversation gets when the batch had to wait for the comfy helper's GPU and settles
+        after the call returned. -> the batch as it is then."""
         from ..core.cancel import until_set
         if b["state"] != "running":
             return b
+        if report is not None:
+            self.reports[b["id"]] = report
         self.start(b["id"])
         if wait:
             limit = WAIT_MAX if time_left is None else min(WAIT_MAX, time_left - ANSWER)
-            with anyio.move_on_after(max(0.0, limit)):
-                await until_set(lambda: self.wait(b["id"]), wrote)
+            self.awaited.add(b["id"])
+            try:
+                with anyio.move_on_after(max(0.0, limit)):
+                    await until_set(lambda: self._made(b["id"]), wrote)
+            finally:
+                self.awaited.discard(b["id"])
             b = await get(self.app.store, b["id"])
         return b
 
+    async def _made(self, bid: str) -> None:
+        """Until the batch settles; past GPU_TRY seconds, until then or until it waits for
+        the GPU: its call returns it as it is, and it is made when the GPU is free."""
+        from ..core.cancel import until_set
+        hit = self.running.get(bid)
+        if hit is None:
+            return
+        ended = hit[1]
+        with anyio.move_on_after(GPU_TRY):
+            await ended.wait()
+        if not ended.is_set():
+            await until_set(ended.wait, self.gpu.setdefault(bid, anyio.Event()))
+
+    def waits_for_gpu(self, bid: str) -> bool:
+        """Batch `bid` waits for the comfy helper's GPU now."""
+        ev = self.gpu.get(bid)
+        return ev is not None and ev.is_set()
+
+    def _gpu_wait(self, bid: str, waits: bool) -> None:
+        ev = self.gpu.get(bid)
+        if waits:
+            if ev is None:
+                ev = self.gpu[bid] = anyio.Event()
+            ev.set()
+        elif ev is not None and ev.is_set():
+            self.gpu[bid] = anyio.Event()
+
     async def run(self, bid: str) -> dict:
-        """Renders what waits (the module docstring) and returns the settled batch."""
+        """Renders what waits (the module docstring) and returns the settled batch. The
+        renewal of a lease runs in the batch's own task group, so it ends with the
+        batch."""
         store = self.app.store
         scope, ended = self.running.setdefault(bid, (anyio.CancelScope(), anyio.Event()))
         b = None
@@ -480,20 +539,42 @@ class Batches:
             b = await get(store, bid)
             if b is None or b["state"] != "running":
                 return b
+            turn = await self._turn_of(b)
             with scope:
-                async with contextlib.AsyncExitStack() as stack:
-                    servers = _Servers(self, b, stack, await self._turn_of(b))
+                async with anyio.create_task_group() as tg, \
+                        contextlib.AsyncExitStack() as stack:
+                    servers = _Servers(self, b, stack, tg, turn)
                     for item in b["items"]:
                         if item["state"] == "waiting":
                             await self._one(b, item, servers)
         finally:
             self.running.pop(bid, None)
+            waited = self.waited.pop(bid, None)
+            report = self.reports.pop(bid, None)
             with anyio.CancelScope(shield=True):
                 if b is not None and b["state"] == "running":
                     _settle(b)
                     await _save(store, b)
+                # a call still waiting for the batch gets it settled: no notice then
+                heard = bid in self.awaited
                 ended.set()
+                self.gpu.pop(bid, None)
+                if report is not None and waited is not None and not heard and b is not None:
+                    await self._notice(b, report, waited)
         return b
+
+    async def _notice(self, b: dict, report: Callable[[dict, float], str],
+                      waited: float) -> None:
+        """The notice from the app to the conversation of the agent's call whose batch
+        waited for the GPU (the module docstring, 5)."""
+        try:
+            await self.app.intercom.send("system:app", f"agent:{b['conversation_id']}",
+                                         report(b, waited), kind="notice")
+        except KeyError:
+            pass                            # its conversation is gone
+        except Exception:
+            log.exception("batch notice failed", extra={"event": "comfyui.notice_failed",
+                                                        "batch": b["id"]})
 
     async def retry(self, bid: str, index: int) -> dict:
         """Makes one failed or stopped item again, as it was asked (its prompt, preset,
@@ -535,12 +616,15 @@ class Batches:
         self.tg.start_soon(self.run, bid)
         return b
 
-    async def stop(self, bid: str) -> bool:
+    async def stop(self, bid: str, *, told: bool = False) -> bool:
         """Stops a running batch: the item in ComfyUI is interrupted, the rest are not
-        made. Waits until it has settled. False when it was not running."""
+        made. Waits until it has settled. `told`: the agent stops it and hears how it
+        ended, so its conversation gets no notice. False when it was not running."""
         hit = self.running.get(bid)
         if hit is None:
             return False
+        if told:
+            self.reports.pop(bid, None)
         hit[0].cancel()
         with anyio.move_on_after(STOP_WAIT):
             await hit[1].wait()
@@ -564,9 +648,11 @@ class Batches:
                 item["note"] = line
                 await _save(store, b)
 
-        started = time.monotonic()
+        started = clock()
         router = self.app.llm.router
         try:
+            await servers.get(item["provider"], note)     # the wait for the GPU is not
+            started = clock()                               # the item's time
             if b["kind"] == "images":
                 await self._image(b, item, servers, note)
             else:
@@ -586,7 +672,7 @@ class Batches:
             log.exception("item failed", extra={"event": "comfyui.item_failed",
                                                 "batch": b["id"]})
             item.update(state="failed", error=f"It failed: {type(e).__name__}: {e}")
-        item["seconds"] = round(time.monotonic() - started, 1)
+        item["seconds"] = round(clock() - started, 1)
         item.pop("note", None)
         await _save(store, b)
 
@@ -661,23 +747,34 @@ class Batches:
 class _Servers:
     """The ComfyUI servers one batch uses: a client each, the lease of its GPU taken
     before its first item (once per GPU, which several servers may share) and held to
-    the end of the batch, its catalog. A GPU whose lease timed out fails every later
-    item on it at once. At the end each server frees its models (bounded, also after a
-    Stop), then the leases are released and the clients closed."""
+    the end of the batch, then the comfy helper's lease of a server that starts on
+    demand, its catalog. A GPU whose lease timed out, or a helper whose lease failed,
+    fails every later item on it at once; a helper's lease that was lost is asked for
+    again before the next item. At the end each server frees its models (bounded, also
+    after a Stop), then the leases are released and the clients closed."""
 
     def __init__(self, batches: Batches, b: dict, stack: contextlib.AsyncExitStack,
-                 turn_id: str | None):
+                 tg: anyio.abc.TaskGroup, turn_id: str | None):
+        self.batches = batches
         self.app = batches.app
         self.b = b
         self.stack = stack
+        self.tg = tg                            # the batch's: a lease's renewal runs here
         self.turn_id = turn_id
         self.clients: dict[str, tuple[server_mod.Comfy, float]] = {}
         self.catalogs: dict[str, Any] = {}
         self.info: dict[str, dict] = {}          # provider -> its /object_info entries so far
         self.gpus: dict[str, str | None] = {}   # leased GPU -> None, or why it is not
+        self.leases: dict[str, server_mod.Lease] = {}    # provider -> the helper's lease
+        self.refused: dict[str, str] = {}       # provider -> why the helper's lease failed
 
     async def get(self, pid: str, note) -> tuple[server_mod.Comfy, float]:
         if pid in self.clients:
+            held = self.leases.get(pid)
+            if held is not None and held.lost:
+                comfy = self.clients[pid][0]
+                await self._lease(pid, comfy, note)
+                self.stack.push_async_callback(_free, comfy)
             return self.clients[pid]
         from ..backends.queue import QueueTimeout
         router = self.app.llm.router
@@ -703,9 +800,42 @@ class _Servers:
                 self.gpus[shared] = f"The GPU stayed busy with {label} requests."
                 raise ImageError(self.gpus[shared]) from None
             self.gpus[shared] = None
+        if opts.get("on_demand"):
+            await self._lease(pid, comfy, note)
         self.stack.push_async_callback(_free, comfy)
         self.clients[pid] = (comfy, float(opts.get("timeout") or 600.0))
         return self.clients[pid]
+
+    async def _lease(self, pid: str, comfy: server_mod.Comfy, note) -> None:
+        """The comfy helper's lease (server.lease), held to the end of the batch. While it
+        waits or starts, the item's note says so (server.waiting_note) and the turn's
+        clock stands still; while it waits, the batch waits for the GPU
+        (Batches.waits_for_gpu), and that time from its request to its end is the
+        batch's wait (Batches.waited)."""
+        if pid in self.refused:
+            raise ImageError(self.refused[pid])
+        batches, bid = self.batches, self.b["id"]
+        waited = False
+
+        async def on_wait(lease: dict) -> None:
+            nonlocal waited
+            waits = lease["state"] == "waiting"
+            waited = waited or waits
+            await note(server_mod.waiting_note(lease))  # stored before a call reads it
+            batches._gpu_wait(bid, waits)
+
+        t0 = clock()
+        try:
+            with self.app.llm.turn_paused(self.turn_id):
+                self.leases[pid] = await self.stack.enter_async_context(server_mod.lease(
+                    comfy, bid, self.b["kind"], on_wait, self.tg))
+        except ImageError as e:
+            self.refused[pid] = str(e)
+            raise
+        finally:
+            batches._gpu_wait(bid, False)
+            if waited:
+                batches.waited[bid] = batches.waited.get(bid, 0.0) + clock() - t0
 
     async def check(self, pid: str, p: presets_mod.Preset) -> None:
         """Before a prompt is queued: every node and every file the preset's workflow

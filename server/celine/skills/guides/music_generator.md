@@ -10,11 +10,16 @@ id and one slot per track. The tracks are made one after the other, a few minute
 each, and each appears in this conversation when it is done, where {{username}} hears
 it. It is also saved in the music folder of the data folder.
 
-Nothing reports back to you, not when a track is done and not when one fails, so
-answer now and do not poll `music_generator__read` for it. It shows a batch at any
-time, when there is a reason to look; `music_generator__stop` stops one; what was made stays. With `wait=true`
-your turn waits until the batch is done, as long as your turn's time allows; past it,
-the batch goes on.
+The GPU is shared. While it is in use, a batch waits in line until it is free, as long
+as that takes, and its slots say "Waiting for the GPU" and why. A batch that had to
+wait reports back once: when it is done, a message from the app says what was made and
+how long it waited. Nothing else reports back to you, not when a track is done and not
+when one fails, so answer now and do not poll `music_generator__read` for it. It shows
+a batch at any time, when there is a reason to look; `music_generator__stop` stops one;
+what was made stays. With `wait=true` your turn waits until the batch is done, as long
+as your turn's time allows; past it, the batch goes on. A batch that still waits for
+the GPU after a short try comes back as it is: tell {{username}} it is made when the
+GPU is free, and answer.
 
 When to use: {{username}} asks you to compose music, make an instrumental or an
 ambient background, or write a song.

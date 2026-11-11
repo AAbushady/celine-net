@@ -1,8 +1,10 @@
 """Music with ComfyUI: one batch per call (comfyui/batches.py), the same way as images.
 
 The agent's call starts the batch in the app's task group and returns at once with one slot
-per track; the batch fills the slots in place as each track is made. It is no job, so
-nothing wakes it. `wait` holds its turn for the end.
+per track; the batch fills the slots in place as each track is made. It is no job: only a
+batch that had to wait for the GPU wakes it, with one notice from the app once it is done.
+`wait` holds its turn for the end, or until the batch still waits for the GPU after
+GPU_TRY seconds.
 """
 from __future__ import annotations
 
@@ -10,7 +12,8 @@ from typing import Annotated, Required, TypedDict
 
 from ..comfyui import batches as batches_mod, presets as presets_mod
 from . import ToolContext, ToolResult, guide, tool, described
-from .images import Generator, batch_generate, batch_read, batch_stop
+from .images import (REPORTS, WAIT, Generator, batch_generate, batch_read, batch_stop,
+                     settled_head)
 
 SHORT = batches_mod.SHORT
 
@@ -40,19 +43,19 @@ def item_line(i: dict) -> str:
             f"{i['seed']}, {i.get('seconds', 0):.0f} s.")
 
 
-def batch_text(b: dict, user: str, *, started: bool, chat: bool = True) -> str:
-    """A batch as it reads it; started in a chat (`chat`), {user} hears it there."""
+def batch_text(b: dict, user: str, *, started: bool, chat: bool = True,
+               waited: float | None = None) -> str:
+    """A batch as it reads it; started in a chat (`chat`), {user} hears it there.
+    `waited`: the seconds it waited for the GPU (images.settled_head)."""
     items = b["items"]
-    made = sum(i["state"] == "done" for i in items)
     if started:
         hears = f" {user} hears each one in this conversation when it is done." if chat \
             else ""
         head = (f"Batch {b['id'][:SHORT]} started: {len(items)} track"
                 f"{'s' if len(items) != 1 else ''}, made one after the other, a few "
-                f"minutes each.{hears} Nothing reports back to you: music_generator__read "
-                f"shows the batch.")
+                f"minutes each.{hears} {REPORTS} music_generator__read shows the batch.")
     else:
-        head = f"Batch {b['id'][:SHORT]} is {b['state']}: {made} of {len(items)} made."
+        head = settled_head(b, waited)
     return "\n".join([head] + [item_line(i) for i in items])
 
 
@@ -62,8 +65,9 @@ class MusicGenerator(Generator):
     description = described()
     role = "music"
 
-    def _text(self, b: dict, started: bool, chat: bool = True) -> str:
-        return batch_text(b, self.cfg.user, started=started, chat=chat)
+    def _text(self, b: dict, started: bool, chat: bool = True,
+              waited: float | None = None) -> str:
+        return batch_text(b, self.cfg.user, started=started, chat=chat, waited=waited)
 
     @property
     def docs(self) -> dict[str, str]:
@@ -78,20 +82,21 @@ class MusicGenerator(Generator):
         items: Annotated[list[Item], "The tracks, in order."],
         count: Annotated[int, "How many tracks of each item, each with its own seed. "
                               "Default 1."] = 1,
-        wait: Annotated[bool, "True: your turn waits until the batch is done or the user "
-                              "writes, as long as its time allows. Default false: the "
-                              "call returns at once."] = False,
+        wait: Annotated[bool, WAIT] = False,
     ) -> ToolResult:
         """Make music with ComfyUI: instrumental tracks, or songs with lyrics. Load the
         guide first: it has the style rules. The call returns at once with the batch id
         and one slot per track. The tracks are made one after the other, a few minutes
         each, and appear in this conversation as each is done; in a chat {{username}}
-        hears them there. Nothing reports back: music_generator__read shows the batch later,
-        music_generator__stop stops it. Returns: the batch id and each slot."""
+        hears them there. A batch reports back only when it had to wait for the GPU:
+        one message from the app once it is done. music_generator__read shows a batch,
+        music_generator__stop stops one. Returns: the batch id and each slot; with
+        wait=true, the batch when it is done, or as it is when it still waits for the
+        GPU after a short try."""
         from .places import place_of
         chat = await ctx.store.read(lambda c: place_of(c, ctx.conversation_id)) == "chat"
         return await batch_generate(self.app, ctx, "music", items, count, wait,
-                                    lambda b, s: self._text(b, s, chat))
+                                    lambda b, s, waited=None: self._text(b, s, chat, waited))
 
     @tool()
     async def read(

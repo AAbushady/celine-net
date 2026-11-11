@@ -10,12 +10,17 @@ own seed. The call returns at once with the batch id and one slot per image. The
 are made one after the other, and each appears in this conversation when it is done,
 where {{username}} sees it. You do not see the images.
 
-Nothing reports back to you by itself, not when an image is done and not when one
-fails, so answer now and do not poll `image_generator__read` for it. It shows a batch at any
-time, when there is a reason to look: each slot waiting, being made, made (with the image's short id), failed (with
-why) or stopped. `image_generator__stop` stops one; what was made stays. With
-`wait=true` your turn waits until the batch is done, as long as your turn's time
-allows; past it, the batch goes on.
+The GPU is shared. While it is in use, a batch waits in line until it is free, as long
+as that takes, and its slots say "Waiting for the GPU" and why. A batch that had to
+wait reports back once: when it is done, a message from the app says what was made and
+how long it waited. Nothing else reports back to you by itself, not when an image is
+done and not when one fails, so answer now and do not poll `image_generator__read` for
+it. It shows a batch at any time, when there is a reason to look: each slot waiting,
+being made, made (with the image's short id), failed (with why) or stopped.
+`image_generator__stop` stops one; what was made stays. With `wait=true` your turn
+waits until the batch is done, as long as your turn's time allows; past it, the batch
+goes on. A batch that still waits for the GPU after a short try comes back as it is:
+tell {{username}} it is made when the GPU is free, and answer.
 
 `image_generator__list_images` lists the images in this conversation with the prompt,
 the preset, the size and the seed each one was made from, and its short id: read it

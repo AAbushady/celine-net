@@ -3,7 +3,10 @@ free at its end, before the lease is released), a failed item that fails only it
 a Stop, its call that returns at once and fills in place without a job or waking it,
 or waits with wait=true, which images an edit may start from, the routes, the
 preset files, and the user's presets (an upload with placeholders, an edit of a shipped
-one and its reset). Fake servers only."""
+one and its reset). A ComfyUI that starts on demand behind the comfy helper: the batch
+waits for the helper's lease, renews it while held and releases it at its end; a call
+with wait=true returns a batch that waits for the GPU, and the app's notice says when
+it is done. Fake servers only."""
 from __future__ import annotations
 
 from chat_fixtures import Scripted, until, user_says
@@ -285,14 +288,14 @@ async def test_one_lease_per_gpu_and_a_busy_gpu_fails_the_rest_at_once(app, monk
         pass
     b = {"kind": "images", "conversation_id": None}
     async with contextlib.AsyncExitStack() as stack:
-        servers = batches_mod._Servers(app.batches, b, stack, None)
+        servers = batches_mod._Servers(app.batches, b, stack, app.batches.tg, None)
         await servers.get("comfy", note)
         await servers.get("comfy2", note)
     assert leases == ["swap"], "two servers on one GPU: one lease"
     leases.clear()
     busy = True
     async with contextlib.AsyncExitStack() as stack:
-        servers = batches_mod._Servers(app.batches, b, stack, None)
+        servers = batches_mod._Servers(app.batches, b, stack, app.batches.tg, None)
         for pid in ("comfy", "comfy2", "comfy"):
             with pytest.raises(presets.ImageError, match="stayed busy with llama-swap"):
                 await servers.get(pid, note)
@@ -751,3 +754,280 @@ async def test_the_note_says_only_a_wait_in_the_queue_never_what_the_block_shows
     finally:
         server.POLL = poll
     assert notes == ["Waiting in the queue, 2 ahead", "Waiting in the queue", ""]
+
+
+# ---- a ComfyUI that starts on demand, behind the comfy helper ------------------------
+
+OD_PROVIDERS = {
+    "swap": PROVIDERS["swap"],
+    "od": {"kind": "comfyui", "label": "ComfyUI", "base_url": "http://helper:8791",
+           "options": {"on_demand": True},
+           "models": {"anima-turbo": {"label": "Anima turbo"}, "yue2": {"label": "YuE2"}}},
+}
+OD_ROLES = {"chat": {"chain": ["swap/big"]},
+            "image_generation": {"chain": ["od/anima-turbo"]},
+            "music_generation": {"chain": ["od/yue2"]}}
+BUSY = "The GPU is in use (20,112 MiB of 24,564 MiB taken)."
+
+
+class Helper:
+    """The comfy helper at helper:8791: its leases, then the fake ComfyUI behind it.
+    `states`: what each answer about a lease says, in order, the last one for good.
+    `log`: every request it took, "<method> <path>"."""
+
+    def __init__(self, fake: Fake):
+        self.fake = fake
+        self.states = ["ready"]
+        self.ahead = 0
+        self.why = {"waiting": BUSY, "starting": "ComfyUI is starting.",
+                    "failed": "The image celine-comfy is missing."}
+        self.held: set[str] = set()
+        self.n = 0
+        self.log: list[str] = []
+        self.keys: set[str | None] = set()
+        self.forget = False         # the next look at a lease answers 404: a restart
+        self.down = False           # it refuses connections
+        self.answer: dict[str, httpx.Response] = {}
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        if request.url.host != "helper":
+            return self.fake(request)
+        if self.down:
+            raise httpx.ConnectError("refused", request=request)
+        path, method = request.url.path, request.method
+        self.log.append(f"{method} {path}")
+        self.keys.add(request.headers.get("authorization"))
+        if path == "/leases" and method == "POST":
+            self.n += 1
+            self.held.add(f"L{self.n}")
+            return self._lease(f"L{self.n}")
+        if path.startswith("/leases/"):
+            lid = path.rsplit("/", 1)[1]
+            if method == "DELETE":
+                was = lid in self.held
+                self.held.discard(lid)
+                return httpx.Response(200, json={"released": was})
+            if self.forget or lid not in self.held:
+                self.forget = False
+                self.held.discard(lid)
+                self.log.append(f"404 {lid}")
+                return httpx.Response(404, json={"error": f"There is no lease {lid}."})
+            return self._lease(lid)
+        if path in self.answer:
+            return self.answer[path]
+        return self.fake(request)
+
+    def _lease(self, lid: str) -> httpx.Response:
+        state = self.states.pop(0) if len(self.states) > 1 else self.states[0]
+        return httpx.Response(200, json={
+            "id": lid, "state": state, "why": self.why.get(state),
+            "ahead": self.ahead if state == "waiting" else 0})
+
+
+class Clock:
+    """batches.clock, standing still until the test moves it."""
+
+    def __init__(self):
+        self.t = 1000.0
+
+    def __call__(self) -> float:
+        return self.t
+
+
+@pytest.fixture
+async def od(tmp_path, monkeypatch, store):
+    """The app with its ComfyUI behind the comfy helper, the app's key saved for it, an
+    intercom, and a fixed clock for the batches."""
+    from celine.intercom import Intercom
+    from celine.settings.secrets import set_key
+    scratch(tmp_path, monkeypatch, providers=OD_PROVIDERS, roles=OD_ROLES)
+    for name in ("POLL", "LEASE_POLL", "LEASE_RENEW"):
+        monkeypatch.setattr(server, name, 0.01)
+    clock = Clock()
+    monkeypatch.setattr(batches_mod, "clock", clock)
+    cfg = load()
+    set_key(cfg.settings.secrets_root, "od", "k3y")
+    fake = Fake()
+    helper = Helper(fake)
+    llm = LLM(cfg, router=Router(cfg, transport=httpx.MockTransport(helper)))
+    async with anyio.create_task_group() as tg:
+        services = Services(cfg=cfg, store=store, llm=llm, bus=EventBus())
+        services.intercom = Intercom(store)
+        services.batches = batches_mod.Batches(services, tg)
+        services.fake, services.helper, services.clock = fake, helper, clock
+        yield services
+        tg.cancel_scope.cancel()
+
+
+async def _item(store, bid: str, n: int = 0) -> dict:
+    return (await batches_mod.get(store, bid))["items"][n]
+
+
+async def _notices(store) -> list[tuple[str, str]]:
+    return await store.read(lambda c: [(r[0], r[1]) for r in c.execute(
+        "SELECT to_addr, text FROM intercom WHERE from_addr='system:app' AND kind='notice' "
+        "ORDER BY id")])
+
+
+def test_on_demand_is_a_switch():
+    from celine.settings.files import Invalid
+    from celine.settings.registry import validate_providers
+    assert validate_providers(OD_PROVIDERS)["od"]["options"]["on_demand"] is True
+    with pytest.raises(Invalid, match="true or false"):
+        validate_providers({"od": {**OD_PROVIDERS["od"], "options": {"on_demand": "yes"}}})
+
+
+async def test_a_batch_waits_for_the_gpu_then_runs_under_the_helpers_lease(od):
+    helper, store = od.helper, od.store
+    helper.states, helper.ahead = ["waiting"], 1
+    b = await od.batches.create("images", [{"prompt": "a"}, {"prompt": "b"}])
+    od.batches.start(b["id"])
+    await until(lambda: od.batches.waits_for_gpu(b["id"]))
+    item = await _item(store, b["id"])
+    assert item["note"] == f"Waiting for the GPU, 1 ahead. {BUSY[:-1]}"
+    assert od.fake.graphs == [], "nothing goes to ComfyUI while the batch waits"
+    od.clock.t += 754
+    helper.states = ["starting", "ready"]
+    await od.batches.wait(b["id"])
+    b = await batches_mod.get(store, b["id"])
+    assert [i["state"] for i in b["items"]] == ["done", "done"]
+    assert [i["seconds"] for i in b["items"]] == [0, 0], "the wait is not an item's time"
+    assert helper.log.count("POST /leases") == 1, "one lease for the whole batch"
+    assert helper.log.index("POST /free") < helper.log.index("DELETE /leases/L1"), \
+        "ComfyUI frees its memory before the lease is released"
+    assert [x for x in helper.log if "/leases" in x][-1] == "DELETE /leases/L1"
+    assert helper.keys == {"Bearer k3y"}, "every request carries the app's key"
+    assert await _notices(store) == [], "a batch of the user's own reports nothing"
+    assert od.batches.gpu == {} and od.batches.waited == {}
+
+
+async def test_a_lease_that_failed_fails_every_item_with_the_helpers_sentence(od):
+    od.helper.states = ["waiting", "failed"]
+    b = await od.batches.create("images", [{"prompt": "a"}, {"prompt": "b"}])
+    b = await od.batches.run(b["id"])
+    assert [i["error"] for i in b["items"]] == ["The image celine-comfy is missing."] * 2
+    assert od.helper.log.count("POST /leases") == 1, "the second item fails at once"
+    assert "DELETE /leases/L1" in od.helper.log and od.fake.graphs == []
+
+
+async def test_a_helper_that_does_not_answer_fails_the_item_as_comfyui_does(od):
+    b = await od.batches.create("images", [{"prompt": "a"}])
+    od.helper.down = True
+    b = await od.batches.run(b["id"])
+    assert b["items"][0]["error"] == "ComfyUI at helper:8791 refused the connection."
+
+
+async def test_a_helper_restart_while_the_batch_waits_asks_for_a_new_lease(od):
+    helper = od.helper
+    helper.states = ["waiting"]
+    b = await od.batches.create("images", [{"prompt": "a"}])
+    od.batches.start(b["id"])
+    await until(lambda: od.batches.waits_for_gpu(b["id"]))
+    helper.forget, helper.states = True, ["ready"]
+    await od.batches.wait(b["id"])
+    assert (await _item(od.store, b["id"]))["state"] == "done"
+    assert helper.log.count("POST /leases") == 2 and "404 L1" in helper.log
+    assert "DELETE /leases/L2" in helper.log and "DELETE /leases/L1" not in helper.log
+
+
+async def test_a_stop_ends_the_wait_and_releases_the_lease(od, store):
+    od.helper.states = ["waiting"]
+    skill = ImageGenerator(od.cfg)
+    skill.app = od
+    ctx, _ = await _call(store, await conversations.create(store), "c1")
+    r = await skill.generate(ctx, items=[{"prompt": "a"}])
+    bid = r.content.split()[1]
+    await until(lambda: any(od.batches.waits_for_gpu(k) for k in od.batches.running))
+    r = await skill.stop(ctx, batch=bid)
+    assert r.content.startswith(f"Batch {bid} is stopped: 0 of 1 made.")
+    assert od.helper.log[-1] == "DELETE /leases/L1" and od.fake.graphs == []
+    assert await _notices(store) == [], "it stopped it and heard how it ended"
+
+
+async def test_the_lease_is_renewed_while_held_and_released_after_an_error_or_a_stop(od):
+    fake, helper = od.fake, od.helper
+    helper.answer["/prompt"] = httpx.Response(500, json={"error": "out of memory"})
+    b = await od.batches.run((await od.batches.create("images", [{"prompt": "a"}]))["id"])
+    assert b["items"][0]["error"] == "ComfyUI at helper:8791 returned 500: out of memory"
+    assert helper.log[-1] == "DELETE /leases/L1"
+
+    del helper.answer["/prompt"]
+    fake.hang = True
+    b = await od.batches.create("images", [{"prompt": "a"}, {"prompt": "b"}])
+    od.batches.start(b["id"])
+    await fake.queued.wait()
+    await until(lambda: helper.log.count("GET /leases/L2") >= 2)
+    assert await od.batches.stop(b["id"]) is True
+    assert [x for x in helper.log if "/leases" in x][-1] == "DELETE /leases/L2"
+    assert fake.bodies["helper /interrupt"] == [{"prompt_id": "p1"}]
+    assert (await batches_mod.get(od.store, b["id"]))["state"] == "stopped"
+
+
+async def test_a_lease_the_helper_lost_while_held_is_asked_for_again(od):
+    fake, helper = od.fake, od.helper
+    fake.hang = True
+    b = await od.batches.create("images", [{"prompt": "a"}, {"prompt": "b"}])
+    od.batches.start(b["id"])
+    await fake.queued.wait()
+    helper.forget = True
+    await until(lambda: "404 L1" in helper.log)
+    fake.hang = False
+    await od.batches.wait(b["id"])
+    b = await batches_mod.get(od.store, b["id"])
+    assert [i["state"] for i in b["items"]] == ["done", "done"]
+    posts = [n for n, x in enumerate(helper.log) if x == "POST /leases"]
+    assert len(posts) == 2 and posts[0] < helper.log.index("404 L1") < posts[1], \
+        "the second item takes a new lease"
+    assert "DELETE /leases/L2" in helper.log
+
+
+async def test_wait_true_returns_a_batch_that_waits_and_the_app_says_when_it_is_done(
+        od, store, monkeypatch):
+    from celine.skills.images import GPU_LATER
+    monkeypatch.setattr(batches_mod, "GPU_TRY", 0.0)
+    od.helper.states = ["waiting"]
+    skill = ImageGenerator(od.cfg)
+    skill.app = od
+    cid = await conversations.create(store)
+    ctx, _ = await _call(store, cid, "c1")
+    r = await skill.generate(ctx, items=[{"prompt": "a"}], wait=True)
+    bid = r.content.split()[1]
+    assert not r.is_error and r.content.startswith(f"Batch {bid} is running: 0 of 1 made.")
+    assert f": Waiting for the GPU. {BUSY}\n" in r.content
+    assert r.content.endswith("\n" + GPU_LATER)
+    od.clock.t += 754
+    od.helper.states = ["ready"]
+    [b] = await batches_mod.list_batches(store, "images", conversation=cid)
+    await od.batches.wait(b["id"])
+    [(to, text)] = await _notices(store)
+    made = (await _item(store, b["id"]))["attachment"]["id"][:8]
+    assert to == f"agent:{cid}"
+    assert text == (f"Batch {bid} waited 12 min for the GPU and is done: 1 of 1 made.\n"
+                    f"1. image {made}: Anima turbo, 832x1216, seed "
+                    f"{b['items'][0]['seed']}, 0 s.")
+
+
+async def test_a_call_hears_once_of_a_batch_that_waited_and_never_of_one_that_did_not(
+        od, store):
+    skill = MusicGenerator(od.cfg)
+    skill.app = od
+    cid = await conversations.create(store)
+    ctx, _ = await _call(store, cid, "m1", "music_generator__generate")
+    od.helper.states = ["starting", "ready"]          # ComfyUI comes up: no wait for the GPU
+    r = await skill.generate(ctx, items=[{"style": "ambient"}])
+    assert "The batch reports back only if it has to wait for the GPU" in r.content
+    for b in await batches_mod.list_batches(store, "music", conversation=cid):
+        await od.batches.wait(b["id"])
+    assert await _notices(store) == []
+
+    od.helper.states = ["waiting"]
+    await skill.generate(ctx, items=[{"style": "ambient"}])
+    [b] = [x for x in await batches_mod.list_batches(store, "music", conversation=cid)
+           if x["state"] == "running"]
+    await until(lambda: od.batches.waits_for_gpu(b["id"]))
+    od.clock.t += 30
+    od.helper.states = ["ready"]
+    await od.batches.wait(b["id"])
+    [(to, text)] = await _notices(store)
+    assert to == f"agent:{cid}" and text.startswith(
+        f"Batch {b['id'][:8]} waited 30 s for the GPU and is done: 1 of 1 made.\n1. track ")

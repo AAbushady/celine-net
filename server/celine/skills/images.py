@@ -1,11 +1,13 @@
 """Images with ComfyUI: one batch per call (comfyui/batches.py), new images and edits.
 
 The agent's call starts the batch in the app's task group and returns at once with one slot
-per image; the batch fills the slots in place as each image is made. It is no job, so
-nothing wakes it. `wait` holds its turn for the end. It never sees the images: it gets
-the preset, the size, the seed and each image's short id. An edit starts only from an
-image it made (an attachment of its own message, in any conversation) or one the user
-attached to this conversation; never from the Messages archive or Documents.
+per image; the batch fills the slots in place as each image is made. It is no job: only a
+batch that had to wait for the GPU wakes it, with one notice from the app once it is done.
+`wait` holds its turn for the end, or until the batch still waits for the GPU after
+GPU_TRY seconds. It never sees the images: it gets the preset, the size, the seed and
+each image's short id. An edit starts only from an image it made (an attachment of its
+own message, in any conversation) or one the user attached to this conversation; never
+from the Messages archive or Documents.
 """
 from __future__ import annotations
 
@@ -16,11 +18,14 @@ from typing import Annotated, Literal, Required, TypedDict
 
 from .. import attachments
 from ..clock import zone
-from ..core.ids import when as when_
+from ..core.ids import span, when as when_
 from ..comfyui import batches as batches_mod, presets as presets_mod
 from . import ToolContext, ToolResult, guide, tool, described
 
 SHORT = batches_mod.SHORT
+# the last line of a call with wait=true that returns a batch still waiting for the GPU
+GPU_LATER = ("The batch waits for the GPU and is made when the GPU is free, then a message "
+             "from the app says what was made.")
 
 
 def short(aid: str) -> str:
@@ -103,18 +108,38 @@ def _sources(i: dict) -> str:
     return ", ".join(ids[:-1]) + " and " + ids[-1] if len(ids) > 1 else ids[0]
 
 
-def batch_text(b: dict, user: str, *, started: bool, chat: bool = True) -> str:
-    """A batch as it reads it; started in a chat (`chat`), {user} sees it there."""
+def settled_head(b: dict, waited: float | None) -> str:
+    """The first line of a batch read back: its state, and how long it waited for the
+    GPU when it did (the notice after such a batch)."""
     items = b["items"]
     made = sum(i["state"] == "done" for i in items)
+    did = f" waited {span(waited)} for the GPU and" if waited is not None else ""
+    return f"Batch {short(b['id'])}{did} is {b['state']}: {made} of {len(items)} made."
+
+
+# what the started line says of reporting back (images and music)
+REPORTS = ("The batch reports back only if it has to wait for the GPU: then a message from "
+           "the app says what was made once it is done.")
+# the `wait` parameter of a generate tool (images and music)
+WAIT = ("True: your turn waits until the batch is done or the user writes, as long as its "
+        "time allows; a batch that still waits for the GPU after "
+        f"{batches_mod.GPU_TRY:.0f} s returns as it is and is made when the GPU is free. "
+        "Default false: the call returns at once.")
+
+
+def batch_text(b: dict, user: str, *, started: bool, chat: bool = True,
+               waited: float | None = None) -> str:
+    """A batch as it reads it; started in a chat (`chat`), {user} sees it there.
+    `waited`: the seconds it waited for the GPU (settled_head)."""
+    items = b["items"]
     if started:
         sees = f" {user} sees each one in this conversation when it is done." if chat \
             else ""
         head = (f"Batch {short(b['id'])} started: {len(items)} image"
                 f"{'s' if len(items) != 1 else ''}, made one after the other.{sees} "
-                f"Nothing reports back to you: image_generator__read shows the batch.")
+                f"{REPORTS} image_generator__read shows the batch.")
     else:
-        head = f"Batch {short(b['id'])} is {b['state']}: {made} of {len(items)} made."
+        head = settled_head(b, waited)
     lines = [head] + [item_line(i) for i in items]
     return "\n".join(lines)
 
@@ -135,7 +160,8 @@ OFF = {"images": "Images are off.", "music": "Music is off."}
 
 
 async def batch_generate(app, ctx: ToolContext, role: str, items, count: int, wait: bool,
-                         text: Callable[[dict, bool], str], **kw) -> ToolResult:
+                         text: Callable[..., str], **kw) -> ToolResult:
+    """`text(batch, started, waited=None)`: the batch as it reads it (batch_text)."""
     if (batches := app.batches) is None:
         return ToolResult(content=OFF[role], is_error=True)
     try:
@@ -144,11 +170,14 @@ async def batch_generate(app, ctx: ToolContext, role: str, items, count: int, wa
                                      tool_call_id=ctx.tool_call_id, **kw)
     except batches_mod.TooMany as e:
         return ToolResult(content=str(e), is_error=True)
-    b = await batches.begin(b, wait=wait, time_left=ctx.time_left, wrote=ctx.user_wrote)
+    b = await batches.begin(b, wait=wait, time_left=ctx.time_left, wrote=ctx.user_wrote,
+                            report=lambda done, waited: text(done, False, waited))
+    said = text(b, b["state"] == "running" and not wait)
+    if wait and b["state"] == "running" and batches.waits_for_gpu(b["id"]):
+        said += "\n" + GPU_LATER
     # the call's display is the batch's own: it fills it in place (batches._publish)
-    return ToolResult(content=text(b, b["state"] == "running" and not wait),
-                      is_error=b["state"] != "running" and not any(
-                          i["state"] == "done" for i in b["items"]))
+    return ToolResult(content=said, is_error=b["state"] != "running" and not any(
+        i["state"] == "done" for i in b["items"]))
 
 
 async def batch_read(ctx: ToolContext, role: str, batch: str,
@@ -168,7 +197,7 @@ async def batch_stop(app, ctx: ToolContext, role: str, batch: str,
         b = await batches_mod.find(ctx.store, role, batch)
     except presets_mod.ImageError as e:
         return ToolResult(content=str(e), is_error=True)
-    if not await batches.stop(b["id"]):
+    if not await batches.stop(b["id"], told=True):
         return ToolResult(content=f"Batch {short(b['id'])} is not running: it is "
                                   f"{b['state']}.")
     b = await batches_mod.get(ctx.store, b["id"])
@@ -211,8 +240,9 @@ class ImageGenerator(Generator):
         if ids := tuple(p.id for p in self._presets()):
             self.generate = types.MethodType(_with_presets(ids), self)
 
-    def _text(self, b: dict, started: bool, chat: bool = True) -> str:
-        return batch_text(b, self.cfg.user, started=started, chat=chat)
+    def _text(self, b: dict, started: bool, chat: bool = True,
+              waited: float | None = None) -> str:
+        return batch_text(b, self.cfg.user, started=started, chat=chat, waited=waited)
 
     @property
     def docs(self) -> dict[str, str]:
@@ -233,16 +263,15 @@ class ImageGenerator(Generator):
                                      "prompt, or with source an edit."],
         count: Annotated[int, "How many images of each item, each with its own seed. "
                               "Default 1."] = 1,
-        wait: Annotated[bool, "True: your turn waits until the batch is done or the user "
-                              "writes, as long as its time allows. Default false: the "
-                              "call returns at once."] = False,
+        wait: Annotated[bool, WAIT] = False,
     ) -> ToolResult:
         """Make images with ComfyUI: new ones from a prompt, or edits of an image (an
         item with `source`). Load the guide first: it has each preset's prompt rules.
         The call returns at once with the batch id and one slot per image. The images
         are made one after the other and appear in this conversation as each is done;
-        {{username}} sees them there. You do not see them, and nothing reports back
-        by itself: image_generator__read shows the batch. image_generator__stop stops a batch.
+        {{username}} sees them there. You do not see them. A batch reports back only
+        when it had to wait for the GPU: one message from the app once it is done.
+        image_generator__read shows a batch, image_generator__stop stops one.
         Your prompt reaches the model as you wrote it, a LoRA's trigger word in front.
         An item that does not fit its preset (an unknown variant, a size past the
         limits, a LoRA id that is none) fails with the reason in its line. Which preset
@@ -250,11 +279,13 @@ class ImageGenerator(Generator):
         width and height. Draw only what was asked for: no props or story nobody named.
 
         Example: items=[{"prompt": "..."}], count=2. Returns: the batch id and each
-        slot (its image's short id once made)."""
+        slot (its image's short id once made); with wait=true, the batch when it is
+        done, or as it is when it still waits for the GPU after a short try."""
         from .places import place_of
         chat = await ctx.store.read(lambda c: place_of(c, ctx.conversation_id)) == "chat"
         return await batch_generate(self.app, ctx, "images", items, count, wait,
-                                    lambda b, s: self._text(b, s, chat), clip=True)
+                                    lambda b, s, waited=None: self._text(b, s, chat, waited),
+                                    clip=True)
 
     @tool()
     async def read(

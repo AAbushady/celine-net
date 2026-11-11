@@ -119,6 +119,10 @@ OPTION_WORDS: dict[str, dict[str, Any]] = {
     "shares_gpu_with": {"label": "Shares its GPU with",
                         "help": "Before each image, the app unloads this provider's models to "
                                 "free the GPU."},
+    "on_demand": {"label": "Starts on demand",
+                  "help": "The address is the comfy helper, which starts ComfyUI for a batch "
+                          "once the GPU is free and stops it when no batch needs it. A batch "
+                          "waits for the GPU as long as it takes."},
     "cloud": {"label": "Cloud",
               "help": "A server outside your network. {{name}} asks you before sending work "
                       "to one of its models you did not pick."},
@@ -154,8 +158,10 @@ OPTIONS: dict[str, dict[str, tuple]] = {
     "openai": dict(_COMMON),
     "anthropic": dict(_COMMON),
     # timeout: the most one item of a batch may take in ComfyUI; shares_gpu_with: the
-    # id of a llama-swap provider on the same GPU (backends/llm.py gpu_lease)
-    "comfyui": {"timeout": ("num", 600.0, None), "shares_gpu_with": ("str", "", None)},
+    # id of a llama-swap provider on the same GPU (backends/llm.py gpu_lease); on_demand:
+    # the address is the comfy helper, whose lease a batch holds (comfyui/server.py lease)
+    "comfyui": {"timeout": ("num", 600.0, None), "shares_gpu_with": ("str", "", None),
+                "on_demand": ("bool", False, None)},
     "openrouter": {
         **_COMMON,
         "service_tier": ("str", "", ("", "flex", "priority")),
