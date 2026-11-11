@@ -1108,7 +1108,9 @@ verb, as in Settings). Overrides carry a `client_seq`; an older one is ignored.
 `notebook`: `write(path, content, summary, mode)`, `read(path, from_line)` (each line as
 `<n>:<hash>| text`), `edit(path, edits, summary)` (hashline edits by `n:hash` anchors;
 every anchor is checked before anything changes, a stale one refuses the call),
-`search` (FTS5 over summary and body), `list`, `move`, `delete`. Files live under
+`search` (FTS5 over summary and body), `list`, `move`, `delete`, and over what the
+notebook keeps (below) `list_versions`, `read_version`, `list_deleted`, `read_deleted`,
+`restore`. Files live under
 `var/notebook/`, confined, any format; the index is `notebook_index` and `notebook_fts`
 in `var/notebook/.index.db`.
 Line 1 of every note is a `Last changed:` line the code keeps up to date. The index
@@ -1121,6 +1123,21 @@ Placeholders are created once (marker `.placeholders`): `appearance/*.md` and
 `opinions/{{username}}.md`, all its own. Any other file can be protected from the browser's
 right-click menu; those marks live in `kv` under `notebook_protected` and count like the
 config list for its `write` and `delete`.
+
+What the notebook keeps (`skills/notebook.py`, one set of functions for the browser's
+routes and its tools). Before a note's text changes, the text it had goes to
+`.versions/<path>/<time>.md` (`keep_version`; a move takes them along, a delete leaves
+them). A delete, its own or the browser's, moves the note or folder to
+`.trash/<time>/<path>` (`trash`); its own also leaves `.deleted-by-agent` in the `<time>`
+folder. `history` and `versions` are a note's History, also of a deleted note (the
+History page and `list_versions`, `read_version`); `trashed` lists the trash as `{id,
+path, kind, at, by}` (`GET /notebook/trash` and `list_deleted`, `read_deleted`);
+`untrash` puts an entry back and indexes each note with `(no summary yet)` (the
+browser's Restore and `restore`). Its `restore` takes back only a note it deleted, in
+its folder, that is not the user's, to a path that is free; the rest stays in the trash
+for the user. Only the user's Delete permanently removes anything; no tool removes a
+version or empties the trash. `db/migrations/0032_trash_by_agent.py` marked the trash's
+older entries by the `notebook__delete` calls that moved them there.
 
 Every notebook tool speaks to it in the second person and says whose file is whose:
 `list`, `search` and the index suffix your files with `[{{username}}'s, you can read it,
@@ -1934,7 +1951,7 @@ is in docs/DEPLOY.md.
 | `POST /batches/{id}/stop` | `{stopped}`: false when it was not running |
 | `GET /messages?q=&limit=&place=&archived=&trashed=` | words in the conversations with the agent: `{hits, titles}`; each hit with its `message_id`, `snippet` and `marks` ([start, end) of each matched word in it), best first |
 | `POST /attachments`, `DELETE /attachments/{id}`, `GET /attachments/{id}/file` | files for a message |
-| `GET /notebook/tree`, `GET\|PUT\|PATCH\|DELETE /notebook/entries/{path}` (PATCH `{path}` moves, `{protected}` protects), `POST /notebook/folders`, `GET /notebook/trash`, `POST /notebook/trash/{tid}/restore`, `DELETE /notebook/trash/{tid}` | the notebook browser (its one notebook); a PUT keeps the note's text before in `.versions` |
+| `GET /notebook/tree`, `GET\|PUT\|PATCH\|DELETE /notebook/entries/{path}` (PATCH `{path}` moves, `{protected}` protects), `POST /notebook/folders`, `GET /notebook/trash`, `POST /notebook/trash/{tid}/restore`, `DELETE /notebook/trash/{tid}` | the notebook browser (its one notebook); a PUT keeps the note's text before in `.versions`; the trash is `{trash: [{id, path, kind, at, by}]}` (`NotebookTrash`), `by` "agent" or "user" |
 | `GET /notebook/versions?path=&q=&before=`, `GET /notebook/versions/{vid}?path=` | a note's History (the editor's `HistorySource`): `{versions, current, total, next}`, `versions` the texts before, newest first, 50 a page (`before` the id to page from) |
 | `GET /llm-queue` | the model queue now (fetched again after a reconnect) |
 | `GET /loaded-models` | what llama-swap has loaded, probed: `{models: [{ref, loaded, load_seconds}]}`; `load_seconds` the last load the server timed (null before one, kept in memory) |
