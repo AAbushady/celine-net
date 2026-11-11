@@ -132,10 +132,12 @@ first blank line:
   follows.
 - `notebook__delete(path)`: move one of your notes to the trash, which keeps it.
 - `notebook__list_versions(path)`: the earlier texts of a note, newest first. Every write
-  and edit keeps the text the note had, and those texts stay after a delete.
-  `notebook__read_version(path, version)` reads one in plain lines, without anchors: it is
-  not the note now. To have it back, write it with `notebook__write`.
+  and edit keeps the text the note had, and those texts stay after a delete. The texts
+  from before {{username}} deleted a note or its folder are {{username}}'s and not
+  listed. `notebook__read_version(path, version)` reads one in plain lines, without
+  anchors: it is not the note now. To have it back, write it with `notebook__write`.
 - `notebook__list_deleted(folder)`: what the trash holds, newest first, with who deleted
-  each and when. `notebook__read_deleted(id)` reads a deleted note and leaves it there.
+  each and when. `notebook__read_deleted(id)` reads a note you deleted and leaves it
+  there; what {{username}} deleted is {{username}}'s to read.
 - `notebook__restore(id)`: a note you deleted, back at its path and in your index. What
   {{username}} deleted, and {{username}}'s notes, stay in the trash for {{username}}.
