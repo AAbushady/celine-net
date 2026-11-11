@@ -10,7 +10,9 @@ A status set that is not here yet is still bare strings where it is used; it mov
 as an enum when its words do."""
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import StrEnum
+from typing import Any
 
 
 class Tone(StrEnum):
@@ -142,5 +144,6 @@ AGENT_ENDED = {
 
 # each shown set's members as (words, tone); one table per set, since a member equals its
 # string and "done" of one set would be "done" of another in a shared table
-_DISPLAYS = {RunState: _RUN_SHOWN, MissionStatus: _MISSION_SHOWN,
-             PlanStepState: _PLAN_STEP_SHOWN, AgentState: _AGENT_SHOWN}
+_DISPLAYS: dict[type[Shown], Mapping[Any, tuple[str, Tone]]] = {
+    RunState: _RUN_SHOWN, MissionStatus: _MISSION_SHOWN,
+    PlanStepState: _PLAN_STEP_SHOWN, AgentState: _AGENT_SHOWN}

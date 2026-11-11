@@ -82,6 +82,7 @@ The map of the code and the rules it follows.
 ```sh
 uv run pytest -q
 uv run ruff check
+uv run mypy                           # types; the modules in pyproject's typing debt list are exempt
 cd web && npm ci && npm run build     # prebuild: the src/lib/*.check.mjs checks, eslint (hooks); then tsc and vite
 cd wa-link && go test ./...           # when wa-link changed
 ```
