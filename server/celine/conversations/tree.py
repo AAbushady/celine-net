@@ -2,6 +2,8 @@
 `append` is how a user-role message enters it."""
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import json
 import logging
 import sqlite3
@@ -484,7 +486,7 @@ def _no_reply(c: sqlite3.Connection, cid: str) -> tuple[str, str | None] | None:
 
 # fn(cid) -> whether the conversation's chat model continues a reply in place
 # (turns/prompt.supports_prefill); the app sets it at start, None: it never does
-prefills = None
+prefills: Callable[[str], bool] | None = None
 
 
 # why no answer came, by how the turn that tried ended

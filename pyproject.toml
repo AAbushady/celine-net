@@ -75,7 +75,6 @@ disable_error_code = ["annotation-unchecked"]
 # leaves this list when it is fixed, and none is added to make a change pass.
 [[tool.mypy.overrides]]
 module = [
-    "celine.__main__",
     "celine.api.attachments",
     "celine.api.forms",
     "celine.api.llm_proxy",

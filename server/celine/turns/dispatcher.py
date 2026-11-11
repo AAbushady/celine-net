@@ -9,6 +9,7 @@ import anyio
 from .. import metrics, work
 from ..conversations import store as conversations
 from ..core.ids import new_id
+from ..core.services import Approvals, Intercom
 from ..core.statuses import CLAIMED_TURNS
 from ..core.store import Store
 from ..hold import any_held, answering, agent_hold
@@ -43,8 +44,8 @@ class Dispatcher:
         self._stopping = False
         self.tokens = cancel_mod.Registry()
         self.jobs = None
-        self.intercom = None            # the Intercom service, for a Stop's cascade
-        self.approvals = None           # approvals.Approvals: its asks waiting in turns
+        self.intercom: Intercom | None = None    # for a Stop's cascade (core/services.py)
+        self.approvals: Approvals | None = None   # its asks waiting in turns (core/services.py)
         # set once the vault's first unlock is over (its passwords are in the redaction
         # set): no turn starts before it, or before READY_SECONDS
         self.ready = None

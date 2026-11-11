@@ -8,6 +8,7 @@ import logging
 import os
 import socket
 import sys
+from typing import NoReturn
 from pathlib import Path
 
 import anyio
@@ -50,7 +51,7 @@ log = logging.getLogger("celine")
 STATIC_DIR = config_mod.STATIC_DIR     # the web build it serves (config.py)
 
 
-def _refuse(message: str) -> None:
+def _refuse(message: str) -> NoReturn:
     print(f"celine: {message}", file=sys.stderr)
     raise SystemExit(2)
 
@@ -129,10 +130,10 @@ def preflight(argv: argparse.Namespace) -> config_mod.Config:
     log.info("database ready", extra={"event": "db.ready", "version": version,
                                      "path": str(cfg.db_path)})
 
-    for problem in cfg.problems:
+    for found in cfg.problems:
         log.warning("configuration problem", extra={"event": "config.problem",
-                                                   "file": problem.file,
-                                                   "problem": problem.message})
+                                                   "file": found.file,
+                                                   "problem": found.message})
     return cfg
 
 
@@ -140,7 +141,7 @@ def build_app(cfg: config_mod.Config, dev: bool) -> FastAPI:
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
         async with anyio.create_task_group() as tg:
-            services = app.state.services
+            services: Services = app.state.services     # typed: each service is held to its interface
             bus = services.bus = EventBus()
             store = services.store = Store(cfg.db_path, bus=bus, cfg=cfg)
             await store.start(tg)
