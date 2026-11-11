@@ -86,9 +86,55 @@ async def test_a_failed_job_still_posts_and_reads_failed(store, cfg):
         tg.cancel_scope.cancel()
     [posted] = await _job_messages(store, cid)
     assert posted["content"] == "ComfyUI is offline"
-    assert [j["state"] for j in await job_rows.list(store, conversation=cid)] == ["failed"]
+    (job,) = await job_rows.list(store, conversation=cid)
+    assert job["state"] == "failed"
     snap = await view.snapshot(store, cid)
-    assert next(iter(snap["tool_calls"].values()))[0]["state"] == "error"
+    call = next(iter(snap["tool_calls"].values()))[0]
+    assert call["state"] == "error"
+    # the call's own result stays the line that said the job began: the reason is the job's
+    assert call["result"].startswith("running in the background as job ")
+    assert call["words"]["why"] == "ComfyUI is offline" and "job_result" not in call
+    said = await store.read(lambda c: [r[0] for r in c.execute(
+        "SELECT json_extract(data, '$.words.why') FROM events WHERE conversation_id=? AND "
+        "type='tool.done' AND json_extract(data, '$.job_id') IS NOT NULL", (cid,))])
+    assert said == ["ComfyUI is offline"], "the event that ends the row says it too"
+
+
+async def test_a_read_back_of_a_call_that_went_on_as_a_job_says_how_the_job_ended(store, cfg):
+    """The read-back gave the call as `error` over a result that read as a start, and the
+    night's tally counted that start line as the error."""
+    from datetime import datetime, timedelta, timezone
+    from celine.schedules.variables import tool_failures
+    from celine.skills import ToolContext
+    from celine.skills.conversations import PastConversations
+    painter, notified = Painter(fail=True), []
+    async with anyio.create_task_group() as tg:
+        cid, _ = await _start(store, cfg, painter, tg, notified)
+        painter.release.set()
+        await until(lambda: notified, 3)
+        tg.cancel_scope.cancel()
+    (job,) = await job_rows.list(store, conversation=cid)
+    call, short = job["tool_call_id"], job["id"][:8]
+    here = await conversations.create(store, "The review")
+    ctx = ToolContext(conversation_id=here, turn_id="t", tool_call_id="x", store=store,
+                      config=cfg, emit=None)
+    skill = PastConversations(cfg)
+    names = (await skill.read(ctx, cid[:8])).content
+    assert f"    call {call} {DRAW} error, job {short} failed\n" in names
+    full = (await skill.read(ctx, cid[:8], tools="full")).content
+    assert (f"      result: running in the background as job {short}. You'll get the result "
+            f"when it finishes.\n      job result, first line: ComfyUI is offline\n") in full
+    raw = (await skill.read_tool_call(ctx, call)).content
+    assert raw.startswith(f"call {call} {DRAW} error, job {short} failed, conversation {cid[:8]}, ")
+    assert raw.endswith("when it finishes.\njob result:\nComfyUI is offline")
+    # the night's tally: the job's result is the error
+    at = datetime.fromisoformat(job["started_at"])
+    night = (at.astimezone(timezone.utc) + timedelta(hours=12)).date()
+    got = await store.read(lambda c: tool_failures(c, night, timezone.utc))
+    title = await store.read(lambda c: c.execute(
+        "SELECT coalesce(nullif(title, ''), 'Untitled') FROM conversations WHERE id=?",
+        (cid,)).fetchone()[0])
+    assert got == f"- {DRAW}: 1 failed.\n  - once: ComfyUI is offline In: {title} {cid[:8]}."
 
 
 async def test_a_conversation_cannot_be_deleted_while_its_job_runs(store, cfg):

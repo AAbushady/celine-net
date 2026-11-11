@@ -27,11 +27,14 @@ your background runs are here too.
   `conversation` is its id, run:<id> for a Routine's run (routines__read lists them),
   a mission's name, or a trigger's name for its background task.
   Each tool call is one line with its id and how it ended (`tools="full"` adds its
-  arguments and result). A long one comes in slices: without `start` from the end back,
-  with `start` on from there. Its `earlier:` and `later:` lines read on.
+  arguments and result). A call that went on as a background job names the job and how the
+  job ended ("error, job 406381a2 failed"): the call's own result is the line that said the
+  job began, and the job's result came later as its own message. A long one comes in
+  slices: without `start` from the end back, with `start` on from there. Its `earlier:` and
+  `later:` lines read on.
 - `past_conversations__read_tool_call(id)`: one tool call raw, its arguments and its whole
-  result; a long one in parts: the `earlier:` and `later:` lines after the text read the
-  part before and after.
+  result, and after it the result of the job it went on as; a long one in parts: the
+  `earlier:` and `later:` lines after the text read the part before and after.
 - `past_conversations__find_sent(text, conversation)`: whether a text was ever sent to you, and
   from where. The app keeps every request it sent to your model word for word, and
   everything you wrote. It says where the text first reached you from (a message, the

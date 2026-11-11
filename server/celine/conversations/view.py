@@ -62,9 +62,10 @@ async def snapshot(store, cid: str, llm=None) -> dict:
                                         (samples.KEY + m["id"],)).fetchone() is not None
             rows = c.execute(
                 "SELECT tc.id, tc.name, tc.arguments, tc.state, tc.display, "
-                "tc.started_at, tc.finished_at, tc.job_id, r.content AS result "
-                "FROM tool_calls tc "
+                "tc.started_at, tc.finished_at, tc.job_id, r.content AS result, "
+                "j.result AS job_result FROM tool_calls tc "
                 "LEFT JOIN messages r ON r.id = tc.result_message_id "
+                "LEFT JOIN jobs j ON j.id = tc.job_id "
                 "WHERE tc.message_id=? ORDER BY tc.rowid", (m["id"],)).fetchall()
             if rows:
                 calls[m["id"]] = [_call(c, r, store.tool_words) for r in rows]
@@ -236,10 +237,14 @@ def continuable(c: sqlite3.Connection, cid: str, turn) -> dict:
 def _call(c: sqlite3.Connection, r: sqlite3.Row, own: dict) -> dict:
     """One tool call as the transcript shows it, its row in words (skills/tool_rows.py). A
     call that names a conversation with a link (a sub-agent's) gets the link as homes.of
-    gives it now: the one stored with the call is where it opened when the call was made."""
+    gives it now: the one stored with the call is where it opened when the call was made.
+    A call handed to a job that failed gets its reason from the job's result."""
     display = json.loads(r["display"]) if r["display"] else None
     if isinstance(display, dict) and display.get("conversation_id") and "link" in display:
         display["link"] = homes.of(c, display["conversation_id"])["link"]
-    return {**dict(r), "display": mark.for_client(display),
-            "words": tool_rows.words(r["name"], r["arguments"], r["state"], display, r["result"], own)}
+    call = dict(r)
+    job = call.pop("job_result")
+    return {**call, "display": mark.for_client(display),
+            "words": tool_rows.words(r["name"], r["arguments"], r["state"], display, r["result"], own,
+                                     job)}
 

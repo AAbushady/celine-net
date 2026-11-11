@@ -111,15 +111,17 @@ def tool_failures(c: sqlite3.Connection, night: date, tz) -> str:
     per tool, the most failures first, and under it a line per error (its first
     ERROR_CHARS, the most frequent ERRORS_SHOWN) with the conversations it happened in,
     each by title and its short id as past_conversations takes it; none of a locked
-    conversation (conversations/store.locked)."""
+    conversation (conversations/store.locked). The error of a call that went on as a job is
+    the job's result: the call's own is the line that said the job began."""
     from ..conversations.store import locked_sql
     lo = night_start(night, tz)
     rows = c.execute(
-        "SELECT tc.name, r.content AS error, cv.id AS cid, "
+        "SELECT tc.name, coalesce(j.result, r.content) AS error, cv.id AS cid, "
         "coalesce(nullif(cv.title, ''), 'Untitled') AS title FROM tool_calls tc "
         "JOIN messages m ON m.id = tc.message_id "
         "JOIN conversations cv ON cv.id = m.conversation_id "
         "LEFT JOIN messages r ON r.id = tc.result_message_id "
+        "LEFT JOIN jobs j ON j.id = tc.job_id "
         "WHERE tc.state = 'error' AND tc.started_at >= ? AND tc.started_at < ? "
         f"AND NOT {locked_sql('cv')} ORDER BY tc.started_at", (iso(lo), iso(lo + timedelta(days=1)))).fetchall()
     # tool -> error -> [count, {conversation: its label}], in the order first seen

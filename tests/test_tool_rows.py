@@ -286,6 +286,12 @@ def test_a_failed_call_carries_its_reason_in_the_servers_words():
     assert words("web__search", '{"query": "x"}', "ok", None, "results")["why"] is None
     assert words("web__search", '{"query": "x"}', "error", {"time_up": True},
                  "Not run: the turn's time was up.")["why"] is None, "not run is not failed"
+    # a call that went on as a job: its own result said the job began, the reason is the job's
+    began = "Watching a film in the background as job 406381a2; you get the log when it is done."
+    w = words("video__watch", "{}", "error", None, began,
+              job="#abc A film: failed: Watching stopped at 80:40: no sound\nmore")
+    assert w["why"] == "#abc A film: failed: Watching stopped at 80:40: no sound"
+    assert words("video__watch", "{}", "ok", None, began, job="#abc A film")["why"] is None
 
 
 def test_a_command_row_says_what_the_agent_said_it_does():

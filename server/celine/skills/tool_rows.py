@@ -964,10 +964,12 @@ def step(name: str, own: Own | None = None) -> str:
 
 
 def words(name: str, arguments: Any, state: str, display: Any = None,
-          result: str | None = None, own: Own | None = None) -> dict:
+          result: str | None = None, own: Own | None = None, job: str | None = None) -> dict:
     """The row's words: {running, settled, step, where, why} (the module's docstring).
     `why`: a failed call's reason, the first line of its result as it came (a server's
-    own words, errors.said), else None."""
+    own words, errors.said), else None. `job`: the result of the job the call was handed
+    to; its own result is then the line that said the job began, so the reason is the
+    job's first line."""
     a, d, r = json_object(arguments), _dict(display), result or ""
     where = scope_words(d, a)
     failed = state == "error" and not not_run(state, d)
@@ -975,14 +977,16 @@ def words(name: str, arguments: Any, state: str, display: Any = None,
             "settled": row(name, a, d, r, "interrupted" if state in BUSY else state, own),
             "step": step(name, own),
             "where": where[:1].upper() + where[1:] if where else None,
-            "why": _first_line(r, WHY_CHARS) or None if failed else None}
+            "why": _first_line(job or r, WHY_CHARS) or None if failed else None}
 
 
 def of_call(c, call_id: str, state: str, display: Any = None,
             result: str | None = None, own: Own | None = None) -> dict:
-    """words() of a stored call, by its id (its name and arguments from its row)."""
-    r = c.execute("SELECT name, arguments FROM tool_calls WHERE id=?", (call_id,)).fetchone()
-    return words(r["name"], r["arguments"], state, display, result, own) if r else \
+    """words() of a stored call, by its id (its name, its arguments and its job's result
+    from its rows)."""
+    r = c.execute("SELECT tc.name, tc.arguments, j.result AS job FROM tool_calls tc "
+                  "LEFT JOIN jobs j ON j.id = tc.job_id WHERE tc.id=?", (call_id,)).fetchone()
+    return words(r["name"], r["arguments"], state, display, result, own, r["job"]) if r else \
         words("", "{}", state, display, result, own)
 
 

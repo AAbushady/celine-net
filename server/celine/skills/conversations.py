@@ -59,6 +59,19 @@ KIND_HELP = "Only conversations of this kind: chat, mission, run (a Routine's), 
             "background task, one per trigger), sub-agent."
 
 
+# The job a call was handed to (tool_calls tc LEFT JOIN jobs j): the call's own result is the
+# line that said the job began, and how it ended and what it brought are the job's. Its result
+# whole, as its message brought it (the row keeps the start of it).
+JOB_SQL = ("j.id AS job, j.state AS job_state, coalesce((SELECT i.text FROM intercom i, "
+           "json_each(i.data, '$.jobs') je WHERE i.kind = 'job' AND je.value = j.id LIMIT 1), "
+           "j.result) AS job_result")
+
+
+def _job(k) -> str:
+    """", job 406381a2 failed" after how a call ended, when it was handed to a job."""
+    return f", job {k['job'][:8]} {k['job_state']}" if k["job"] else ""
+
+
 def _items(c: sqlite3.Connection, cid: str) -> list[dict]:
     """The conversation's active path as it reads it: one item per user message and
     per answer with words or tools, numbered from 1, each with its tool calls."""
@@ -69,9 +82,9 @@ def _items(c: sqlite3.Connection, cid: str) -> list[dict]:
         marks = ",".join("?" * len(ids))
         for r in c.execute(
                 f"SELECT tc.id, tc.message_id, tc.name, tc.state, tc.arguments, "
-                f"tc.display, tc.result_message_id, "
-                f"m.content AS result FROM tool_calls tc LEFT JOIN messages m ON "
-                f"m.id = tc.result_message_id WHERE tc.message_id IN ({marks}) "
+                f"tc.display, tc.result_message_id, m.content AS result, {JOB_SQL} "
+                f"FROM tool_calls tc LEFT JOIN messages m ON m.id = tc.result_message_id "
+                f"LEFT JOIN jobs j ON j.id = tc.job_id WHERE tc.message_id IN ({marks}) "
                 f"ORDER BY tc.rowid", ids):
             calls.setdefault(r["message_id"], []).append(
                 {**dict(r), "pictures": _pictures(c, r["display"], r["result_message_id"])})
@@ -379,13 +392,16 @@ class PastConversations:
         out = [f"{head}: {text}" if text else head]
         for k in i["calls"]:
             n = k["pictures"]
-            out.append(f"    call {k['id']} {k['name']} {k['state']}"
+            out.append(f"    call {k['id']} {k['name']} {k['state']}{_job(k)}"
                        + (f", {'an image' if n == 1 else f'{n} images'} with its result"
                           if n else ""))
             if tools == "full":
                 out.append(f"      arguments: {k['arguments']}")
                 out.append("      result: " + (k["result"] or "(none)").replace(
                     "\n", "\n      "))
+                if first := next((x.strip() for x in (k["job_result"] or "").splitlines()
+                                  if x.strip()), ""):
+                    out.append(f"      job result, first line: {first}")
                 if n:
                     out.append("      " + _picture_line(n))
         return "\n".join(out)
@@ -504,14 +520,16 @@ class PastConversations:
                                     "when another follows. Default 1."] = None,
     ) -> ToolResult:
         """One tool call of an earlier conversation, raw: its tool, how it ended, its
-        arguments and its whole result, a long one in parts that joined are the call."""
+        arguments and its whole result, a long one in parts that joined are the call. A
+        call that went on as a job: how the job ended and the job's result after it."""
         def fn(c: sqlite3.Connection):
             r = c.execute(
                 "SELECT tc.id, tc.name, tc.state, tc.arguments, tc.started_at, tc.display, "
-                "tc.result_message_id, m.content AS result, a.conversation_id "
+                f"tc.result_message_id, m.content AS result, a.conversation_id, {JOB_SQL} "
                 "FROM tool_calls tc JOIN messages a ON "
                 "a.id = tc.message_id JOIN conversations cv ON cv.id = a.conversation_id "
                 "LEFT JOIN messages m ON m.id = tc.result_message_id "
+                "LEFT JOIN jobs j ON j.id = tc.job_id "
                 "WHERE tc.id = ? AND cv.trashed_at IS NULL", (str(id).strip(),)).fetchone()
             return r, (_pictures(c, r["display"], r["result_message_id"]) if r else 0)
         r, pictures = await ctx.store.read(fn)
@@ -524,9 +542,10 @@ class PastConversations:
                               ensure_ascii=False)
         except ValueError:
             args = r["arguments"]
-        text = (f"call {r['id']} {r['name']} {r['state']}, conversation "
+        text = (f"call {r['id']} {r['name']} {r['state']}{_job(r)}, conversation "
                 f"{r['conversation_id'][:8]}, {self._at(r['started_at'])}"
-                f"\narguments:\n{args}\nresult:\n{r['result'] or '(none)'}")
+                f"\narguments:\n{args}\nresult:\n{r['result'] or '(none)'}"
+                + (f"\njob result:\n{r['job_result']}" if r["job_result"] else ""))
         cut, _, _ = parts.read(text, part, ctx, cap=READ_TOKENS,
                                call=f"past_conversations__read_tool_call(id=\"{r['id']}\"",
                                after=[_picture_line(pictures)] if pictures else [])

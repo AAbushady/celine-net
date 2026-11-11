@@ -909,7 +909,11 @@ A tool declares `@tool(mode=...)`:
   `background=true`) is promoted to a job after 5 s: the model gets `running in the
   background as job X`, the turn carries on, and the result comes back later as an
   intercom `job` message (`intercom/deliver.py`): at once with a queued turn when the
-  conversation is idle, else at the live turn's next step.
+  conversation is idle, else at the live turn's next step. The call's row ends with its
+  job's verdict (`jobs/store.py` `finish`) and its tool message stays the line the model
+  read, so every reading of the call with its outcome names the job and takes the reason
+  from the job's result: the row in the page (`tool_rows.words` `why`),
+  `past_conversations__read` and `read_tool_call`, the night's `tool_failures`.
 
 The context (`turns/context.py`, `_Item.wire`) rebuilds the request from rows alone: an assistant message with
 `tool_calls` rows carries them as `tool_calls`, each `role=tool` row carries its
