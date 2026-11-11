@@ -12,6 +12,12 @@
 .batch__tile--failed { background: var(--error-wash); }
 .batch__tile--done { background: none; }
 .batch__tile--stopped { opacity: 0.6; }
+.batch__tile--cleared { background: var(--surface-1); }
+
+/* the words of a track that is not there, its title when cleared, Retry */
+.batch__say { display: grid; justify-items: center; gap: var(--s-1); padding: var(--s-2) var(--s-3); min-width: 0; }
+.batch__say .batch__words { padding: 0; }
+.batch__say .batch__title { max-width: 100%; color: var(--text-muted); }
 
 .batch__words {
   padding: var(--s-2) var(--s-3); font-size: var(--t-xs); line-height: var(--lh-ui); text-align: center;
@@ -22,6 +28,9 @@
 
 .batch__track { display: grid; gap: var(--s-1); width: 100%; padding: var(--s-2) var(--s-3); background: var(--surface-1); }
 .batch__title { font-size: var(--t-md); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.batch__head { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
+.batch__head .batch__title { flex: 1; min-width: 0; }
+.btn.batch__keep.is-on { color: var(--accent); }
 .batch__track audio { width: 100%; height: var(--h-md); }
 
 @media (prefers-reduced-motion: reduce) {

@@ -8,18 +8,20 @@
    that makes a batch (POST /api/batches). Upload workflow (the head) makes a new preset
    from a workflow in API format with placeholders; the server says what is missing.
    Below the cards, the newest batches, yours and its own, each a gallery following its
-   events on the global feed. */
+   events on the global feed; a track's row has Keep and Play, or when it was cleared and
+   Retry. */
 import { useState } from 'react'
 import { ArrowDown, ArrowUp, Download, FileUp, Play, Star, Trash2, Undo2, Upload } from 'lucide-react'
 import { uploadAttachment } from '../../lib/api'
 import { useServerEvents } from '../../lib/bus'
 import { clock, errorText } from '../../lib/format'
-import { batchEvent, fileUrl, mediaApi, ROLE, tileUrl, workflowUrl, type Batch, type Kind, type Param, type Preset } from '../../lib/media'
+import { batchEvent, fileUrl, madeFile, mediaApi, ROLE, tileUrl, workflowUrl, type Batch, type Kind, type Param, type Preset } from '../../lib/media'
+import { clearedLine } from '../../lib/pictures'
 import { useOnline } from '../../lib/socket'
 import { SETTINGS_EVENTS, settingsApi, type Cap, type ProviderView, type RoleView } from '../../lib/settingsApi'
 import { useAction } from '../../lib/useAction'
 import { useResource } from '../../lib/useResource'
-import { BatchGallery, StopBatch, doneWords, madeImages, type Made } from '../../components/Batch'
+import { BatchGallery, KeepButton, RetryItem, StopBatch, doneWords, madeImages, type Made } from '../../components/Batch'
 import { Button, Card, CardGrid, Choice, ConfirmDialog, Dialog, Field, FileButton, Form, IconButton, InlineError, Input, ListRow, LoadingRow, NumberField, Picks, Player, Section, StateWord, Step, SubHead, Switch, TextArea } from '../../ui'
 import './settings.css'
 
@@ -177,7 +179,8 @@ function Recent({ kind, batches, error, reload }: { kind: Kind; batches?: Batch[
   )
   const link = (b: Batch) => b.link ?? undefined
   if (kind === 'music') {
-    // a row per track: its title (or what it was asked for), the style, its time; Play opens the player
+    // a row per track: its title (or what it was asked for), the style, its time; Play opens
+    // the player, Keep keeps it; a cleared one says when, with Retry
     const rows = batches.flatMap(b => b.items.map(i => ({ b, i })))
     return (
       <div className="batches">
@@ -185,16 +188,20 @@ function Recent({ kind, batches, error, reload }: { kind: Kind; batches?: Batch[
         <div className="rows">
           {rows.slice(0, limit).map(({ b, i }) => {
             const time = clock(Date.parse(b.created_at))
-            const done = i.state === 'done' && i.attachment
-            const title = done ? i.title ?? i.attachment!.filename : i.style ?? ''
-            const words = i.state === 'failed' ? i.error : i.state === 'stopped' ? 'Stopped' : i.state === 'done' ? i.style : i.note
+            const file = madeFile(i)
+            const cleared = clearedLine(i)
+            const title = (file || cleared) ? i.title ?? i.attachment!.filename : i.style ?? ''
+            const words = cleared ?? (i.state === 'failed' ? i.error : i.state === 'stopped' ? 'Stopped' : i.state === 'done' ? i.style : i.note)
             return (
-              <ListRow key={`${b.id}:${i.index}`} density="lg" href={link(b)} title={title} subtitle={done ? i.style : words} meta={time}
-                       tooltip={i.style} trailingAlways
-                       trailing={done
-                         ? <IconButton icon={Play} size="sm" label={`Play ${title}`}
-                                       onClick={() => setPlaying({ src: fileUrl(i.attachment!), title, detail: time })} />
-                         : <StopBatch batch={b} />} />
+              <ListRow key={`${b.id}:${i.index}`} density="lg" href={link(b)} title={title} subtitle={(file ? i.style : words) ?? undefined} meta={time}
+                       tooltip={i.style ?? undefined} trailingAlways
+                       trailing={file
+                         ? <>
+                             <KeepButton batch={b} item={i} />
+                             <IconButton icon={Play} size="sm" label={`Play ${title}`}
+                                         onClick={() => setPlaying({ src: fileUrl(file), title, detail: time })} />
+                           </>
+                         : cleared ? <RetryItem batch={b} item={i} /> : <StopBatch batch={b} />} />
             )
           })}
         </div>

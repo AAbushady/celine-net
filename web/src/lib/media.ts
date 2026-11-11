@@ -1,47 +1,32 @@
 /* Images and music (server/celine/comfyui/api.py): the presets, and batches, the one way
    anything is made. A batch has one slot per item, in order; the server fills them and
    says so with `images.batch` / `music.batch` ({batch}) on the conversation's stream
-   and the global feed. The agent's calls carry the same batch as their display. */
+   and the global feed. The agent's calls carry the same batch as their display. What an
+   item made has its life (temporary, kept, cleared), the server's; Keep and Unkeep ask
+   for a change and the batch's event brings it. */
 import { del, json, post, request } from './api'
+import type { Batch, BatchList, MadeFile } from './api.gen'
 import type { ServerEvent } from './bus'
 import type { FormField } from '../ui'
 
+export type { Batch, BatchItem, MadeFile } from './api.gen'
+
 export type Kind = 'images' | 'music'
 
+/** a file kept with a tool call (the server's `files` block) */
 export type MediaFile = {
   id: string; sha256: string; filename: string; media_type: string; bytes: number
   /** images */
-  width?: number; height?: number
+  width?: number | null; height?: number | null
 }
 
-export type BatchItem = {
-  index: number
-  state: 'waiting' | 'running' | 'done' | 'failed' | 'stopped'
-  seed: number
-  preset?: string
-  attachment?: MediaFile
-  seconds?: number
-  error?: string
-  /** what a running item does now */
-  note?: string
-  /** images */
-  prompt?: string; width?: number; height?: number
-  /** music */
-  style?: string; title?: string
-}
+/** what an item made, while it is there: done and not cleared */
+export const madeFile = (i: Batch['items'][number]): MadeFile | null =>
+  i.state === 'done' && i.attachment && i.attachment.life?.state !== 'cleared' ? i.attachment : null
 
-export type Batch = {
-  id: string
-  kind: Kind
-  conversation_id: string | null
-  /** where its conversation opens, the server's (homes.py); null for yours */
-  link: string | null
-  tool_call_id: string | null
-  state: 'running' | 'done' | 'stopped'
-  created_at: string
-  finished_at: string | null
-  items: BatchItem[]
-}
+/** what an item made that was cleared: its file, with when */
+export const clearedFile = (i: Batch['items'][number]): MadeFile | null =>
+  i.state === 'done' && i.attachment?.life?.state === 'cleared' ? i.attachment : null
 
 export type Param = {
   name: string
@@ -107,11 +92,14 @@ export const tileUrl = (f: { id: string }, px: number) =>
 
 export const mediaApi = {
   presets: (kind: Kind) => request<{ presets: Preset[] }>(`/generation-presets?kind=${kind}`),
-  batches: (kind: Kind, limit = 12) => request<{ batches: Batch[] }>(`/batches?kind=${kind}&limit=${limit}`),
+  batches: (kind: Kind, limit = 12) => request<BatchList>(`/batches?kind=${kind}&limit=${limit}`),
   start: (kind: Kind, items: Record<string, unknown>[], count: number) =>
     request<Batch>('/batches', json('POST', { kind, items, count })),
   stop: (id: string) =>
     post<{ stopped: boolean }>(`/batches/${encodeURIComponent(id)}/stop`),
+  /** what item `index` made, kept or let go */
+  keep: (id: string, index: number, kept: boolean) =>
+    request<Batch>(`/batches/${encodeURIComponent(id)}/items/${index}`, json('PATCH', { kept })),
   /** a workflow in API format with placeholders: a new preset of the user's */
   upload: (kind: Kind, label: string, workflow: string) =>
     request<Preset>('/generation-presets', json('POST', { kind, label, workflow })),

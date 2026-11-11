@@ -19,17 +19,19 @@
   font-family: var(--font-sans); font-size: var(--t-md); line-height: var(--lh-body); color: var(--text-secondary); text-align: center;
 }
 .picture-block__line { color: var(--text-muted); }
+.picture-block__made { color: var(--text-muted); overflow-wrap: anywhere; }
 .picture-block__prompt { margin: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5; }
 .picture-block__box:not(.is-making) .picture-block__prompt { color: var(--text-muted); -webkit-line-clamp: 3; }
 .picture-block__btns { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s-2); margin-top: var(--s-2); }
 .picture-block__btns:empty { display: none; }
 
-/* under a done picture: "..." in a row of reserved height, shown on hover, focus or tap */
-.picture-block__acts {
-  display: flex; align-items: center; height: var(--h-sm);
-  opacity: 0; transition: opacity var(--dur-fast) var(--ease-exit);
-}
-.picture-block:is(:hover, :focus-within) > .picture-block__acts { opacity: 1; transition: opacity var(--dur-fast) var(--ease); }
-@media (hover: none) { .picture-block__acts { opacity: 1; } }
+/* under a done picture: Keep and "..." in a row of reserved height, shown on hover, focus
+   or tap; a kept picture's Unkeep at all times, in the accent */
+.picture-block__acts { display: flex; align-items: center; gap: var(--s-1); height: var(--h-sm); }
+.picture-block__acts > * { opacity: 0; transition: opacity var(--dur-fast) var(--ease-exit); }
+.picture-block:is(:hover, :focus-within) > .picture-block__acts > * { opacity: 1; transition: opacity var(--dur-fast) var(--ease); }
+.picture-block__acts > .is-on { opacity: 1; }
+.picture-block__keep.is-on { color: var(--accent); }
+@media (hover: none) { .picture-block__acts > * { opacity: 1; } }
 
 @media (prefers-reduced-motion: reduce) { .picture-block__shade { animation: none; } }

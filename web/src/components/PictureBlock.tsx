@@ -6,10 +6,12 @@
    when it needs the user; stopped, "Stopped." and Retry); done, the
    picture fills it and a click opens the Viewer, titled by what it shows, its prompt under
    it, preset, size and seed in "...". Under a done picture, on hover,
-   focus or tap, a row of reserved height with "..."; a right-click or a long press opens
-   the same menu. The chat goes on under it either way. */
+   focus or tap, a row of reserved height with Keep and "..."; a right-click or a long
+   press opens the same menu, Keep in it too. A kept picture shows Unkeep, pressed, at
+   all times. Cleared, the same shape, still, with the server's word and when, its prompt,
+   preset, size and seed, and Retry. The chat goes on under it either way. */
 import { useContext, type CSSProperties } from 'react'
-import { Download, MoreHorizontal, RefreshCw, Settings } from 'lucide-react'
+import { Bookmark, Download, MoreHorizontal, RefreshCw, Settings } from 'lucide-react'
 import { api } from '../lib/api'
 import { fileUrl, tileUrl } from '../lib/media'
 
@@ -17,22 +19,25 @@ const BLOCK = 640     // the widest a picture block is (.picture-block--wide)
 import { useNav } from '../lib/nav'
 import { madeWords, needsOwner, titleOf, type PictureState } from '../lib/pictures'
 import { useAction } from '../lib/useAction'
-import { Button, InlineError, MenuButton, Notice, Picture, cx, toast, type MenuItem } from '../ui'
+import { Button, IconButton, InlineError, MenuButton, Notice, Picture, cx, toast, type MenuItem } from '../ui'
 import { GalleryContext } from './Batch'
 import { madeMenu } from './PhotoViewer'
 import { settingOf } from './Status'
 import { saveFile } from '../lib/download'
 import './PictureBlock.css'
 
-export function PictureBlock({ pic, onStop, onRetry, className }: {
+export function PictureBlock({ pic, onStop, onRetry, onKeep, className }: {
   pic: PictureState
   /** while it is made: stop it */
   onStop?: () => void
-  /** when it failed or was stopped: make it again (left out where nothing can) */
+  /** when it failed, was stopped or was cleared: make it again (left out where nothing can) */
   onRetry?: () => Promise<unknown>
+  /** done: keep it (true) or let it go (false); the server's state comes back as `pic.kept` */
+  onKeep?: (kept: boolean) => Promise<unknown>
   className?: string
 }) {
   const retry = useAction(async () => { await onRetry?.() })
+  const keep = useAction(async () => { await onKeep?.(!pic.kept) })
   const nav = useNav()
   const gallery = useContext(GalleryContext)
   const portrait = useAction(async () => { await api.setPortrait(src); toast({ text: 'Portrait set' }) })
@@ -41,14 +46,17 @@ export function PictureBlock({ pic, onStop, onRetry, className }: {
   const w = pic.picture?.width ?? pic.width ?? 1, h = pic.picture?.height ?? pic.height ?? 1
   const shape = { '--shape': `${w} / ${h}` } as CSSProperties
   const failed = pic.status === 'failed'
+  const cleared = pic.status === 'cleared'
   const stopped = failed && pic.line === 'Stopped.'
   const making = pic.status === 'running'
   const setting = failed && pic.line ? settingOf(pic.line) : null
   const owner = failed && needsOwner(pic.line)
   const file = pic.picture
   const src = file ? fileUrl(file) : ''
+  const keepWord = pic.kept ? 'Unkeep' : 'Keep'
   const items: MenuItem[] = file ? [
     ...madeMenu({ prompt: pic.prompt, details: made, onPortrait: () => void portrait.run() }),
+    ...(onKeep ? [{ label: keepWord, icon: Bookmark, onSelect: () => void keep.run() }] : []),
     { label: 'Download', icon: Download, onSelect: () => saveFile(src, file.filename) },
   ] : []
 
@@ -63,9 +71,15 @@ export function PictureBlock({ pic, onStop, onRetry, className }: {
                  }) : undefined}
                  viewer={{ caption: pic.prompt && pic.prompt.split(/\n\s*/).filter(Boolean)
                    .map((line, i) => <p key={i} className="picture-block__caption">{line}</p>) }} />
-        <div className="picture-block__acts" role="toolbar">
+        <div className={cx('picture-block__acts', pic.kept && 'is-kept')} role="toolbar">
+          {onKeep && (
+            <IconButton icon={Bookmark} size="sm" label={keepWord} pressed={!!pic.kept} fill={!!pic.kept}
+                        className={cx('picture-block__keep', pic.kept && 'is-on')} loading={keep.busy}
+                        onClick={() => void keep.run()} />
+          )}
           <MenuButton icon={MoreHorizontal} label="More" size="sm" items={items} />
         </div>
+        {keep.error && <InlineError compact message={keep.error} />}
       </> : (
         <div className={cx('picture-block__box', making && 'is-making')} title={pic.prompt || undefined}>
           {making && <span className="picture-block__shade" aria-hidden />}
@@ -76,6 +90,7 @@ export function PictureBlock({ pic, onStop, onRetry, className }: {
             {(making || pic.prompt) && (
               <p className="picture-block__prompt" role={making ? 'status' : undefined}>{pic.prompt || 'Creating image'}</p>
             )}
+            {cleared && made && <span className="picture-block__made">{made}</span>}
             <span className="picture-block__btns">
               {making && onStop && <Button size="sm" variant="ghost" onClick={onStop}>Stop</Button>}
               {owner && (
@@ -83,7 +98,7 @@ export function PictureBlock({ pic, onStop, onRetry, className }: {
                   Open Settings
                 </Button>
               )}
-              {failed && onRetry && (
+              {(failed || cleared) && onRetry && (
                 <Button size="sm" variant={owner ? 'ghost' : 'secondary'} icon={RefreshCw} loading={retry.busy}
                         onClick={() => void retry.run()}>Retry</Button>
               )}

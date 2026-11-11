@@ -2,10 +2,11 @@
    from start to end. The state is the server's (a batch item, a picture beat); these
    helpers only put it into words. */
 import { post } from './api'
-import type { Batch, BatchItem } from './media'
+import { stamp } from './format'
+import { clearedFile, madeFile, type Batch, type BatchItem } from './media'
 
-/** a failed or stopped item made again as it was asked: the batch runs for it, its
-    events bring the block from the prompt to the picture again */
+/** a failed, stopped or cleared item made again as it was asked: the batch runs for it,
+    its events bring the block from the prompt to the picture again */
 export const retryItem = (bid: string, index: number) =>
   post<Batch>(`/batches/${encodeURIComponent(bid)}/items/${index}/retry`)
 
@@ -13,11 +14,12 @@ export const retryItem = (bid: string, index: number) =>
 type PictureFile = { id: string; sha256: string; filename: string; width?: number | null; height?: number | null }
 
 /** the inline picture block, one block from start to end: the prompt while it runs, the
-    server's line when it failed, the picture when done */
+    server's line when it failed, the picture when done; cleared, what made it and when */
 export type PictureState = {
-  status: 'running' | 'failed' | 'done'
+  status: 'running' | 'failed' | 'done' | 'cleared'
   prompt: string | null
-  /** running: what it does now ("In the queue"), failed: the server's sentence */
+  /** running: what it does now ("In the queue"), failed: the server's sentence,
+      cleared: the server's word for it and when ("Cleared Fri 9 Oct, 19:00") */
   line: string | null
   picture: PictureFile | null
   /** how it was made: the preset, its size and seed */
@@ -25,17 +27,26 @@ export type PictureState = {
   width?: number | null
   height?: number | null
   seed?: number | null
+  /** done: kept from clearing (the server's) */
+  kept?: boolean
+}
+
+/** what an item made that was cleared, as a line: the server's word and when */
+export function clearedLine(i: BatchItem): string | null {
+  const life = clearedFile(i)?.life
+  return life ? `${life.display.words} ${stamp(life.at)}` : null
 }
 
 /** one item of an image batch as a picture block */
 export function pictureOf(i: BatchItem): PictureState {
-  const done = i.state === 'done' && !!i.attachment
-  const status = done ? 'done' : i.state === 'failed' || i.state === 'stopped' ? 'failed' : 'running'
+  const file = madeFile(i)
+  const cleared = clearedLine(i)
+  const status = file ? 'done' : cleared ? 'cleared' : i.state === 'failed' || i.state === 'stopped' ? 'failed' : 'running'
   return {
-    status, prompt: i.prompt ?? null, picture: done ? i.attachment! : null,
-    line: i.state === 'stopped' ? 'Stopped.' : i.state === 'failed' ? i.error ?? null : i.note ?? null,
+    status, prompt: i.prompt ?? null, picture: file,
+    line: cleared ?? (i.state === 'stopped' ? 'Stopped.' : i.state === 'failed' ? i.error ?? null : i.note ?? null),
     preset: i.preset ?? null, width: i.attachment?.width ?? i.width ?? null, height: i.attachment?.height ?? i.height ?? null,
-    seed: i.seed ?? null,
+    seed: i.seed ?? null, kept: file?.life?.state === 'kept',
   }
 }
 
