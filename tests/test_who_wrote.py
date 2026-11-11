@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from chat_fixtures import user_says
+from compaction_fixtures import seed_exchange
 
 from celine.boot import load
 from celine.conversations import store as conversations, tree
@@ -24,39 +25,44 @@ async def _reply(store, cid, mid, tid, text="hi") -> None:
     await store.write(lambda c: c.execute("UPDATE turns SET state='done'"))
 
 
-async def test_the_tail_counts_its_own_messages_the_users_and_the_intercoms(store):
+async def test_the_tail_counts_what_each_wrote_in_its_own_unit(store):
     cfg = load()
     user = cfg.substitute("{{username}}")
     cid = await conversations.create(store)
     mid, tid, _ = await user_says(store, cid, "hello")
-    assert await store.read(lambda c: wrote(c, cid)) is None, "before its first reply"
-    assert "you wrote" not in await tail_text(store, cfg, None, FakeBackend(), cid, Carried())
+    assert await store.read(lambda c: wrote(c, cid)) is None, "before it wrote anything"
+    assert "written by you" not in await tail_text(store, cfg, None, FakeBackend(), cid, Carried())
     await _reply(store, cid, mid, tid)
     await user_says(store, cid, "and again")
-    line = f"Of the 3 messages in this chat, you wrote 1 and {user} typed 2."
+    line = f"In this chat so far: 2 messages typed by {user}, 1 reply written by you."
     assert cfg.substitute(await store.read(lambda c: wrote(c, cid))) == line
     tail = (await tail_text(store, cfg, None, FakeBackend(), cid, Carried())).split("\n\n")
     assert line in tail and tail.index(line) > 1, "after the date and the time"
 
 
-async def test_the_count_tells_an_intercom_message_from_a_typed_one(store):
+async def test_a_reply_of_many_steps_is_one_reply_and_its_calls(store):
+    """A turn's steps are message rows of their own that only make calls: the count says
+    one reply and the calls, so it adds up against what the chat shows."""
     cid = await conversations.create(store)
-    mid, tid, _ = await user_says(store, cid, "hello")
-    await _reply(store, cid, mid, tid)
+    await seed_exchange(store, cid, "look it up", [("arch__find", "a"), ("arch__find", "b"),
+                                                  ("notebook__read", "c")])
+    assert await store.read(lambda c: wrote(c, cid)) == (
+        "In this chat so far: 1 message typed by {{username}}, 1 reply written by you, "
+        "3 tool calls made by you.")
     out = await send(store, "system:app", f"agent:{cid}", "The box was reset.", kind="notice")
     assert out["message_id"], "it landed in the idle chat"
     assert await store.read(lambda c: wrote(c, cid)) == (
-        "Of the 3 messages in this chat, you wrote 1, {{username}} typed 1 and 1 came over "
-        "the Intercom.")
+        "In this chat so far: 1 message typed by {{username}}, 1 reply written by you, "
+        "3 tool calls made by you, 1 Intercom message.")
 
 
 def test_the_count_says_only_what_there_is():
-    assert count_line(0, 3, 1) is None, "nothing of its own yet"
-    assert count_line(1, 0, 0) == "Of the 1 message in this chat, you wrote 1."
-    assert count_line(9, 0, 6) == \
-        "Of the 15 messages in this chat, you wrote 9 and 6 came over the Intercom."
-    assert count_line(104, 96, 12) == ("Of the 212 messages in this chat, you wrote 104, "
-                                       "{{username}} typed 96 and 12 came over the Intercom.")
+    assert count_line(3, 0, 0, 1) is None, "nothing of its own yet"
+    assert count_line(0, 1, 0, 0) == "In this chat so far: 1 reply written by you."
+    assert count_line(0, 0, 4, 2) == \
+        "In this chat so far: 4 tool calls made by you, 2 Intercom messages."
+    assert count_line(3, 2, 25, 0) == ("In this chat so far: 3 messages typed by {{username}}, "
+                                       "2 replies written by you, 25 tool calls made by you.")
 
 
 def test_the_summarys_input_names_the_user_only_over_what_the_user_typed():

@@ -164,33 +164,41 @@ async def _chat_line(store, cid: str) -> str | None:
 
 
 def wrote(c, cid: str) -> str | None:
-    """Who wrote the messages on the conversation's active path, counted, as one line of
-    the tail (count_line): its own replies (with text or calls), what the user typed, and
-    what came over the Intercom (briefs, reports, triggers, notices, job ends)."""
+    """Who wrote what is on the conversation's active path, counted, as one line of the
+    tail (count_line): the messages the user typed, the agent's replies (its messages
+    that hold text), its tool calls, and what came over the Intercom (briefs, reports,
+    triggers, notices, job ends). One reply is often many steps, each a message row of its
+    own that only makes calls: those are counted as their calls, never as messages."""
     return count_line(*c.execute(
         "WITH RECURSIVE up(id, parent_id) AS ("
         "SELECT m.id, m.parent_id FROM messages m JOIN conversations c "
         "ON c.active_leaf_id = m.id WHERE c.id = ? "
         "UNION ALL SELECT m.id, m.parent_id FROM messages m JOIN up ON m.id = up.parent_id) "
-        "SELECT coalesce(sum(m.role = 'assistant'), 0), "
-        "coalesce(sum(m.role = 'user' AND m.author = 'user'), 0), "
-        "coalesce(sum(m.role = 'user' AND m.author != 'user'), 0) "
-        "FROM up JOIN messages m ON m.id = up.id WHERE m.role = 'user' OR (m.role = 'assistant' "
-        "AND (trim(coalesce(m.content, '')) != '' OR EXISTS ("
-        "SELECT 1 FROM tool_calls tc WHERE tc.message_id = m.id)))", (cid,)).fetchone())
+        "SELECT "
+        "(SELECT count(*) FROM up JOIN messages m ON m.id = up.id "
+        "WHERE m.role = 'user' AND m.author = 'user'), "
+        "(SELECT count(*) FROM up JOIN messages m ON m.id = up.id "
+        "WHERE m.role = 'assistant' AND trim(coalesce(m.content, '')) != ''), "
+        "(SELECT count(*) FROM up JOIN tool_calls tc ON tc.message_id = up.id), "
+        "(SELECT count(*) FROM up JOIN messages m ON m.id = up.id "
+        "WHERE m.role = 'user' AND m.author != 'user')", (cid,)).fetchone())
 
 
-def count_line(own: int, typed: int, others: int) -> str | None:
-    """"Of the 212 messages in this chat, you wrote 104, {{username}} typed 96 and 12 came
-    over the Intercom." None before its first reply: its own writing is what the line is
-    for."""
-    if not own:
+def count_line(typed: int, replies: int, calls: int, others: int) -> str | None:
+    """"In this chat so far: 3 messages typed by {{username}}, 2 replies written by you, 25
+    tool calls made by you, 4 Intercom messages." Each count in its own unit, so each is
+    checked on its own. None before the agent wrote or called anything: its own writing
+    is what the line is for."""
+    if not replies and not calls:
         return None
-    n = own + typed + others
-    said = [f"you wrote {own}", *([f"{{{{username}}}} typed {typed}"] if typed else []),
-            *([f"{others} came over the Intercom"] if others else [])]
-    return (f"Of the {n} {'message' if n == 1 else 'messages'} in this chat, "
-            + ", ".join(said[:-1]) + (" and " if said[:-1] else "") + said[-1] + ".")
+
+    def n(count: int, one: str, many: str) -> list[str]:
+        return [f"{count} {one if count == 1 else many}"] if count else []
+    return "In this chat so far: " + ", ".join([
+        *n(typed, "message typed by {{username}}", "messages typed by {{username}}"),
+        *n(replies, "reply written by you", "replies written by you"),
+        *n(calls, "tool call made by you", "tool calls made by you"),
+        *n(others, "Intercom message", "Intercom messages")]) + "."
 
 
 async def tail_text(store, cfg, registry, backend, cid: str, carried,

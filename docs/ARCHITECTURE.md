@@ -542,8 +542,11 @@ today's date ends its system prompt (`clock.today`).
 **Who wrote what.** The legend's second line says whose words the unmarked text is: the
 user typed what stands right under a message's time line, and the agent's replies, its
 thinking, its calls' arguments and its notes are its own account. A turn's tail counts
-the messages of the chat by writer (`prompt.wrote`: "Of the 212 messages in this chat,
-you wrote 104, Joe typed 96 and 12 came over the Intercom."), from its first reply on.
+what is on the chat's active path, each in its own unit (`prompt.wrote`: "In this chat so
+far: 3 messages typed by Joe, 2 replies written by you, 25 tool calls made by you, 4
+Intercom messages."), once the agent wrote or called anything. A reply is a message of
+its own that holds text; the steps of a turn that only make calls are counted as their
+calls, so the line adds up against what the chat shows.
 The summary's input (`compact.transcript`) puts the user's name only over what the user
 typed: an Intercom message stands under its own header, and what the app added to the
 end of a message (the mind and memory blocks, the tail) is a block of its own under
