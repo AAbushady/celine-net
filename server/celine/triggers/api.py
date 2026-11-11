@@ -6,6 +6,7 @@ from fastapi import APIRouter, Request
 
 from ..errors import NotFound
 from . import Event, declared, fired, state
+from ..core.route_params import TheConfig, TheServices
 
 router = APIRouter(prefix="/api")
 
@@ -19,16 +20,16 @@ async def _view(request: Request, skill, t) -> dict:
 
 
 @router.get("/triggers")
-async def list_triggers(request: Request) -> dict:
+async def list_triggers(request: Request, services: TheServices) -> dict:
     """{triggers: [{name, label, about, skill, kind: event|watch, on, fired_at}]}: every
     trigger a loaded skill declares (its label and one line on what it does), with the
     user's state and when it last fired (null: never)."""
     return {"triggers": [await _view(request, skill, t) for skill, t in
-                         declared(request.app.state.services.registry).values()]}
+                         declared(services.registry).values()]}
 
 
 @router.put("/triggers/{name}")
-async def put_trigger(request: Request, name: str) -> dict:
+async def put_trigger(request: Request, cfg: TheConfig, services: TheServices, name: str) -> dict:
     """{on}: the whole state of one trigger. Written to var/settings/triggers.toml; the
     reload starts the triggers again with it. -> the trigger as in the list, and
     `applied`."""
@@ -36,22 +37,21 @@ async def put_trigger(request: Request, name: str) -> dict:
     from .. import reload
     from ..settings import write
     from ..settings.files import Invalid
-    found = declared(request.app.state.services.registry).get(name)
+    found = declared(services.registry).get(name)
     if found is None:
         raise NotFound("trigger")
     skill, t = found
     body = await json_body(request, need=("on",), allow=("on",))
-    cfg = request.app.state.services.cfg
     if not isinstance(body["on"], bool):
         raise Invalid(f"triggers.{name}.on", "This must be true or false.")
     async with write.lock():
-        out = await reload.commit(request.app.state.services, {
+        out = await reload.commit(services, {
             "triggers": {**cfg.settings.triggers, name: {"on": body["on"]}}})
     return {**await _view(request, skill, t), **out}
 
 
 @router.get("/background-conversations")
-async def background(request: Request) -> dict:
+async def background(services: TheServices) -> dict:
     """{background: [{id, title, kind, trigger, working, last_line, updated_at}]}: the
     background tasks (not the runs, which Routines lists), newest activity first;
     `trigger` the trigger's name, `working` while a turn runs there (not one the hold
@@ -62,7 +62,6 @@ async def background(request: Request) -> dict:
     from ..approvals import asked
     from ..conversations.store import background as rows
     from ..hold import answering
-    services = request.app.state.services
     waits = asked(services)
     models = answering(getattr(services, "llm", None))
     from ..core.statuses import WAITING_FOR_YOU

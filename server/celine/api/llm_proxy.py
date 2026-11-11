@@ -58,6 +58,7 @@ from ..settings.kinds import headers as provider_headers, server_output
 from ..settings.registry import backend_config
 from ..backends import tokens
 from .deps import LLM_PROXY
+from ..core.route_params import TheServices
 
 log = logging.getLogger("celine.llm_proxy")
 router = APIRouter(prefix=LLM_PROXY.rstrip("/"))
@@ -299,11 +300,10 @@ async def _forward(request: Request, path: str):
 
 
 @router.get("/models")
-async def models(request: Request):
+async def models(request: Request, services: TheServices):
     caller, refused = _caller(request)
     if refused is not None:
         return refused
-    services = request.app.state.services
     s = getattr(services.cfg, "settings", None)
     return {"object": "list", "data": listing(s, await yours(services, caller[0]))
             if s is not None else []}

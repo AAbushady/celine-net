@@ -13,7 +13,8 @@ from starlette.formparsers import MultiPartException, MultiPartParser
 from .. import speech
 from ..errors import CelineError
 from ..settings.files import Invalid
-from .deps import cfg_of, json_body, person_only
+from .deps import json_body, person_only
+from ..core.route_params import TheConfig
 
 router = APIRouter(prefix="/api")
 
@@ -41,15 +42,14 @@ async def connected[T](request: Request, operation: Awaitable[T]) -> T:
 
 
 @router.get("/speech/voices")
-async def list_voices(request: Request) -> dict:
+async def list_voices(request: Request, cfg: TheConfig) -> dict:
     person_only(request)
-    return await connected(request, speech.voices(cfg_of(request)))
+    return await connected(request, speech.voices(cfg))
 
 
 @router.post("/speech/transcriptions")
-async def transcribe(request: Request) -> dict:
+async def transcribe(request: Request, cfg: TheConfig) -> dict:
     person_only(request)
-    cfg = cfg_of(request)
     # Count actual bytes before feeding the parser, including multipart overhead.
     # Content-Length is only an early rejection, never the source of truth.
     limit = speech.MAX_RECORDING + 64 * 1024
@@ -95,9 +95,8 @@ async def transcribe(request: Request) -> dict:
 
 
 @router.post("/speech/clips")
-async def synthesize(request: Request) -> Response:
+async def synthesize(request: Request, cfg: TheConfig) -> Response:
     person_only(request)
-    cfg = cfg_of(request)
     body = await json_body(request, need=("text",), allow=("text", "voice"))
     text, voice = body["text"], body.get("voice", "")
     if not isinstance(text, str) or not text.strip() or len(text) > speech.MAX_TEXT:

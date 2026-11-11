@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from ..errors import CelineError, NotFound
 from . import batches as batches_mod, presets as presets_mod
+from ..core.route_params import TheConfig, TheStore
 
 router = APIRouter(prefix="/api")
 
@@ -82,14 +83,14 @@ def _runner(request: Request):
 
 
 @router.get("/generation-presets")
-async def list_presets(request: Request, kind: str) -> dict:
-    return {"presets": presets_mod.listing(request.app.state.services.cfg.settings, _kind(kind))}
+async def list_presets(cfg: TheConfig, kind: str) -> dict:
+    return {"presets": presets_mod.listing(cfg.settings, _kind(kind))}
 
 
 @router.get("/batches")
-async def list_batches(request: Request, kind: str, conversation: str | None = None,
+async def list_batches(store: TheStore, kind: str, conversation: str | None = None,
                        limit: int = 50) -> dict:
-    rows = await batches_mod.list_batches(request.app.state.services.store, _kind(kind),
+    rows = await batches_mod.list_batches(store, _kind(kind),
                                           conversation, max(1, min(limit, 500)))
     return {"batches": [batches_mod.view(b) for b in rows]}
 

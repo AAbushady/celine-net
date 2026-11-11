@@ -31,7 +31,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from typing import Callable
 from urllib.parse import quote
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 
 from . import homes
 from .core.ids import iso
@@ -41,6 +41,7 @@ from .clock import day_label, zone
 from .core.bus import NOTEBOOK_TOOLS
 from .errors import CelineError
 from .core.event_types import EVENTS_ADDED, NOTICE
+from .core.route_params import TheServices
 
 router = APIRouter(prefix="/api")
 
@@ -499,7 +500,7 @@ STATES = ("failed", "undecided")
 
 
 @router.get("/events")
-async def list_events(request: Request, tab: str = "agent", kind: str | None = None,
+async def list_events(services: TheServices, tab: str = "agent", kind: str | None = None,
                       day: str | None = None,
                       state: str | None = None, decision: str | None = None,
                       rule: str | None = None, mode: str | None = None,
@@ -522,7 +523,6 @@ async def list_events(request: Request, tab: str = "agent", kind: str | None = N
         if tab != "guard" or kind not in (None, "guard"):
             raise CelineError("bad_request", "these filters are Bastet's: kind is guard", 400)
         kind = "guard"
-    services = request.app.state.services
     cfg, after = services.cfg, _before(before)
 
     def fn(c: sqlite3.Connection) -> dict:

@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from ..api.cursor import page_cursor, read_id
 from ..api.deps import person_only, proven
+from ..core.route_params import TheConfig, TheServices, TheStore
 from ..core.ids import iso, parse_when
 from ..errors import CelineError, NotFound
 from ..clock import zone
@@ -65,7 +66,7 @@ def _user_may_send(c, body: MessageIn, later: bool) -> bool:
 
 
 @router.post("/intercom")
-async def send(request: Request, body: MessageIn) -> dict:
+async def send(request: Request, store: TheStore, cfg: TheConfig, services: TheServices, body: MessageIn) -> dict:
     """From `system:<name>` with a named token, or from the user what READ_ONLY names
     (_user_may_send). `in` ("30 min") or `at` ("08:00") make it land later; `until`
     ("05:00", "2 h") to `all` is an announcement that stands until then."""
@@ -73,10 +74,10 @@ async def send(request: Request, body: MessageIn) -> dict:
     text = body.text.strip()
     if not text:
         raise CelineError("bad_request", "Text is required.", 400)
-    if sender == "user" and not await request.app.state.services.store.read(
+    if sender == "user" and not await store.read(
             lambda c: _user_may_send(c, body, bool(body.in_ or body.at))):
         raise CelineError("bad_request", READ_ONLY, 400)
-    tz, now_ = zone(request.app.state.services.cfg), datetime.now(timezone.utc)
+    tz, now_ = zone(cfg), datetime.now(timezone.utc)
     due = until_at = None
     if body.in_ or body.at:
         due = parse_when(body.in_, body.at, tz, now_)
@@ -87,7 +88,7 @@ async def send(request: Request, body: MessageIn) -> dict:
         if until_at is None:
             raise CelineError("bad_request", 'until is like "05:00" or "2 h".', 400)
     try:
-        out = await request.app.state.services.intercom.send(
+        out = await services.intercom.send(
             sender, body.to, text, subject=body.subject, reply_to=body.reply_to,
             due_at=iso(due) if due else None,
             until_at=iso(until_at) if until_at else None)
@@ -102,7 +103,7 @@ async def send(request: Request, body: MessageIn) -> dict:
 
 
 @router.get("/intercom")
-async def list_messages(request: Request, to: str | None = None,
+async def list_messages(store: TheStore, cfg: TheConfig, to: str | None = None,
                         from_: str | None = Query(None, alias="from"),
                         thread: int | None = None, scheduled: bool = False,
                         waiting: bool = False,
@@ -124,12 +125,12 @@ async def list_messages(request: Request, to: str | None = None,
             out["archived"] = rows.is_archived(c, thread)
         for m in out["messages"]:
             if m.get("due_at"):
-                tz = zone(request.app.state.services.cfg)
+                tz = zone(cfg)
                 m["at"] = datetime.fromisoformat(m["due_at"]).astimezone(tz).strftime(
                     "%Y-%m-%d %H:%M")
         return out
 
-    return await request.app.state.services.store.read(fn)
+    return await store.read(fn)
 
 
 class ThreadOut(BaseModel):
@@ -160,7 +161,7 @@ PER_GROUP = 3
 
 
 @router.get("/intercom/threads")
-async def threads(request: Request, with_: str = Query("user", alias="with"),
+async def threads(store: TheStore, with_: str = Query("user", alias="with"),
                   kind: Literal[rows.KINDS] | None = None,  # type: ignore[valid-type]
                   unread: bool = False, archived: bool = False,
                   limit: int = Query(50, ge=1, le=200),
@@ -187,20 +188,19 @@ async def threads(request: Request, with_: str = Query("user", alias="with"),
                                    before)
         return {"groups": groups, "next": page_cursor((nxt,)) if nxt else None}
 
-    return ThreadsPage(**await request.app.state.services.store.read(fn))
+    return ThreadsPage(**await store.read(fn))
 
 
 CARRIED = "{user} continued Intercom thread #{thread} in this chat. The thread:"
 
 
 @router.post("/intercom/threads/{tid}/conversations", dependencies=[Depends(person_only)])
-async def to_chat(request: Request, tid: int) -> dict:
+async def to_chat(request: Request, services: TheServices, tid: int) -> dict:
     """Continue in a chat: a new chat with it that carries thread `tid`, its messages
     landing there as one notice from the app without waking it (CARRIED, each message
     with the line it reads above it). The thread moves: what waits for you in it is read
     and it is archived, until something newer lands in it. -> {conversation_id}; the
     chat's `conversation.created` is on the feed."""
-    services = request.app.state.services
     store, cfg = services.store, services.cfg
     msgs = await store.read(lambda c: rows.thread(c, tid))
     if not msgs:
@@ -258,11 +258,10 @@ class ThreadsIn(BaseModel):
 
 
 @router.post("/intercom/threads/archive", dependencies=[Depends(person_only)])
-async def archive(request: Request, body: ThreadsIn | None = None, read: bool = False) -> dict:
+async def archive(store: TheStore, body: ThreadsIn | None = None, read: bool = False) -> dict:
     """These threads (`{threads}`) leave the lists until something newer lands in them; what
     waits for you in them is read. `?read=1`: what Archive read takes (`store.archivable`).
     -> {archived}."""
-    store = request.app.state.services.store
     asked = body.threads if body is not None else []
 
     def fn(c):
@@ -280,9 +279,8 @@ async def archive(request: Request, body: ThreadsIn | None = None, read: bool = 
 
 
 @router.post("/intercom/threads/restore", dependencies=[Depends(person_only)])
-async def restore(request: Request, body: ThreadsIn) -> dict:
+async def restore(store: TheStore, body: ThreadsIn) -> dict:
     """These threads back in the lists. -> {restored}."""
-    store = request.app.state.services.store
 
     def fn(c):
         done = rows.restore(c, body.threads)
@@ -298,12 +296,12 @@ KEEP_OPEN = 15.0        # seconds between comment lines, so proxies keep the str
 
 
 @router.get("/intercom/stream")
-async def stream(request: Request, to: str | None = None, after: int = 0) -> StreamingResponse:
+async def stream(request: Request, store: TheStore, services: TheServices, to: str | None = None, after: int = 0) -> StreamingResponse:
     """Every message above `after` (or the `Last-Event-ID`), then each new one as it is
     sent. `id:` is the message id. Without `to`: every message."""
     last = request.headers.get("last-event-id")
     after = int(last) if last and last.isdigit() else after
-    store, intercom = request.app.state.services.store, request.app.state.services.intercom
+    intercom = services.intercom
 
     async def check():
         found = await store.read(lambda c: rows.listed(c, to=to, after=after, limit=200))
@@ -325,14 +323,14 @@ async def stream(request: Request, to: str | None = None, after: int = 0) -> Str
 
 
 @router.post("/intercom/{iid}/stop")
-async def cancel(request: Request, iid: int) -> dict:
+async def cancel(request: Request, store: TheStore, services: TheServices, iid: int) -> dict:
     sender = await _sender(request)
     if sender != "user":                # a token takes back only what it sent
-        frm = await request.app.state.services.store.read(lambda c: c.execute(
+        frm = await store.read(lambda c: c.execute(
             "SELECT from_addr FROM intercom WHERE id=?", (iid,)).fetchone())
         if frm is None or frm[0] != sender:
             raise CelineError("not_found", "This message was already delivered or cancelled.", 404)
-    if not await request.app.state.services.intercom.cancel(iid):
+    if not await services.intercom.cancel(iid):
         raise CelineError("not_found", "This message was already delivered or cancelled.", 404)
     return {"ok": True}
 
@@ -340,8 +338,8 @@ async def cancel(request: Request, iid: int) -> dict:
 # ---- named tokens (Settings, Security) --------------------------------------------------
 
 @router.get("/tokens")
-async def list_tokens(request: Request) -> dict:
-    return {"tokens": await request.app.state.services.store.read(tokens.listed)}
+async def list_tokens(store: TheStore) -> dict:
+    return {"tokens": await store.read(tokens.listed)}
 
 
 class TokenIn(BaseModel):
@@ -349,17 +347,17 @@ class TokenIn(BaseModel):
 
 
 @router.post("/tokens", dependencies=[Depends(proven)])
-async def make_token(request: Request, body: TokenIn) -> dict:
+async def make_token(store: TheStore, body: TokenIn) -> dict:
     """The token is in this answer only; making one needs a fresh proof (api/deps.py)."""
     try:
-        token = await request.app.state.services.store.write(lambda c: tokens.make(c, body.name.strip()))
+        token = await store.write(lambda c: tokens.make(c, body.name.strip()))
     except ValueError as e:
         raise CelineError("bad_request", str(e), 400) from None
     return {"name": body.name.strip(), "token": token}
 
 
 @router.post("/tokens/{tid}/revoke")
-async def revoke_token(request: Request, tid: int) -> dict:
-    if not await request.app.state.services.store.write(lambda c: tokens.revoke(c, tid)):
+async def revoke_token(store: TheStore, tid: int) -> dict:
+    if not await store.write(lambda c: tokens.revoke(c, tid)):
         raise NotFound("token")
     return {"ok": True}

@@ -8,17 +8,18 @@ from fastapi import APIRouter, Request
 from ..errors import NotFound
 from ..guard import owner
 from .deps import json_body
+from ..core.route_params import TheServices
 
 router = APIRouter(prefix="/api")
 
 
 @router.post("/approvals/{aid}/answer")
-async def answer_approval(aid: str, request: Request) -> dict:
+async def answer_approval(aid: str, request: Request, services: TheServices) -> dict:
     """{"ok": true | false}: the user's answer. -> {"ok": true}; the card goes by the
     events approval.closed and approvals.changed."""
     by = owner.session(request)
     body = await json_body(request, need=("ok",), allow=("ok",))
-    a = request.app.state.services.approvals
+    a = services.approvals
     if a is None or not a.decide(aid, body["ok"] is True, by):
         raise NotFound("request")
     return {"ok": True}

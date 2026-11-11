@@ -21,6 +21,7 @@ from ..terminals.store import slug
 from . import skill
 from .skill import brief_lines, head, report_title
 from ..texts import record
+from ..core.route_params import TheConfig, TheServices, TheStore
 
 router = APIRouter(prefix="/api")
 
@@ -123,8 +124,8 @@ def title_of(brief: str) -> str:
 
 
 @router.post("/missions")
-async def start_mission(request: Request, body: MissionIn) -> dict:
-    return {"conversation_id": await start(request.app.state.services, body)}
+async def start_mission(services: TheServices, body: MissionIn) -> dict:
+    return {"conversation_id": await start(services, body)}
 
 
 async def start(services, body: MissionIn, by: str | None = None) -> str:
@@ -170,7 +171,7 @@ async def start(services, body: MissionIn, by: str | None = None) -> str:
 
 
 @router.get("/missions")
-async def list_missions(request: Request, status: str | None = None,
+async def list_missions(store: TheStore, cfg: TheConfig, services: TheServices, status: str | None = None,
                         trashed: bool = False, archived: bool = False) -> dict:
     """Every mission, newest first, with its conversation's title, its plan (`plan` the
     text, `steps`, each with its `model_label`, `step` the number of the one doing) and its automatic context switch; with `trashed` only the ones in the
@@ -185,9 +186,8 @@ async def list_missions(request: Request, status: str | None = None,
     each {value, label, count} over the rows sent."""
     from ..approvals import asked
     from ..intercom.store import missions_asking
-    store = request.app.state.services.store
-    settings = getattr(request.app.state.services.cfg, "settings", None)
-    waits = asked(request.app.state.services) | await store.read(missions_asking)
+    settings = getattr(cfg, "settings", None)
+    waits = asked(services) | await store.read(missions_asking)
     rows = []
     for r in await missions.list(store, status, trashed, archived):
         asks = r["conversation_id"] in waits
@@ -215,10 +215,9 @@ def _announce(store, row: dict | None) -> None:
 
 
 @router.patch("/missions/{cid}")
-async def edit_mission(request: Request, cid: str, body: MissionEdit) -> dict:
+async def edit_mission(request: Request, store: TheStore, cfg: TheConfig, services: TheServices, cid: str, body: MissionEdit) -> dict:
     """The given fields only; a changed one reaches it as a message. A stopped
     mission takes no change: nobody would read it."""
-    store, cfg = request.app.state.services.store, request.app.state.services.cfg
     tz = zone(cfg)
     row = await _mission(request, cid)
     if row["status"] == "stopped":
@@ -258,9 +257,9 @@ async def edit_mission(request: Request, cid: str, body: MissionEdit) -> dict:
         if new != row["until"]:
             changes["until"] = new
             if row["wake_id"]:
-                await request.app.state.services.intercom.cancel(int(row["wake_id"]))
+                await services.intercom.cancel(int(row["wake_id"]))
             changes["wake_id"] = await book_time_limit(
-                request.app.state.services.intercom, cid, until) if until else None
+                services.intercom, cid, until) if until else None
     if "min_time" in given:
         least = _minimum(body.min_time, tz, changes.get("until", row["until"]))
         if least != row["min_until"]:
@@ -279,7 +278,7 @@ async def edit_mission(request: Request, cid: str, body: MissionEdit) -> dict:
         return {"ok": True}
     lines = [head(row)] if "name" in changed else []
     lines += brief_lines(row, await report_title(store, row), tz, only=changed)
-    await request.app.state.services.intercom.send("user", f"agent:{cid}",
+    await services.intercom.send("user", f"agent:{cid}",
                                           cfg.substitute("\n".join(lines)),
                                           kind="brief", data={"changed": True})
     _announce(store, row)
@@ -287,7 +286,7 @@ async def edit_mission(request: Request, cid: str, body: MissionEdit) -> dict:
 
 
 @router.post("/missions/{cid}/stop")
-async def stop_mission(request: Request, cid: str) -> dict:
+async def stop_mission(request: Request, services: TheServices, cid: str) -> dict:
     await _mission(request, cid)
-    await skill.stop(request.app.state.services, cid, None)
+    await skill.stop(services, cid, None)
     return {"ok": True}

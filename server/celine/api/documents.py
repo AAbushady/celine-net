@@ -23,6 +23,7 @@ from ..kb.documents import MODES, DocumentsKB, DocumentsPathError
 from ..kb.documents_extract import kind_of
 from .cursor import page_cursor, read_cursor
 from .deps import in_thread
+from ..core.route_params import TheConfig
 from .kb import kb_changed
 
 router = APIRouter(prefix="/api/documents")
@@ -305,7 +306,7 @@ async def items(request: Request, q: str | None = None, folder: str = "",
 
 
 @router.post("", response_model=UploadResult)
-async def upload(request: Request, files: list[UploadFile] = File(...),
+async def upload(request: Request, cfg: TheConfig, files: list[UploadFile] = File(...),
                  paths: list[str] = Form([]), modes: list[str] = Form([]),
                  folder: str = Form(""), title: str = Form(""),
                  description: str = Form("")) -> dict:
@@ -324,7 +325,7 @@ async def upload(request: Request, files: list[UploadFile] = File(...),
     base = folder.strip("/")
     if base:
         await _call(kb.resolve, base)                    # confined to the folder
-    mb = request.app.state.services.cfg.r("max_upload_mb")   # Settings, Advanced
+    mb = cfg.r("max_upload_mb")   # Settings, Advanced
     limit = int(mb) * 1024 * 1024
     tmp_dir = kb.root / ".uploads"
     tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -373,7 +374,6 @@ async def upload(request: Request, files: list[UploadFile] = File(...),
         else:
             out["items"].append(it)
             touched.add(it["folder"])
-    cfg = request.app.state.services.cfg
     for it in out["items"]:          # a copy in its box, ~/uploads/ (box_files.py)
         box_files.copy_later(cfg, kb.resolve(it["path"]), it["name"])
     if out["items"]:

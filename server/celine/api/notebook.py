@@ -14,7 +14,7 @@ from ..agent import Agent
 from ..errors import CelineError, NotFound, TooLarge
 from ..skills import notebook_index
 from ..skills.notebook import NO_SUMMARY, is_stamp, move_note, trash, unstamped, write_note
-from .deps import cfg_of, store_of
+from ..core.route_params import TheConfig, TheStore, cfg_of, store_of
 
 router = APIRouter(prefix="/api")
 
@@ -59,15 +59,15 @@ def _mtime(p: Path) -> str:
 
 
 @router.get("/notebook/tree")
-async def notebook_tree(request: Request) -> dict:
+async def notebook_tree(request: Request, store: TheStore) -> dict:
     """Every folder and note; a note with `updated_at` (ISO, UTC) and `line`, the summary
     its index keeps of it (null before it has one)."""
     ch = _who(request)
     nb = _notebook_skill(request)
-    lines = {r["path"]: r["summary"] for r in await notebook_index.list(store_of(request))
+    lines = {r["path"]: r["summary"] for r in await notebook_index.list(store)
              if r["summary"] and r["summary"] != NO_SUMMARY}
     if nb is not None:  # a placeholder named after the user lands once there is a name
-        await nb.seed_one(store_of(request))
+        await nb.seed_one(store)
     root = ch.notebook
 
     def walk(d: Path, rel: str) -> list[dict]:
@@ -98,11 +98,11 @@ async def notebook_tree(request: Request) -> dict:
 
 
 @router.get("/notebook/entries/{path:path}")
-async def notebook_read(request: Request, path: str) -> dict:
+async def notebook_read(request: Request, cfg: TheConfig, path: str) -> dict:
     """{path, content (the text as stored, for editing), shown (to read: its name, the
     user's and its pronouns filled in, the Last changed line left out, the head says
     it), protected, owner}."""
-    cfg, ch = cfg_of(request), _who(request)
+    ch = _who(request)
     if (text := _virtual(request).get(path)) is not None:
         return {"path": path, "content": text, "shown": text, "protected": True,
                 "virtual": True}
@@ -123,16 +123,16 @@ class NotebookWrite(BaseModel):
 
 
 @router.put("/notebook/entries/{path:path}")
-async def notebook_write(request: Request, path: str, body: NotebookWrite) -> dict:
+async def notebook_write(request: Request, store: TheStore, cfg: TheConfig, path: str, body: NotebookWrite) -> dict:
     """The note's whole text."""
-    cfg, ch = cfg_of(request), _who(request)
+    ch = _who(request)
     _entry_path(path)
     if len(body.content.encode()) > cfg.r("max_message_bytes"):
         raise TooLarge("This note", len(body.content.encode()),
                        cfg.r("max_message_bytes"))
     _refuse_virtual(path)
     p = _notebook_path(ch, path)
-    content = await write_note(cfg, store_of(request), ch, p, path, body.content)
+    content = await write_note(cfg, store, ch, p, path, body.content)
     shown = cfg.substitute(unstamped(content))
     return {"ok": True, "bytes": len(content), "content": content, "shown": shown}
 
@@ -239,7 +239,7 @@ class NotebookChange(BaseModel):
 
 
 @router.patch("/notebook/entries/{path:path}")
-async def notebook_change(request: Request, path: str, body: NotebookChange) -> dict:
+async def notebook_change(request: Request, store: TheStore, path: str, body: NotebookChange) -> dict:
     """{path}: the note or folder moves there, its history and protection along;
     {protected}: write protection for it on a note (the seeded ones, skills/notebook.py
     SEEDS, stay). -> {ok, owner}."""
@@ -257,7 +257,7 @@ async def notebook_change(request: Request, path: str, body: NotebookChange) -> 
             raise CelineError("bad_request",
                               f"{path} is always read-only for {ch.name}.", 400)
         _notebook_path(ch, path)
-        await nb.mark(store_of(request), path, body.protected)
+        await nb.mark(store, path, body.protected)
     return {"ok": True, "owner": nb.owner(path) if nb is not None else None}
 
 

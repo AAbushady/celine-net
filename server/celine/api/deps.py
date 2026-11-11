@@ -1,21 +1,15 @@
 """What every route module needs: the request's JSON object, the loaded settings, the
 ETag header, the logged-in-person and fresh-proof checks and a live view's socket loop.
 Packages import these from here, never from another route module.
-
-A route names what it uses as typed parameters: `store: TheStore`, `cfg: TheConfig`,
-`services: TheServices` (FastAPI fills them from the running app). It then reaches for
-nothing through the request, and mypy holds its body to those types."""
+What a route takes as a typed parameter is in core/route_params.py."""
 from __future__ import annotations
 
 import json
-from typing import Annotated, Any
+from typing import Any
 
 import anyio
-from fastapi import Depends, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi import Request, Response, WebSocket, WebSocketDisconnect
 
-from ..config import Config
-from ..core.services import Services
-from ..core.store import Store
 from ..errors import CelineError
 from ..settings.files import Invalid
 
@@ -80,22 +74,6 @@ def proven(request: Request) -> None:
         raise CelineError("proof_needed", "Confirm access first.", 403)
 
 
-def services_of(request: Request) -> Services:
-    return request.app.state.services
-
-
-def cfg_of(request: Request) -> Config:
-    return request.app.state.services.cfg
-
-
-def store_of(request: Request) -> Store:
-    return request.app.state.services.store
-
-
-# what a route takes as a parameter
-TheServices = Annotated[Services, Depends(services_of)]
-TheConfig = Annotated[Config, Depends(cfg_of)]
-TheStore = Annotated[Store, Depends(store_of)]
 
 
 def in_thread(fn, *args, **kw):

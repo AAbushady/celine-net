@@ -21,6 +21,7 @@ from .. import reload
 from ..comfyui import presets as presets_mod
 from ..errors import CelineError, NotFound
 from ..settings import write
+from ..core.route_params import TheConfig, TheServices
 
 router = APIRouter(prefix="/api")
 
@@ -59,10 +60,10 @@ async def _saved(request: Request, p: presets_mod.Preset, changes: dict | None =
 
 
 @router.post("/generation-presets", status_code=201)
-async def upload_preset(request: Request, body: UploadIn) -> dict:
+async def upload_preset(request: Request, cfg: TheConfig, body: UploadIn) -> dict:
     async with write.lock():
         p = presets_mod.upload(body.kind, body.label, body.workflow)
-        s = request.app.state.services.cfg.settings
+        s = cfg.settings
         comfy = next((pid for pid, x in (s.providers if s else {}).items()
                       if x.get("kind") == "comfyui"), None)
         changes = None
@@ -111,13 +112,13 @@ async def reset_preset(request: Request, pid: str) -> dict:
 
 
 @router.delete("/generation-presets/{pid}")
-async def delete_preset(request: Request, pid: str) -> dict:
+async def delete_preset(cfg: TheConfig, services: TheServices, pid: str) -> dict:
     p = _preset(pid)
     if p.origin != "own":
         raise CelineError("bad_request", f"{p.label} comes with the app and cannot be deleted. "
                           f"Use Reset to defaults to undo your changes.", 400)
     async with write.lock():
-        s = request.app.state.services.cfg.settings
+        s = cfg.settings
         presets_mod.forget(p.kind, p.id)
         providers = {pid_: {**x, "models": {k: v for k, v in (x.get("models") or {}).items()
                                            if not (x.get("kind") == "comfyui" and k == p.id)}}
@@ -127,6 +128,6 @@ async def delete_preset(request: Request, pid: str) -> dict:
                                             and s.providers.get(s.split(ref)[0], {}).get(
                                                 "kind") == "comfyui")]}
                  for r, v in s.roles.items()}
-        await reload.commit(request.app.state.services, {"providers": providers, "roles": roles})
-        write.publish(request.app.state.services, ["presets"])
+        await reload.commit(services, {"providers": providers, "roles": roles})
+        write.publish(services, ["presets"])
     return {"deleted": True}

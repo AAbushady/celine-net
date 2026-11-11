@@ -33,7 +33,8 @@ from ..plugins import Plugin
 from .. import plugins, saves
 from ..settings import form
 from ..settings.files import version
-from .deps import etag, json_body, services_of, settings_of
+from .deps import etag, json_body, settings_of
+from ..core.route_params import TheServices, services_of
 
 router = APIRouter(prefix="/api")
 
@@ -76,25 +77,25 @@ async def get_form(request: Request, response: Response, id: str) -> dict:
 
 
 @router.put("/forms/{id}")
-async def put_form(request: Request, response: Response, id: str,
+async def put_form(request: Request, services: TheServices, response: Response, id: str,
                    if_match: str | None = Header(default=None)) -> dict:
     p = _plugin(id)
     body = await json_body(request, need=("values",), allow=("values", "secrets"))
     values = form.kept(p.id, p.form["fields"], body["values"], body.get("secrets", {}),
                        settings_of(request).plugins.get(p.id, {}))
-    out = await saves.plugin_form(services_of(request), p, values,
+    out = await saves.plugin_form(services, p, values,
                                   body.get("secrets", {}), if_match)
     return {**await _view(request, response, p), **out}
 
 
 @router.post("/forms/{id}/{action}")
-async def run_action(request: Request, id: str, action: str) -> dict:
+async def run_action(request: Request, services: TheServices, id: str, action: str) -> dict:
     p = _plugin(id)
     a = next((a for a in p.form.get("actions", []) if a["id"] == action), None)
     if a is None:
-        label = services_of(request).cfg.substitute(p.manifest["label"])
+        label = services.cfg.substitute(p.manifest["label"])
         raise CelineError("not_found", f"{label} has no action '{action}'.", 404)
     body = await json_body(request, allow=("input",)) if await request.body() else {}
     if p.data is None:
         raise Busy(f"{p.manifest['label']} is not running.")
-    return await p.attr(a["run"])(services_of(request), p, body.get("input"))
+    return await p.attr(a["run"])(services, p, body.get("input"))

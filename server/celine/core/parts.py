@@ -12,7 +12,7 @@ place:
   starts turns goes here.
 
 A feature moves here from the start-up function when its routes take what they use as
-typed parameters (api/deps.py)."""
+typed parameters (core/route_params.py)."""
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable

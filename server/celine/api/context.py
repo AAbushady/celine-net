@@ -14,12 +14,12 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict
 
 from ..conversations.store import set_auto_context
 from ..errors import NotFound
-from .deps import services_of
+from ..core.route_params import TheServices
 
 router = APIRouter(prefix="/api")
 
@@ -35,8 +35,8 @@ async def _exists(store, cid: str) -> bool:
 
 
 @router.get("/conversations/{cid}/auto-context")
-async def get_auto_context(request: Request, cid: str) -> dict:
-    r = await services_of(request).store.read(lambda c: c.execute(
+async def get_auto_context(services: TheServices, cid: str) -> dict:
+    r = await services.store.read(lambda c: c.execute(
         "SELECT auto_context FROM conversations WHERE id=?", (cid,)).fetchone())
     if r is None:
         raise NotFound("chat")
@@ -44,8 +44,8 @@ async def get_auto_context(request: Request, cid: str) -> dict:
 
 
 @router.put("/conversations/{cid}/auto-context")
-async def put_auto_context(request: Request, cid: str, body: On) -> dict:
-    store = services_of(request).store
+async def put_auto_context(services: TheServices, cid: str, body: On) -> dict:
+    store = services.store
     if not await _exists(store, cid):
         raise NotFound("chat")
     await store.write(lambda c: set_auto_context(c, store, cid, body.on))
@@ -53,7 +53,7 @@ async def put_auto_context(request: Request, cid: str, body: On) -> dict:
 
 
 @router.get("/conversations/{cid}/messages/{mid}/context")
-async def reply_context(request: Request, cid: str, mid: str) -> dict:
+async def reply_context(services: TheServices, cid: str, mid: str) -> dict:
     """The context block of the user message the reply `mid` (its first step) answers:
     {text, report} (turns/message_context.py; report.mind is On its mind,
     report.notebook its memory block, skills/recall.py). 404: no such
@@ -66,7 +66,7 @@ async def reply_context(request: Request, cid: str, mid: str) -> dict:
             " JOIN up ON m.id = up.parent_id WHERE up.role != 'user')"
             " SELECT x.text, x.report FROM up JOIN message_context x ON x.message_id = up.id"
             " WHERE up.role = 'user' AND x.text IS NOT NULL", (mid, cid)).fetchone()
-    r = await services_of(request).store.read(fn)
+    r = await services.store.read(fn)
     if r is None:
         raise NotFound("context")
     return {"text": r[0], "report": json.loads(r[1] or "{}")}

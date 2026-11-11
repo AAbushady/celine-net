@@ -32,52 +32,53 @@ from ..settings import secrets as secrets_mod
 from ..settings.files import Invalid, version
 from ..settings import agent_models
 from ..settings.registry import OPTION_WORDS, PROVIDERS_HELP, ROLES, key_state, validate_model
-from .deps import cfg_of, etag, json_body, person_only, services_of, settings_of
+from .deps import etag, json_body, person_only, settings_of
+from ..core.route_params import TheConfig, TheServices
 
 router = APIRouter(prefix="/api")
 
 # ---- providers -----------------------------------------------------------------------
 
 @router.get("/providers")
-async def list_providers(request: Request, response: Response) -> dict:
+async def list_providers(request: Request, cfg: TheConfig, services: TheServices, response: Response) -> dict:
     """Every provider with what the app last learned of it (backends/router.py: from its
     requests); nothing is asked here, Check provider asks."""
     s = settings_of(request)
-    router = views.model_router(services_of(request))
+    router = views.model_router(services)
     return {"providers": [views.provider(s, pid, router) for pid in s.providers],
             "kinds": views.kinds_view(),
             "version": etag(response, version(s.providers)),
             "saved": bool(s.saved.get("providers")),
             "help": PROVIDERS_HELP,
             # the Cloud switch's "?" in a provider's dialog and in Add provider
-            "cloud_help": cfg_of(request).substitute(OPTION_WORDS["cloud"]["help"])}
+            "cloud_help": cfg.substitute(OPTION_WORDS["cloud"]["help"])}
 
 
 @router.get("/providers/{pid}")
-async def get_provider(request: Request, response: Response, pid: str) -> dict:
+async def get_provider(request: Request, services: TheServices, response: Response, pid: str) -> dict:
     s = settings_of(request)
     if pid not in s.providers:
         raise NotFound("provider")
-    view = views.provider(s, pid, views.model_router(services_of(request)))
+    view = views.provider(s, pid, views.model_router(services))
     etag(response, view["version"])
     return view
 
 
 @router.put("/providers/{pid}")
-async def put_provider(request: Request, response: Response, pid: str,
+async def put_provider(request: Request, services: TheServices, response: Response, pid: str,
                        if_match: str | None = Header(default=None)) -> dict:
     """Create or replace one provider, models included. Removing a model a role uses
     is refused (400). A new provider is asked once, so its row shows its state; `cloud`
     null or left out follows the address (agent_models.provider_cloud)."""
-    out = await saves.provider(services_of(request), pid, await json_body(request),
+    out = await saves.provider(services, pid, await json_body(request),
                                if_match)
-    view = views.provider(settings_of(request), pid, views.model_router(services_of(request)))
+    view = views.provider(settings_of(request), pid, views.model_router(services))
     etag(response, view["version"])
     return {**view, **out}
 
 
 @router.delete("/providers/{pid}")
-async def delete_provider(request: Request, pid: str,
+async def delete_provider(request: Request, cfg: TheConfig, services: TheServices, pid: str,
                           if_match: str | None = Header(default=None)) -> dict:
     async with write.lock():
         s = settings_of(request)
@@ -92,14 +93,14 @@ async def delete_provider(request: Request, pid: str,
                               f"First remove its models from those roles.", 409,
                               {"roles": ",".join(roles)})
         providers = {k: v for k, v in s.providers.items() if k != pid}
-        out = await reload.commit(services_of(request), {"providers": providers})
-        root = secrets_mod.secrets_dir(cfg_of(request).data_dir)
+        out = await reload.commit(services, {"providers": providers})
+        root = secrets_mod.secrets_dir(cfg.data_dir)
         secrets_mod.delete_key(root, pid)
         return {"deleted": True, **out}
 
 
 @router.post("/providers/{pid}/test")
-async def test_saved_provider(request: Request, pid: str) -> dict:
+async def test_saved_provider(request: Request, services: TheServices, pid: str) -> dict:
     """Check provider: the provider asked now, strict (a timeout counts as down), and
     its model list read once. Models that could not be loaded get another chance, and
     saved models pick up capabilities, context and thinking levels the server now
@@ -107,7 +108,7 @@ async def test_saved_provider(request: Request, pid: str) -> dict:
     s = settings_of(request)
     if pid not in s.providers:
         raise NotFound("provider")
-    router = views.model_router(services_of(request))
+    router = views.model_router(services)
     if not s.key_missing(pid):
         await router.probe(pid, max_age=0, strict=True)
         found = await router.discover(pid)
@@ -115,7 +116,7 @@ async def test_saved_provider(request: Request, pid: str) -> dict:
             async with write.lock():
                 providers = views.merge_discovered(settings_of(request), pid, found)
                 if providers:
-                    await reload.commit(services_of(request), {"providers": providers})
+                    await reload.commit(services, {"providers": providers})
         s = settings_of(request)
     return views.provider(s, pid, router)
 
@@ -183,7 +184,7 @@ async def available_models(request: Request, pid: str, refresh: bool = False,
 
 
 @router.put("/providers/{pid}/models/{model:path}")
-async def put_model(request: Request, response: Response, pid: str, model: str,
+async def put_model(request: Request, services: TheServices, response: Response, pid: str, model: str,
                     if_match: str | None = Header(default=None)) -> dict:
     async with write.lock():
         s = settings_of(request)
@@ -195,14 +196,14 @@ async def put_model(request: Request, response: Response, pid: str, model: str,
                                p["base_url"])
         providers = copy.deepcopy(s.providers)
         providers[pid].setdefault("models", {})[model] = clean
-        out = await reload.commit(services_of(request), {"providers": providers})
+        out = await reload.commit(services, {"providers": providers})
         m = settings_of(request).providers[pid]["models"][model]
         etag(response, version(m))
         return {"ref": f"{pid}/{model}", "model": m, "version": version(m), **out}
 
 
 @router.delete("/providers/{pid}/models/{model:path}")
-async def delete_model(request: Request, pid: str, model: str,
+async def delete_model(request: Request, services: TheServices, pid: str, model: str,
                        if_match: str | None = Header(default=None)) -> dict:
     async with write.lock():
         s = settings_of(request)
@@ -218,7 +219,7 @@ async def delete_model(request: Request, pid: str, model: str,
                               {"roles": ",".join(used)})
         providers = copy.deepcopy(s.providers)
         del providers[pid]["models"][model]
-        out = await reload.commit(services_of(request), {"providers": providers})
+        out = await reload.commit(services, {"providers": providers})
         return {"deleted": True, **out}
 
 
@@ -232,23 +233,23 @@ async def list_secrets(request: Request) -> dict:
 
 
 @router.put("/secrets/{pid}")
-async def put_secret(request: Request, pid: str) -> dict:
+async def put_secret(request: Request, cfg: TheConfig, services: TheServices, pid: str) -> dict:
     """{"key": "..."}. Stores it and asks the provider once; the answer only says it is
     set."""
     if pid not in settings_of(request).providers:
         raise NotFound("provider")
     body = await json_body(request, need=("key",), allow=("key",))
-    await saves.provider_key(services_of(request), pid, body["key"])
-    root = secrets_mod.secrets_dir(cfg_of(request).data_dir)
+    await saves.provider_key(services, pid, body["key"])
+    root = secrets_mod.secrets_dir(cfg.data_dir)
     return key_state(pid, settings_of(request).providers[pid], root)
 
 
 @router.delete("/secrets/{pid}")
-async def delete_secret(request: Request, pid: str) -> dict:
-    root = secrets_mod.secrets_dir(cfg_of(request).data_dir)
+async def delete_secret(request: Request, cfg: TheConfig, services: TheServices, pid: str) -> dict:
+    root = secrets_mod.secrets_dir(cfg.data_dir)
     secrets_mod.delete_key(root, pid)
-    reload.apply(request.app.state.services)
-    write.publish(services_of(request), ["secrets"])
+    reload.apply(services)
+    write.publish(services, ["secrets"])
     s = settings_of(request)
     p = s.providers.get(pid)
     return key_state(pid, p, root) if p else {"state": "not set", "source": None,
@@ -258,33 +259,33 @@ async def delete_secret(request: Request, pid: str) -> dict:
 # ---- roles ---------------------------------------------------------------------------
 
 @router.get("/roles")
-async def get_roles(request: Request, response: Response) -> dict:
+async def get_roles(request: Request, services: TheServices, response: Response) -> dict:
     s = settings_of(request)
-    return {"roles": views.roles(s, views.model_router(services_of(request))),
+    return {"roles": views.roles(s, views.model_router(services)),
             "version": etag(response, version(s.roles)), "saved": bool(s.saved.get("roles"))}
 
 
 @router.put("/roles")
-async def put_roles(request: Request, response: Response,
+async def put_roles(request: Request, services: TheServices, response: Response,
                     if_match: str | None = Header(default=None)) -> dict:
     """Every task at once: {"roles": {"chat": {"chain": [...]}, ...}}. A task left
     out is emptied (off)."""
     body = await json_body(request, need=("roles",), allow=("roles",))
     if not isinstance(body["roles"], dict):
         raise Invalid("roles", "Roles are an object keyed by role.")
-    out = await saves.roles(services_of(request), body["roles"], if_match)
+    out = await saves.roles(services, body["roles"], if_match)
     s = settings_of(request)
-    return {"roles": views.roles(s, views.model_router(services_of(request))),
+    return {"roles": views.roles(s, views.model_router(services)),
             "version": etag(response, version(s.roles)), **out}
 
 
 @router.put("/roles/{role}")
-async def put_role(request: Request, response: Response, role: str,
+async def put_role(request: Request, services: TheServices, response: Response, role: str,
                    if_match: str | None = Header(default=None)) -> dict:
     """One task: {"chain": ["provider/model", ...]}. An empty chain turns it off."""
     body = await json_body(request, need=("chain",), allow=("chain",))
-    out = await saves.role(services_of(request), role, body, if_match)
-    view = views.roles(settings_of(request), views.model_router(services_of(request)))[role]
+    out = await saves.role(services, role, body, if_match)
+    view = views.roles(settings_of(request), views.model_router(services))[role]
     etag(response, view["version"])
     return {"role": role, **view, **out}
 
@@ -292,14 +293,14 @@ async def put_role(request: Request, response: Response, role: str,
 # ---- tools ---------------------------------------------------------------------------
 
 @router.get("/tool-defaults")
-async def get_tools(request: Request, response: Response) -> dict:
-    view = views.tools(services_of(request))
+async def get_tools(services: TheServices, response: Response) -> dict:
+    view = views.tools(services)
     etag(response, view["version"])
     return view
 
 
 @router.put("/tool-defaults")
-async def put_tools(request: Request, response: Response,
+async def put_tools(request: Request, services: TheServices, response: Response,
                     if_match: str | None = Header(default=None)) -> dict:
     """Every default at once: {"defaults": {"chat_archive__search": "off",
     "shell": "on"}}."""
@@ -307,14 +308,14 @@ async def put_tools(request: Request, response: Response,
     async with write.lock():
         s = settings_of(request)
         files.check_version("tools", s.tools, if_match)
-        out = await reload.commit(services_of(request), {"tools": body["defaults"]})
-        view = views.tools(services_of(request))
+        out = await reload.commit(services, {"tools": body["defaults"]})
+        view = views.tools(services)
         etag(response, view["version"])
         return {**view, **out}
 
 
 @router.put("/tool-defaults/{target}")
-async def put_tool_default(request: Request, response: Response, target: str,
+async def put_tool_default(request: Request, services: TheServices, response: Response, target: str,
                            if_match: str | None = Header(default=None)) -> dict:
     """One target: a skill ("chat_archive") or a tool ("chat_archive__search"). null
     removes the Settings entry, so the tool follows its skill / config again. Setting a skill
@@ -322,8 +323,8 @@ async def put_tool_default(request: Request, response: Response, target: str,
     body = await json_body(request, need=("default",), allow=("default",))
     if body["default"] not in ("on", "off", None):
         raise Invalid("default", "A default is \"on\", \"off\" or null.")
-    out = await saves.tools(services_of(request), {target: body["default"]}, if_match)
-    view = views.tools(services_of(request))
+    out = await saves.tools(services, {target: body["default"]}, if_match)
+    view = views.tools(services)
     etag(response, view["version"])
     return {**view, **out}
 
@@ -343,34 +344,33 @@ async def get_general(request: Request, response: Response) -> dict:
 
 
 @router.put("/settings")
-async def put_general(request: Request, response: Response,
+async def put_general(request: Request, services: TheServices, response: Response,
                       if_match: str | None = Header(default=None)) -> dict:
     """The whole object: {"general": {...}}. A key left out goes back to its default."""
     body = await json_body(request, need=("general",), allow=("general",))
-    out = await saves.general(services_of(request), body["general"], if_match)
+    out = await saves.general(services, body["general"], if_match)
     return {**(await get_general(request, response)), **out}
 
 
 # ---- features ------------------------------------------------------------------------
 
 @router.get("/features")
-async def get_features(request: Request, response: Response) -> dict:
-    view = await views.features(services_of(request))
+async def get_features(services: TheServices, response: Response) -> dict:
+    view = await views.features(services)
     etag(response, view["version"])
     return view
 
 
 @router.get("/features/{id}/probe")
-async def probe_feature(request: Request, id: str) -> dict:
+async def probe_feature(services: TheServices, id: str) -> dict:
     """"Check again": one feature's state now, no cache."""
     if id not in features_mod.ids():
         raise NotFound("feature")
-    services = request.app.state.services
     return features_mod.shown(await features_mod.probe(services.cfg, services, id))
 
 
 @router.put("/features")
-async def put_features(request: Request, response: Response,
+async def put_features(request: Request, services: TheServices, response: Response,
                        if_match: str | None = Header(default=None)) -> dict:
     """The whole object: {"features": {id: bool}, "done"?: true}. An id left out is on. A
     feature whose service is missing may be saved on (the user starts it later). `done`
@@ -379,9 +379,9 @@ async def put_features(request: Request, response: Response,
     body = await json_body(request, need=("features",), allow=("features", "done"))
     if not isinstance(body.get("done", False), bool):
         raise Invalid("done", "This must be true or false.")
-    out, probes = await saves.features(services_of(request), body["features"],
+    out, probes = await saves.features(services, body["features"],
                                        body.get("done", False), if_match)
-    view = await views.features(services_of(request), probes)
+    view = await views.features(services, probes)
     etag(response, view["version"])
     return {**view, **out}
 
@@ -391,14 +391,14 @@ async def put_features(request: Request, response: Response,
 # (settings/services.py, celine/keys.py): what goes into a box's key.hash file.
 
 @router.get("/services")
-async def get_services(request: Request, response: Response) -> dict:
-    view = views.services_view(services_of(request))
+async def get_services(services: TheServices, response: Response) -> dict:
+    view = views.services_view(services)
     etag(response, view["version"])
     return view
 
 
 @router.put("/services/{id}")
-async def put_service(request: Request, response: Response, id: str,
+async def put_service(request: Request, services: TheServices, response: Response, id: str,
                       if_match: str | None = Header(default=None)) -> dict:
     """{"url": "..."}: this service's address alone, "" clears it, null forgets it so the
     compose's variable fills it again (Use the default); the others stay as saved. It
@@ -406,20 +406,19 @@ async def put_service(request: Request, response: Response, id: str,
     if id not in services_mod.IDS:
         raise NotFound("service")
     body = await json_body(request, need=("url",), allow=("url",))
-    out = await saves.addresses(services_of(request),
+    out = await saves.addresses(services,
                                 {id: None if body["url"] is None else body}, if_match)
-    view = views.services_view(services_of(request))
+    view = views.services_view(services)
     etag(response, view["version"])
     return {**view, **out}
 
 
 @router.post("/services/{id}/test")
-async def test_service(request: Request, id: str) -> dict:
+async def test_service(services: TheServices, id: str) -> dict:
     """The feature's probe, fresh, against the saved address: {state, detail}."""
     if id not in services_mod.IDS:
         raise NotFound("service")
     feature = "web" if id == "searxng" else id
-    services = request.app.state.services
     return features_mod.shown(await features_mod.probe(services.cfg, services, feature))
 
 
@@ -438,43 +437,43 @@ async def get_address(request: Request, response: Response) -> dict:
 
 
 @router.put("/address")
-async def put_address(request: Request, response: Response,
+async def put_address(request: Request, services: TheServices, response: Response,
                       if_match: str | None = Header(default=None)) -> dict:
     """{"origin": "https://celine.example.net"}; "" forgets it (the next login learns it)."""
     body = await json_body(request, need=("origin",), allow=("origin",))
-    out = await saves.address(services_of(request), body, if_match)
+    out = await saves.address(services, body, if_match)
     return {**_address(request, response), **out}
 
 
 # ---- email ---------------------------------------------------------------------------
 
 @router.get("/email")
-async def get_email(request: Request, response: Response) -> dict:
-    view = views.email(cfg_of(request))
+async def get_email(cfg: TheConfig, response: Response) -> dict:
+    view = views.email(cfg)
     etag(response, view["version"])
     return view
 
 
 @router.put("/email")
-async def put_email(request: Request, response: Response,
+async def put_email(request: Request, cfg: TheConfig, services: TheServices, response: Response,
                     if_match: str | None = Header(default=None)) -> dict:
     """{"email": {host, port, tls, user}, "password"?: "..." | null}. The whole object:
     a key left out goes back to its default. `password` left out keeps the saved one,
     null removes it. The answer says only whether a password is set."""
     body = await json_body(request, need=("email",), allow=("email", "password"))
-    out = await saves.email(services_of(request), body["email"],
+    out = await saves.email(services, body["email"],
                             body.get("password", saves.KEEP), if_match)
-    view = views.email(cfg_of(request))
+    view = views.email(cfg)
     etag(response, view["version"])
     return {**view, **out}
 
 
 @router.post("/email/test")
-async def test_email(request: Request) -> dict:
+async def test_email(cfg: TheConfig) -> dict:
     """Logs in with the saved account: {ok, sentence, folders: [{name, messages,
     unread}]}. A failure is one sentence."""
     from ..skills.mail import MailError, folders
-    a = mail_mod.account(cfg_of(request))
+    a = mail_mod.account(cfg)
     if a is None:
         return {"ok": False, "folders": [],
                 "sentence": "Add the IMAP server, the user name and the password first."}
@@ -494,14 +493,14 @@ async def test_email(request: Request) -> dict:
 # session: a named token, the kind a script or its shellbox can hold, is refused.
 
 @router.get("/vault")
-async def get_vault(request: Request, response: Response) -> dict:
-    view = views.vault(services_of(request))
+async def get_vault(services: TheServices, response: Response) -> dict:
+    view = views.vault(services)
     etag(response, view["version"])
     return view
 
 
 @router.put("/vault")
-async def put_vault(request: Request, response: Response,
+async def put_vault(request: Request, services: TheServices, response: Response,
                     if_match: str | None = Header(default=None)) -> dict:
     """{"vault": {url, client_id}, "client_secret"?: "..." | null}. The whole object, as
     the email form's: a secret left out keeps the saved one, null removes it. Only when
@@ -511,36 +510,36 @@ async def put_vault(request: Request, response: Response,
     The answer says how (status) and whether the secret is set."""
     person_only(request)
     body = await json_body(request, need=("vault",), allow=("vault", "client_secret"))
-    out = await saves.vault(services_of(request), body["vault"],
+    out = await saves.vault(services, body["vault"],
                             body.get("client_secret", saves.KEEP), if_match)
-    view = views.vault(services_of(request))
+    view = views.vault(services)
     etag(response, view["version"])
     return {**view, **out}
 
 
 @router.post("/vault/unlock")
-async def unlock_vault(request: Request) -> dict:
+async def unlock_vault(request: Request, services: TheServices) -> dict:
     """{"master_password": "..."}: to `bw unlock` once, kept nowhere. -> the view."""
     person_only(request)
     body = await json_body(request, need=("master_password",), allow=("master_password",))
     master = body.pop("master_password")
     if not isinstance(master, str) or not master:
         raise Invalid("master_password", "This must be text.")
-    await request.app.state.services.vault.unlock(master)
+    await services.vault.unlock(master)
     del master
-    return views.vault(services_of(request))
+    return views.vault(services)
 
 
 @router.post("/vault/lock")
-async def lock_vault(request: Request) -> dict:
+async def lock_vault(request: Request, services: TheServices) -> dict:
     """The session key gone; its approvals of this unlock too. -> the view."""
     person_only(request)
-    await request.app.state.services.vault.lock_now()
-    return views.vault(services_of(request))
+    await services.vault.lock_now()
+    return views.vault(services)
 
 
 @router.get("/status")
-async def config_status(request: Request) -> dict:
+async def config_status(services: TheServices) -> dict:
     """Configuration problems (a broken file, an unknown key, a missing model), for
     Settings, General ("To fix"), plus your name and `owner`: it, as every page draws
     it (agent.view: name, pronouns, color, portrait, named). `hosts`: each provider as
@@ -548,7 +547,6 @@ async def config_status(request: Request) -> dict:
     it is paused, else null (event `agent.hold`); `build`:
     {commit, built, source} of this build (config.build); `vault_locked`: set up and locked."""
     from .. import agent
-    services = request.app.state.services
     cfg, router = services.cfg, getattr(services.llm, "router", None)
     return {"owner": agent.view(cfg),
             "user": cfg.user,

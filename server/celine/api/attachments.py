@@ -4,18 +4,18 @@ from __future__ import annotations
 from pathlib import Path
 
 import anyio
-from fastapi import APIRouter, File, Query, Request, UploadFile
+from fastapi import APIRouter, File, Query, UploadFile
 from fastapi.responses import FileResponse
 
 from .. import attachments, box_files
 from ..errors import NotFound
+from ..core.route_params import TheConfig, TheStore
 
 router = APIRouter(prefix="/api")
 
 
 @router.post("/attachments")
-async def upload_attachment(request: Request, file: UploadFile = File(...)) -> dict:
-    cfg, store = request.app.state.services.cfg, request.app.state.services.store
+async def upload_attachment(store: TheStore, cfg: TheConfig, file: UploadFile = File(...)) -> dict:
     row = await attachments.save(cfg, store, file)
     box_files.copy_later(cfg, attachments.blob_path(cfg, row["sha256"]), row["filename"], store,
                          row["id"])
@@ -23,8 +23,8 @@ async def upload_attachment(request: Request, file: UploadFile = File(...)) -> d
 
 
 @router.delete("/attachments/{aid}")
-async def delete_attachment(request: Request, aid: str) -> dict:
-    return {"removed": await attachments.delete_draft(request.app.state.services.store, aid)}
+async def delete_attachment(store: TheStore, aid: str) -> dict:
+    return {"removed": await attachments.delete_draft(store, aid)}
 
 
 # the browser may render these, so nothing uploaded can run on this origin: only raster
@@ -38,13 +38,12 @@ def shown_inline(media_type: str) -> bool:
 
 
 @router.get("/attachments/{aid}/file")
-async def attachment_file(request: Request, aid: str, download: bool = False,
+async def attachment_file(store: TheStore, cfg: TheConfig, aid: str, download: bool = False,
                           w: int | None = Query(None, ge=1)):
     """The file under its own name and type; `download` saves even an image. `w`: a
     picture as wide as the first of attachments.WIDTHS that is at least `w` (WebP),
     the file itself when it is not wider."""
-    cfg = request.app.state.services.cfg
-    row = await attachments.get(request.app.state.services.store, aid)
+    row = await attachments.get(store, aid)
     path = attachments.blob_path(cfg, row["sha256"]) if row else None
     if not row or not path.exists():
         raise NotFound("attachment")

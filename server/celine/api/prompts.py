@@ -23,15 +23,16 @@ from .. import agent, prompts as package_texts
 from ..errors import NotFound
 from ..guard import persona as bastet
 from ..settings import prompts, voice, write
-from .deps import json_body, services_of
+from .deps import json_body
+from ..core.route_params import TheServices
 
 router = APIRouter(prefix="/api")
 
 
 @router.get("/prompts")
-async def list_prompts(request: Request) -> dict:
-    cfg = services_of(request).cfg
-    own = await services_of(request).store.read(lambda c: _own(cfg, c))
+async def list_prompts(services: TheServices) -> dict:
+    cfg = services.cfg
+    own = await services.store.read(lambda c: _own(cfg, c))
     return {"groups": prompts.catalog(cfg.substitute, own), "help": prompts.HELP}
 
 
@@ -56,16 +57,15 @@ def _known(pid: str) -> str:
 
 
 @router.get("/prompts/{pid}")
-async def get_prompt(request: Request, pid: str) -> dict:
-    return prompts.view(_known(pid), services_of(request).cfg.substitute)
+async def get_prompt(services: TheServices, pid: str) -> dict:
+    return prompts.view(_known(pid), services.cfg.substitute)
 
 
 @router.put("/prompts/{pid}")
-async def put_prompt(request: Request, pid: str) -> dict:
+async def put_prompt(request: Request, services: TheServices, pid: str) -> dict:
     _known(pid)
     body = await json_body(request, need=("text",), allow=("text",))
     text = body["text"]
-    services = services_of(request)
     async with write.lock():
         await services.store.write(lambda c: prompts.save(c, pid, text))
     package_texts.settled(services.cfg, pid)
@@ -77,12 +77,11 @@ BLOCKS = ("persona", "talk", "about", "notes", "tools", "history")
 
 
 @router.get("/conversations/{cid}/context/{block}")
-async def context_block(request: Request, cid: str, block: str) -> dict:
+async def context_block(services: TheServices, cid: str, block: str) -> dict:
     from ..turns import context
     from ..turns.prompt import turn_parts
     if block not in BLOCKS:
         raise NotFound("block")
-    services = services_of(request)
     exists = await services.store.read(lambda c: c.execute(
         "SELECT 1 FROM conversations WHERE id=?", (cid,)).fetchone())
     if exists is None:

@@ -13,14 +13,14 @@ import json
 import logging
 import time
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from .. import texts
 from ..backends.base import BackendError, Done, TextDelta
 from ..errors import CelineError, NotFound
-from .deps import services_of
+from ..core.route_params import TheServices
 
 router = APIRouter(prefix="/api")
 log = logging.getLogger("celine.texts")
@@ -28,25 +28,23 @@ EVERY = 0.1          # seconds between two lines while the draft streams
 
 
 @router.get("/text-versions")
-async def history(request: Request, of: str, q: str = "", before: int | None = None) -> dict:
-    s = services_of(request)
-    return await s.store.read(lambda c: texts.history(c, s.cfg, of, q, before))
+async def history(services: TheServices, of: str, q: str = "", before: int | None = None) -> dict:
+    return await services.store.read(lambda c: texts.history(c, services.cfg, of, q, before))
 
 
 @router.get("/text-versions/{vid}")
-async def version(request: Request, vid: int) -> dict:
-    s = services_of(request)
-    v = await s.store.read(lambda c: texts.version(c, s.cfg, vid))
+async def version(services: TheServices, vid: int) -> dict:
+    v = await services.store.read(lambda c: texts.version(c, services.cfg, vid))
     if v is None:
         raise NotFound("version")
     return v
 
 
 @router.post("/text-versions/{vid}/revert")
-async def revert(request: Request, vid: int) -> dict:
+async def revert(services: TheServices, vid: int) -> dict:
     """Version `vid` becomes the text again (agent.revert). -> {of, text}."""
     from .. import agent
-    return await agent.revert(services_of(request), vid)
+    return await agent.revert(services, vid)
 
 
 # ---- Ask Celine -------------------------------------------------------------------------
@@ -103,19 +101,18 @@ async def _draft(backend, messages: list[dict]):
 
 
 @router.post("/text-drafts")
-async def ask(request: Request, body: AskBody) -> StreamingResponse:
+async def ask(services: TheServices, body: AskBody) -> StreamingResponse:
     """{of, prompt, text} -> its draft, streamed as lines of JSON (_draft)."""
     from ..backends.queue import Priority
-    s = services_of(request)
-    cfg = s.cfg
-    factory = getattr(s.dispatcher, "backend_factory", None)
+    cfg = services.cfg
+    factory = getattr(services.dispatcher, "backend_factory", None)
     fixed = factory() if factory is not None else None
-    backend = s.llm.bind(fixed, role="chat", priority=Priority.INTERACTIVE, thinking="off",
+    backend = services.llm.bind(fixed, role="chat", priority=Priority.INTERACTIVE, thinking="off",
                          voice=False, fallback=False,
-                         label=f"Ask {cfg.name}") if s.llm is not None else fixed
+                         label=f"Ask {cfg.name}") if services.llm is not None else fixed
     if backend is None:
         raise CelineError("unavailable", "No chat model is set up.", 503)
-    lines = await s.store.read(lambda c: texts.about(c, cfg, body.of))
+    lines = await services.store.read(lambda c: texts.about(c, cfg, body.of))
     return StreamingResponse(_draft(backend, _messages(cfg, body, lines)),
                              media_type="application/x-ndjson",
                              headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})

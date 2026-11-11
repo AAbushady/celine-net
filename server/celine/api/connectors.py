@@ -18,6 +18,7 @@ from ..kb.connectors import Refused
 from ..kb.ignore import delete_and_ignore, include_again
 from ..kb.importers import Unreachable
 from .deps import in_thread
+from ..core.route_params import TheServices
 from .kb import chat_kb, kb_changed
 
 router = APIRouter(prefix="/api")
@@ -68,10 +69,10 @@ def _guild(guild: str) -> str:
 # ---- both --------------------------------------------------------------------------------
 
 @router.get("/connectors")
-async def connectors_list(request: Request) -> dict:
+async def connectors_list(services: TheServices) -> dict:
     """Every connector's connection record and lost login, for the source list and the
     app's banner. From the last check (every few seconds); asks no connector."""
-    connectors = request.app.state.services.connectors
+    connectors = services.connectors
     return {"connectors": connectors.states() if connectors is not None else []}
 
 
@@ -141,12 +142,12 @@ async def include(request: Request, sid: str, body: IncludeBody) -> dict:
 
 
 @router.post("/sources/{sid}/import")
-async def first_import(request: Request, sid: str) -> dict:
+async def first_import(request: Request, services: TheServices, sid: str) -> dict:
     """The first import, from the onboarding: a visible task `import` (its progress the
     archive's message count, kb/connectors.py first_import), done once the archive has
     what the connector had. Discord starts its sync first. `{"task": id}`."""
     c = connector(request, sid)
-    tasks = request.app.state.services.kbs.tasks
+    tasks = services.kbs.tasks
     running = tasks.running(sid, "import")
     if running is not None:
         return {"task": running.id}

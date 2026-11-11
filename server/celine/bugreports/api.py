@@ -7,13 +7,14 @@ from fastapi import APIRouter, Request
 from ..errors import CelineError, NotFound
 from . import store as reports
 from .skill import closed_line
+from ..core.route_params import TheServices, TheStore
 
 router = APIRouter(prefix="/api")
 STATES = ("open", "closed")
 
 
 @router.get("/bugreports")
-async def list_reports(request: Request, state: str | None = None,
+async def list_reports(store: TheStore, state: str | None = None,
                        thread: int | None = None) -> dict:
     """{reports}: newest first; `state` open or closed, none for all; `thread`: the one
     report that Intercom thread is (none when it is no report)."""
@@ -24,18 +25,17 @@ async def list_reports(request: Request, state: str | None = None,
         if thread is None:
             return reports.listing(c, state)
         return [r] if (r := reports.of_thread(c, thread)) else []
-    rows = await request.app.state.services.store.read(fn)
+    rows = await store.read(fn)
     return {"reports": rows}
 
 
 @router.post("/bugreports/{rid}/close")
-async def close(request: Request, rid: int) -> dict:
+async def close(request: Request, services: TheServices, rid: int) -> dict:
     """`{why?}`. Closes an open report and reads what waits in its thread; a closed one
     stays as it is. `why` goes into the thread as the app's line ("Report #3 closed:
     ..."), delivered to the conversation that filed it, so the agent reads why and does
     not file it again. Then its thread is archived: it is done, and anything newer that
     lands in it brings it back."""
-    services = request.app.state.services
     body = await request.json() if await request.body() else {}
     why = " ".join(str((body or {}).get("why") or "").split())
     was = await services.store.read(lambda c: reports.get(c, rid))

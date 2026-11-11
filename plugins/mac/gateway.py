@@ -42,7 +42,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, Response
 
 from celine import plugins
-from celine.api.deps import json_body, services_of
+from celine.api.deps import json_body
+from celine.core.route_params import services_of
 from celine.saves import plugin_form
 from celine.errors import NotFound
 from celine.mcp import plugin_servers, result_text

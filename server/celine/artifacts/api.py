@@ -11,7 +11,7 @@ from ..errors import CelineError, NotFound
 from . import page
 from . import store as artifacts
 from ..core.event_types import ARTIFACT_UPDATED
-from ..api.deps import store_of
+from ..core.route_params import TheStore, store_of
 
 router = APIRouter()
 
@@ -25,17 +25,17 @@ def _changed(request: Request, a: dict) -> None:
 
 
 @router.get("/api/artifacts")
-async def artifact_list(request: Request, conversation: str | None = None,
+async def artifact_list(store: TheStore, conversation: str | None = None,
                         trashed: bool = False) -> dict:
     """Newest change first: one conversation's, or all; the trashed ones instead with
     trashed=1."""
-    return {"artifacts": await artifacts.listing(store_of(request), conversation, trashed)}
+    return {"artifacts": await artifacts.listing(store, conversation, trashed)}
 
 
 @router.get("/api/artifacts/{id}")
-async def artifact(request: Request, id: str) -> dict:
+async def artifact(store: TheStore, id: str) -> dict:
     """The newest title and version, and every version without its content."""
-    a = await artifacts.get(store_of(request), id)
+    a = await artifacts.get(store, id)
     if a is None:
         raise NotFound("artifact")
     return a
@@ -64,12 +64,12 @@ async def version_source(request: Request, id: str, n: int) -> Response:
 
 
 @router.post("/api/artifacts/{id}/versions/{n}/restore")
-async def restore(request: Request, id: str, n: int) -> dict:
+async def restore(request: Request, store: TheStore, id: str, n: int) -> dict:
     """An old version copied to the top as a new one; the history stays as it was."""
     v = await _version(request, id, n)
-    await artifacts.add_version(store_of(request), id, v["kind"], v["title"], v["content"],
+    await artifacts.add_version(store, id, v["kind"], v["title"], v["content"],
                                 f"restored from v{n}", None, None)
-    a = await artifacts.get(store_of(request), id)
+    a = await artifacts.get(store, id)
     _changed(request, a)
     return a
 
@@ -90,14 +90,14 @@ async def _set_trashed(request: Request, id: str, trashed: bool) -> dict:
 
 
 @router.delete("/api/artifacts/{id}")
-async def delete_artifact(request: Request, id: str, for_good: bool = False) -> dict:
+async def delete_artifact(request: Request, store: TheStore, id: str, for_good: bool = False) -> dict:
     """Into the trash; for_good=1: a trashed artifact and every version of it, gone."""
     if not for_good:
         return await _set_trashed(request, id, True)
-    a = await artifacts.get(store_of(request), id)
+    a = await artifacts.get(store, id)
     if a is None:
         raise NotFound("artifact")
-    if not await artifacts.purge(store_of(request), id):
+    if not await artifacts.purge(store, id):
         raise CelineError("conflict", "It is not in the Trash.", 409)
     _changed(request, {**a, "n": 0})
     return {"ok": True}

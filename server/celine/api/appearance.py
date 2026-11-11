@@ -10,6 +10,7 @@ from fastapi import APIRouter, Request
 from ..settings import appearance as appearance_mod, files
 from ..settings import write
 from .deps import json_body
+from ..core.route_params import TheServices
 
 router = APIRouter(prefix="/api")
 
@@ -25,12 +26,12 @@ async def get_appearance(request: Request) -> dict:
 
 
 @router.put("/appearance")
-async def put_appearance(request: Request) -> dict:
+async def put_appearance(request: Request, services: TheServices) -> dict:
     body = await json_body(request, need=("appearance",), allow=("appearance",))
     change = appearance_mod.validate(body["appearance"])
     async with write.lock():
         root = _root(request)
         saved = {k: v for k, v in {**appearance_mod.read(root), **change}.items() if v is not None}
         files.write(root, "appearance", saved)
-    write.publish(request.app.state.services, ["appearance"])
+    write.publish(services, ["appearance"])
     return {"appearance": appearance_mod.effective(saved)}

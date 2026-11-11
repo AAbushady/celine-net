@@ -219,9 +219,8 @@ async def test_the_stream_replays_from_after_and_then_follows_a_new_message(stor
     cid = await conversations.create(store)
     first = (await ic.send("user", f"agent:{cid}", "one"))["intercom_id"]
     await ic.send("user", f"agent:{cid}", "two")
-    req = SimpleNamespace(headers={}, app=SimpleNamespace(state=SimpleNamespace(
-        services=Services(store=store, intercom=ic))))
-    events = (await stream(req, after=first)).body_iterator
+    events = (await stream(SimpleNamespace(headers={}), store, Services(store=store, intercom=ic),
+                           after=first)).body_iterator
     assert '"text": "two"' in await events.__anext__()
     async with anyio.create_task_group() as tg:
         tg.start_soon(lambda: ic.send("agent:" + cid, "user", "three"))

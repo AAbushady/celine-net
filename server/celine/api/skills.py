@@ -1,39 +1,39 @@
 """The skills catalog, a dead MCP server's retry, and a conversation's tool switches."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 from ..errors import CelineError, NotFound
 from ..settings.registry import TARGET
 from ..skills.catalog import catalog
 from ..skills.gating import overrides_for, set_override
+from ..core.route_params import TheServices, TheStore
 
 router = APIRouter(prefix="/api")
 
 
 @router.get("/skills")
-async def skills(request: Request, conversation: str | None = None) -> dict:
+async def skills(store: TheStore, services: TheServices, conversation: str | None = None) -> dict:
     """The catalog; with `conversation`, only what its turns can get there (the skills
     offered in its kind: turns/loads.offered). A disabled tool is still listed. Per
     tool: `label` and `summary` for you (never the model-facing docstring), `enabled`
     here, `default` (Settings), and `why` ("here" = this conversation's switch,
     "default")."""
     from ..turns import loads
-    reg = request.app.state.services.registry
-    store = request.app.state.services.store
+    reg = services.registry
     over = await overrides_for(store, conversation) if conversation else {}
     here = None
     if conversation:
         here = {s.wire_name for specs in (await loads.offered(reg, store, conversation))
                 .values() for s in specs}
-    return {"skills": catalog(request.app.state.services, over, here)}
+    return {"skills": catalog(services, over, here)}
 
 
 @router.post("/skills/{name}/restart")
-async def retry_skill(request: Request, name: str) -> dict:
+async def retry_skill(services: TheServices, name: str) -> dict:
     """Restart a dead MCP server."""
-    if not request.app.state.services.mcp.retry(name):
+    if not services.mcp.retry(name):
         raise NotFound("MCP server")
     return {"ok": True}
 
@@ -51,9 +51,9 @@ def _target(target: str) -> str:
 
 
 @router.put("/conversations/{cid}/tool-settings/{target}")
-async def set_tool(request: Request, cid: str, target: str, body: Override) -> dict:
+async def set_tool(store: TheStore, cid: str, target: str, body: Override) -> dict:
     try:
-        seq = await set_override(request.app.state.services.store, cid, _target(target),
+        seq = await set_override(store, cid, _target(target),
                                  body.enabled, body.client_seq)
     except KeyError:
         raise NotFound("chat") from None

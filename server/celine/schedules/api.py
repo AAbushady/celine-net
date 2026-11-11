@@ -13,6 +13,7 @@ from ..settings import files, seed
 from ..settings.files import Invalid
 from ..settings.registry import ROLES
 from ..clock import zone
+from ..core.route_params import TheConfig, TheServices, TheStore
 from . import VARIABLES, fill, run_date, run_roles, shown, words
 from .runs import IDLE_MINUTES, ROW, STOPPED, _repeated, first_slot, results, \
     view as run_view
@@ -93,7 +94,7 @@ def _scheduler(request: Request):
 
 
 @router.get("/schedules")
-async def list_schedules(request: Request) -> dict:
+async def list_schedules(request: Request, cfg: TheConfig) -> dict:
     """{schedules: [{name, label, title, summary, cron, time, every, prompt, after, reviewer,
     reviewer_prompt, turns, note, role, on, idle_only, wall_minutes, on_fail}],
     roles, variables, today, choices, help}: by time of day; `time` "02:00" for a daily one (else
@@ -102,7 +103,6 @@ async def list_schedules(request: Request) -> dict:
     `variables` the words a prompt can hold, `today` the day the page opens on,
     `choices` a field's choices ({on_fail: [{value, label}]}), `help` a field's "?" text
     (on_fail, idle_only, wall_minutes)."""
-    cfg = request.app.state.services.cfg
     rows = sorted(_schedules(request).values(), key=lambda s: (s.time or "99", s.name))
     return {"schedules": [_view(s, cfg) for s in rows],
             "roles": [{"name": r, "label": ROLES[r]["label"]} for r in run_roles()],
@@ -112,7 +112,7 @@ async def list_schedules(request: Request) -> dict:
 
 
 @router.put("/schedules/{name}")
-async def put_schedule(request: Request, name: str) -> dict:
+async def put_schedule(request: Request, cfg: TheConfig, services: TheServices, name: str) -> dict:
     """{label, summary, cron or time ("02:00": every day then), prompt, after, reviewer,
     reviewer_prompt, turns, note, role, on, idle_only
     (start only when nobody used the app for 30 minutes, else skip that run),
@@ -126,12 +126,12 @@ async def put_schedule(request: Request, name: str) -> dict:
     from ..api.deps import json_body
     from .edit import FIELDS, save
     body = await json_body(request, allow=FIELDS)
-    s, applied = await save(request.app.state.services, name, body, "user")
-    return {**_view(s, request.app.state.services.cfg), "applied": applied}
+    s, applied = await save(services, name, body, "user")
+    return {**_view(s, cfg), "applied": applied}
 
 
 @router.delete("/schedules/{name}")
-async def delete_schedule(request: Request, name: str) -> dict:
+async def delete_schedule(request: Request, services: TheServices, name: str) -> dict:
     """The schedule goes, its reviewer prompt with it when no other schedule talks with
     it. Its waiting and running runs stop, all its runs stay readable. Refused while
     another schedule follows it."""
@@ -151,8 +151,8 @@ async def delete_schedule(request: Request, name: str) -> dict:
         if s.reviewer and not any(o.reviewer == s.reviewer for o in every_.values()
                                   if o.name != name):
             (folder / s.reviewer).unlink(missing_ok=True)
-        applied = reload.apply(request.app.state.services)
-    write.publish(request.app.state.services, ["schedules"])
+        applied = reload.apply(services)
+    write.publish(services, ["schedules"])
     _scheduler(request).wake()
     return {"deleted": name, "applied": applied}
 
@@ -173,7 +173,7 @@ def _date(raw, field: str) -> date:
 
 
 @router.post("/schedules/preview")
-async def preview(request: Request) -> dict:
+async def preview(request: Request, store: TheStore, cfg: TheConfig, services: TheServices) -> dict:
     """{night, text}: `text` (a prompt, a reviewer prompt or a note path) filled as a run
     of that night gets it, with the results that night has so far and {{mood}} and the
     others as they are now (schedules/variables.py). -> {text}."""
@@ -182,14 +182,14 @@ async def preview(request: Request) -> dict:
     night = _date(body["night"], "night")
     if not isinstance(body["text"], str):
         raise Invalid("text", "The text is text.")
-    res = await request.app.state.services.store.read(lambda c: results(c, night.isoformat()))
+    res = await store.read(lambda c: results(c, night.isoformat()))
     from .variables import extras
-    return {"text": fill(request.app.state.services.cfg, body["text"], night, res,
-                         await extras(request.app.state.services, body["text"], night))}
+    return {"text": fill(cfg, body["text"], night, res,
+                         await extras(services, body["text"], night))}
 
 
 @router.get("/runs")
-async def list_runs(request: Request, day: str | None = None,
+async def list_runs(services: TheServices, day: str | None = None,
                     schedule: str | None = None, until: str | None = None) -> dict:
     """{runs, planned, days, today}: the runs of `day` (a calendar date in the app's zone,
     midnight to midnight: a run's `day`; default: today) or of one `schedule` (its newest
@@ -202,7 +202,6 @@ async def list_runs(request: Request, day: str | None = None,
     failed}. A run's `asked`: an approval waits in it or in a sub-agent of it
     (approvals.asked)."""
     from ..approvals import asked
-    services = request.app.state.services
     cfg, store = services.cfg, services.store
     waits = asked(services)
     held = getattr(services.schedules, "held", None)
@@ -241,10 +240,9 @@ async def list_runs(request: Request, day: str | None = None,
 
 
 @router.get("/runs/{rid}")
-async def get_run(request: Request, rid: str) -> dict:
+async def get_run(request: Request, services: TheServices, rid: str) -> dict:
     """{run, prompt, reviewer_prompt, note}: the run, and what its schedule asks filled
     for its date (run_date of its first try, first_slot; null for a deleted schedule)."""
-    services = request.app.state.services
     cfg, store = services.cfg, services.store
     def one(c):
         r = c.execute(f"{ROW} WHERE r.id = ?", (rid,)).fetchone()
@@ -265,15 +263,15 @@ async def get_run(request: Request, rid: str) -> dict:
 
 
 @router.post("/runs/{rid}/stop")
-async def stop_run(request: Request, rid: str) -> dict:
+async def stop_run(request: Request, store: TheStore, cfg: TheConfig, rid: str) -> dict:
     """A waiting or running run stops, `stopped` "Stopped by <user>"; a running one's
     turn is aborted. -> {run}. 404: no such run; 400: it has finished."""
-    exists = await request.app.state.services.store.read(lambda c: c.execute(
+    exists = await store.read(lambda c: c.execute(
         "SELECT 1 FROM runs WHERE id = ?", (rid,)).fetchone())
     if exists is None:
         raise NotFound("run")
     out = await _scheduler(request).end(rid, "stopped",
-                                        request.app.state.services.cfg.substitute(STOPPED))
+                                        cfg.substitute(STOPPED))
     if out is None:
         raise Invalid("run", "The run has finished.")
     return {"run": out}

@@ -8,11 +8,12 @@ import logging
 
 import anyio
 import httpx
-from fastapi import APIRouter, Request, WebSocket
+from fastapi import APIRouter, WebSocket
 from pydantic import BaseModel
 
 from ..api.origin import ws_origin_ok
 from ..api.deps import GONE, page_frames
+from ..core.route_params import TheConfig, TheServices, TheStore
 from .. import homes
 from ..errors import CelineError, not_set_up
 from ..settings.services import unreachable
@@ -32,14 +33,13 @@ NO_BOX = not_set_up("the browser")
 
 
 @router.get("/browser")
-async def browser(request: Request) -> dict:
+async def browser(store: TheStore, cfg: TheConfig) -> dict:
     """The box's status: state (starting, up or down; unreachable when it does not
     answer, off without a box), reason, taken (since when the user has it, epoch, or
     null), front (the tab on the screen, or null), screen ({w, h}: the live view's size
     in px, the box's) and its tabs with name, url, title, busy and conversation (the
     one that opened it, {id, title, kind, link}, or null: the user's own, or too new to
     know)."""
-    cfg = request.app.state.services.cfg
     if not sync.url(cfg):
         return {"state": "off", "reason": NO_BOX, "taken": None, "tabs": []}
     try:
@@ -50,7 +50,7 @@ async def browser(request: Request) -> dict:
                 "taken": None, "tabs": []}
     except BrowserRefused as e:
         raise _refused(e) from None
-    by = await tabs.openers(request.app.state.services.store)
+    by = await tabs.openers(store)
     out["tabs"] = [{**t, "conversation": by.get(t.get("name"))} for t in out.get("tabs") or []]
     return out
 
@@ -61,7 +61,7 @@ class Control(BaseModel):
 
 
 @router.post("/browser/control")
-async def control(request: Request, body: Control) -> dict:
+async def control(store: TheStore, cfg: TheConfig, body: Control) -> dict:
     """Take over (its calls are refused, Xvnc takes your keys and mouse), give back (its
     next result says when you had it), or restart (answers once it is up or down).
     front and close (with tab): that tab to the front or closed, {"front"}; a tab in a
@@ -71,7 +71,6 @@ async def control(request: Request, body: Control) -> dict:
     on_tab = body.action in ("front", "close")
     if on_tab and not body.tab:
         raise CelineError("bad_request", f"{body.action} needs a tab.", 400)
-    cfg = request.app.state.services.cfg
     try:
         res = await sync.control(cfg, body.action, body.tab if on_tab else None)
     except httpx.HTTPError as e:
@@ -87,7 +86,7 @@ async def control(request: Request, body: Control) -> dict:
             return {"refused": f"Tab {body.tab} is closed already."}
         raise _refused(e) from None
     if on_tab:
-        request.app.state.services.store.emit_global({"type": BROWSER_STATE})
+        store.emit_global({"type": BROWSER_STATE})
     return res
 
 
@@ -100,13 +99,13 @@ class Call(BaseModel):
 
 
 @router.post("/browser/calls")
-async def call(request: Request, body: Call) -> dict:
+async def call(store: TheStore, cfg: TheConfig, services: TheServices, body: Call) -> dict:
     """The user's console: one of its browser tools (open, act, scroll, close, look) with
     its arguments, run by the same code as its call, on the tab named in args (the tab
     in front when none is). -> {"content": the text it would read, "is_error",
     "display": as its call's row has it, its shots kept as attachments without a
     message, which the next cleanup removes}."""
-    skill = request.app.state.services.registry.skills.get("browser")
+    skill = services.registry.skills.get("browser")
     if skill is None:
         raise CelineError("unavailable", "The browser is off.", 409)
     if body.tool not in TOOLS:
@@ -114,7 +113,7 @@ async def call(request: Request, body: Call) -> dict:
     args = dict(body.args)
     if not args.get("tab"):
         try:
-            args["tab"] = (await sync.status(request.app.state.services.cfg)).get(
+            args["tab"] = (await sync.status(cfg)).get(
                 "front") or "console"
         except (httpx.HTTPError, BrowserRefused):
             args["tab"] = "console"
@@ -123,7 +122,7 @@ async def call(request: Request, body: Call) -> dict:
         pass
 
     ctx = ToolContext(conversation_id="", turn_id="", tool_call_id="",
-                      store=request.app.state.services.store, config=request.app.state.services.cfg,
+                      store=store, config=cfg,
                       emit=emit)
     try:
         res = await getattr(skill, body.tool)(ctx, **args)
@@ -163,14 +162,13 @@ def call_line(name: str, args: dict) -> str:
 
 
 @router.get("/browser/calls")
-async def history(request: Request, q: str = "", failed: bool = False,
+async def history(store: TheStore, services: TheServices, q: str = "", failed: bool = False,
                   before: str | None = None, limit: int = 100) -> dict:
     """The agent's browser calls, newest first: {calls: [{id, tool, tab, line, state (running,
     done, failed, cancelled), at, shots, display, conversation: {id, title, link}}], total,
     failed (how many failed), next (the `before` of the next page)}. `q` looks in the
     line, `failed` keeps the failed ones. The calls an MCP server shows here (mcp.placed,
     the Mac's browser) come with their row's sentence as the line."""
-    services = request.app.state.services
     placed = [w for w, p in services.store.tool_places.items() if p["place"] == "browser"]
 
     def fn(c) -> tuple[list, dict]:
@@ -185,7 +183,7 @@ async def history(request: Request, q: str = "", failed: bool = False,
         return rows, {cid: homes.of(c, cid)["link"] for cid in {r["conversation_id"] for r in rows}}
 
     # note: every call is read and matched here; a paged query once it has many thousands
-    rows, links = await request.app.state.services.store.read(fn)
+    rows, links = await store.read(fn)
     calls = []
     for r in rows:
         args, display = json_object(r["arguments"]), json_object(r["display"])

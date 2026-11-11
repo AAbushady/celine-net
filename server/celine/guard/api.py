@@ -10,7 +10,8 @@ import copy
 from fastapi import APIRouter, Header, Request, Response
 
 from .. import reload
-from ..api.deps import cfg_of, etag, json_body, person_only, services_of, settings_of
+from ..api.deps import etag, json_body, person_only, settings_of
+from ..core.route_params import TheServices, cfg_of
 from ..errors import CelineError, NotFound
 from ..settings import files, write
 from ..settings.files import Invalid, version
@@ -22,7 +23,7 @@ router = APIRouter(prefix="/api")
 
 
 @router.get("/guard/decisions")
-async def list_decisions(request: Request, decision: str | None = None,
+async def list_decisions(request: Request, services: TheServices, decision: str | None = None,
                          source: str | None = None, turn: str | None = None,
                          rule: str | None = None, mode: str | None = None,
                          limit: int = 100, before: int | None = None) -> dict:
@@ -37,7 +38,7 @@ async def list_decisions(request: Request, decision: str | None = None,
     if mode is not None and mode not in ("watch", "on"):
         raise Invalid("mode", "This must be watch or on.")
     limit = max(1, min(limit, 500))
-    rows = await decisions.listing(services_of(request).store, decision=decision,
+    rows = await decisions.listing(services.store, decision=decision,
                                    source=source, turn=turn, rule=rule, mode=mode,
                                    limit=limit + 1, before=before)
     more = len(rows) > limit
@@ -46,7 +47,7 @@ async def list_decisions(request: Request, decision: str | None = None,
 
 
 @router.get("/guard/decisions/{rid}")
-async def get_decision(rid: int, request: Request) -> dict:
+async def get_decision(rid: int, request: Request, services: TheServices) -> dict:
     """One decision whole, for its detail view: the row (p is the score, model, ms,
     quote, why, piece, ...), the call's `arguments`, Bastet's `line`, `kind` and
     `actions` (store.one), the `question` the judge was asked
@@ -54,7 +55,6 @@ async def get_decision(rid: int, request: Request) -> dict:
     code decided alone), the `prompt` file that framed it, and its `banner` (null when
     it shows none)."""
     person_only(request)
-    services = services_of(request)
     row = await decisions.one(services.store, rid)
     if row is None:
         raise NotFound("decision")
@@ -73,46 +73,46 @@ async def get_decision(rid: int, request: Request) -> dict:
 # ---- the freeze -------------------------------------------------------------------------
 
 @router.get("/guard/freeze")
-async def get_frozen(request: Request) -> dict:
+async def get_frozen(request: Request, services: TheServices) -> dict:
     """{"frozen": the open freeze or null}."""
     person_only(request)
-    return {"frozen": await freezes.frozen(services_of(request).store)}
+    return {"frozen": await freezes.frozen(services.store)}
 
 
 @router.post("/guard/freeze")
-async def post_freeze(request: Request) -> dict:
+async def post_freeze(request: Request, services: TheServices) -> dict:
     """{"why": "..."}: the owner freezes it. Idempotent. -> {"frozen": the freeze}."""
     person_only(request)
     body = await json_body(request, allow=("why",))
     why = body.get("why") or "Frozen by hand."
     if not isinstance(why, str):
         raise Invalid("why", "This must be text.")
-    return {"frozen": await freezes.freeze(services_of(request), by="user", why=why)}
+    return {"frozen": await freezes.freeze(services, by="user", why=why)}
 
 
 @router.delete("/guard/freeze")
-async def post_unfreeze(request: Request) -> dict:
+async def post_unfreeze(request: Request, services: TheServices) -> dict:
     """The agent goes on. Idempotent. -> {"unfrozen": the freeze that ended, or null}."""
     by = owner.session(request)
-    return {"unfrozen": await freezes.unfreeze(services_of(request), by=by)}
+    return {"unfrozen": await freezes.unfreeze(services, by=by)}
 
 
 # ---- its texts: persona, talk, note ------------------------------------------------------
 
 @router.get("/guard/texts")
-async def get_texts(request: Request) -> dict:
+async def get_texts(request: Request, services: TheServices) -> dict:
     """{"texts": {persona, talk, note: {text, default, own}}} (persona.py)."""
     person_only(request)
-    return {"texts": await services_of(request).store.read(persona.view)}
+    return {"texts": await services.store.read(persona.view)}
 
 
 @router.put("/guard/texts/{field}")
-async def put_text(field: str, request: Request) -> dict:
+async def put_text(field: str, request: Request, services: TheServices) -> dict:
     """{"text": the text, or null for the default}: saved with its History. -> as GET;
     the event `guard.texts.changed` tells every page."""
     person_only(request)
     body = await json_body(request, need=("text",), allow=("text",))
-    store = services_of(request).store
+    store = services.store
     await store.write(lambda c: persona.write(c, field, body["text"]))
     store.emit_global({"type": "guard.texts.changed"})
     return {"texts": await store.read(persona.view)}
@@ -121,7 +121,7 @@ async def put_text(field: str, request: Request) -> dict:
 # ---- the banners in the chat -------------------------------------------------------------
 
 @router.post("/guard/banners/{rid}/replies")
-async def answer_banner(rid: int, request: Request) -> dict:
+async def answer_banner(rid: int, request: Request, services: TheServices) -> dict:
     """The owner answers Bastet in a banner's thread: {"text": their words} (read by the
     guard role) or {"button": banners.BUTTONS}. -> {"banner": the banner, its answer
     last in its thread}. 503 bastet_away when the reader cannot answer now."""
@@ -135,7 +135,7 @@ async def answer_banner(rid: int, request: Request) -> dict:
     if text is not None and (not isinstance(text, str) or not text.strip()):
         raise Invalid("text", "This must be text.")
     try:
-        got = await banners.answer(services_of(request), rid, by=by, text=text, button=button)
+        got = await banners.answer(services, rid, by=by, text=text, button=button)
     except KeyError:
         raise NotFound("banner") from None
     except Unavailable as e:
@@ -147,19 +147,18 @@ async def answer_banner(rid: int, request: Request) -> dict:
 # ---- passes -------------------------------------------------------------------------------
 
 @router.get("/guard/passes")
-async def list_passes(request: Request) -> dict:
+async def list_passes(request: Request, services: TheServices) -> dict:
     """{"passes": every pass that holds now, each with its rule's `label` and a `line`
     saying where and until when (passes.shown)}."""
     person_only(request)
-    services = services_of(request)
     return {"passes": await passes_mod.shown(services.store, services.cfg)}
 
 
 @router.delete("/guard/passes/{pid}")
-async def end_pass(pid: int, request: Request) -> dict:
+async def end_pass(pid: int, request: Request, services: TheServices) -> dict:
     """The pass ends now (the event guard.passes). 404 when no such pass holds."""
     person_only(request)
-    if not await passes_mod.end(services_of(request).store, pid):
+    if not await passes_mod.end(services.store, pid):
         raise NotFound("pass")
     return {"ended": pid}
 
@@ -187,7 +186,7 @@ async def get_guard_rules(request: Request, response: Response) -> dict:
 
 
 @router.put("/guard/rules")
-async def put_guard_rules(request: Request, response: Response,
+async def put_guard_rules(request: Request, services: TheServices, response: Response,
                           if_match: str | None = Header(default=None)) -> dict:
     """The tables to change, merged into the saved rules: {"chain": {provider, model}}
     changes only those two keys. Validated as the file is (guard/rules.py)."""
@@ -206,7 +205,7 @@ async def put_guard_rules(request: Request, response: Response,
                     merged.setdefault("gates", {}).setdefault(cls, {}).update(sinks)
             else:
                 merged.setdefault(name, {}).update(table)
-        out = await reload.commit(services_of(request), {"guard": merged})
+        out = await reload.commit(services, {"guard": merged})
         view = _rules_view(request)
         etag(response, view["version"])
         return {**view, **out}

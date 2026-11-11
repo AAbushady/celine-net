@@ -17,6 +17,7 @@ from ..kb.media import media_dir
 from .attachments import SAFE_FILE_HEADERS, shown_inline
 from ..core.event_types import KB_CHANGED
 from .deps import in_thread
+from ..core.route_params import TheStore
 
 router = APIRouter(prefix="/api")
 
@@ -65,7 +66,7 @@ def _range(request: Request) -> tuple[int | None, int | None]:
 
 
 @router.get("/archive/search")
-async def search(request: Request, q: str = "", kb: str | None = None,
+async def search(request: Request, store: TheStore, q: str = "", kb: str | None = None,
                  chat: str | None = None, person: str | None = None,
                  sort: str = "recent", limit: int = Query(50, ge=1, le=200),
                  cursor: str | None = None, exact: bool = False,
@@ -73,7 +74,7 @@ async def search(request: Request, q: str = "", kb: str | None = None,
                  literal: bool = False) -> dict:
     """Instant search."""
     ts_from, ts_to = _range(request)
-    ids = await snapshot(request.app.state.services.store)
+    ids = await snapshot(store)
     return await in_thread(_kbs(request).search, q, kbs=kb, chat=chat, person=person,
                       ts_from=ts_from, ts_to=ts_to, sort=sort, identities=ids,
                       limit=limit, cursor=cursor,
@@ -82,19 +83,19 @@ async def search(request: Request, q: str = "", kb: str | None = None,
 
 
 @router.get("/archive/search/facets")
-async def search_facets(request: Request, q: str = "", kb: str | None = None,
+async def search_facets(request: Request, store: TheStore, q: str = "", kb: str | None = None,
                         chat: str | None = None, person: str | None = None,
                         top: int = Query(10, ge=1, le=50), literal: bool = False) -> dict:
     ts_from, ts_to = _range(request)
-    ids = await snapshot(request.app.state.services.store)
+    ids = await snapshot(store)
     return await in_thread(_kbs(request).facets, q, kbs=kb, chat=chat, person=person,
                       ts_from=ts_from, ts_to=ts_to, top=top, identities=ids,
                       correct=not literal)
 
 
 @router.get("/archive/search/parse")
-async def search_parse(request: Request, q: str = "") -> dict:
-    return await in_thread(_kbs(request).parse, q, await snapshot(request.app.state.services.store))
+async def search_parse(request: Request, store: TheStore, q: str = "") -> dict:
+    return await in_thread(_kbs(request).parse, q, await snapshot(store))
 
 
 # ---- chats ---------------------------------------------------------------------------
@@ -205,11 +206,11 @@ async def media(request: Request, sid: str, mid: int, sha: str):
 # ---- people --------------------------------------------------------------------------
 
 @router.get("/sources/{sid}/people")
-async def people(request: Request, sid: str, q: str = "",
+async def people(request: Request, store: TheStore, sid: str, q: str = "",
                  limit: int = Query(100, ge=1, le=1000), offset: int = Query(0, ge=0)) -> dict:
     kb = chat_kb(request, sid)
     kept = frozenset(int(r.split(":", 1)[1]) for r in
-                       await request.app.state.services.store.read(lambda c: kept_sync(c, sid)))
+                       await store.read(lambda c: kept_sync(c, sid)))
     return await in_thread(kb.people, q, limit, offset, kept)
 
 

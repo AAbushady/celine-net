@@ -24,10 +24,11 @@ import sqlite3
 import time
 
 import anyio
-from fastapi import APIRouter, Request, WebSocket
+from fastapi import APIRouter, WebSocket
 
 from ..conversations import changes as changes_mod, view
 from .deps import GONE
+from ..core.route_params import TheStore
 from .origin import ws_origin_ok
 from ..core.event_types import MESSAGE_DELTA, MESSAGE_REASONING, TOOL_PROGRESS
 
@@ -213,7 +214,7 @@ async def _global(state, send, after: int | None) -> None:
 
 
 @router.get("/api/changes")
-async def changes(request: Request, since: int | None = None,
+async def changes(store: TheStore, since: int | None = None,
                   conversations: str = "") -> dict:
     """One call for a client coming back: `since` its last global id, `conversations`
     "id:seq,id:seq" the ones it shows. -> {global (the newest id: follow from there),
@@ -226,5 +227,4 @@ async def changes(request: Request, since: int | None = None,
         cid, _, seq = part.strip().partition(":")
         if cid:
             known[cid] = int(seq) if seq.isdigit() else 0
-    store = request.app.state.services.store
     return await store.read(lambda c: changes_mod.catch_up(c, since, known))

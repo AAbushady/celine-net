@@ -1,7 +1,7 @@
 """The agent's sub-agents over HTTP: the overview, start one, stop one. The same code its
 tools run (skill.py begin, stop_agent), so the API and it see one thing. Each answer is a
 model here (core/dto.py), and the page's types are written from them. A route takes what
-it uses as typed parameters (api/deps.py)."""
+it uses as typed parameters (core/route_params.py)."""
 from __future__ import annotations
 
 from typing import Annotated, Literal
@@ -9,7 +9,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..api.deps import TheConfig, TheServices, TheStore
+from ..core.route_params import TheConfig, TheServices, TheStore
 from ..core.dto import Answer, ConversationCrumb, Display, FilterOption, Home
 from ..core.statuses import AgentState, MissionStatus
 from ..errors import CelineError, NotFound
