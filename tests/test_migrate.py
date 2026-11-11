@@ -24,7 +24,7 @@ EXPECTED_TABLES = {
 }
 LOG_TABLES = {"events", "global_events", "raw_responses", "requests", "terminal_commands"}
 NOTEBOOK_TABLES = {"notebook_index", "notebook_fts"}
-LATEST = 32
+LATEST = 33
 
 
 def _version(db) -> int:
@@ -725,3 +725,78 @@ def test_0032_marks_its_own_deletes_and_draws_the_users_lines_once(tmp_path, mon
     step.up(c, db)
     c.close()
     assert marks() == (agents, lines)
+
+
+def test_0033_gives_what_a_batch_made_its_life_from_when_it_was_made_once(tmp_path, monkeypatch):
+    import hashlib
+    import importlib.util
+    import os
+    d = tmp_path / "migrations"
+    d.mkdir()
+    for f in sorted(MIGRATIONS_DIR.iterdir()):
+        if f.suffix in (".sql", ".py") and f.name < "0033":
+            shutil.copy(f, d)
+    monkeypatch.setattr(m, "MIGRATIONS_DIR", d)
+    db = tmp_path / "celine.db"
+    assert migrate_all(db) == 32
+    (tmp_path / "settings").mkdir()
+    (tmp_path / "settings" / "general.toml").write_text('timezone = "Europe/Berlin"\n')
+    files = {"img": b"\x89PNG one", "late": b"\x89PNG two", "song": b"ID3 three",
+             "lost": b"\x89PNG four", "own": b"mine"}
+    sha = {k: hashlib.sha256(v).hexdigest() for k, v in files.items()}
+    for k, data in files.items():
+        blob = tmp_path / "blobs" / sha[k][:2] / sha[k][2:4] / sha[k]
+        blob.parent.mkdir(parents=True, exist_ok=True)
+        blob.write_bytes(data)
+    # each made at the time, its copy in the dated folder of its day where the app is
+    made = {"img": ("2026-11-09T12:00:00.000+00:00", "images/2026-11-09/13-00-01_a-1.png"),
+            "late": ("2026-11-09T22:59:59.900+00:00", "images/2026-11-10/00-00-00_a-2.png"),
+            "song": ("2026-11-09T12:00:00.000+00:00", "music/2026-11-09/13-00-03_s-3.mp3"),
+            "lost": ("2026-11-09T12:00:00.000+00:00", None)}
+    c = sqlite3.connect(db)
+    c.execute("INSERT INTO media_batches(id, kind, state, items, created_at) "
+              "VALUES('bi', 'images', 'done', '[]', 'x'), ('bm', 'music', 'done', '[]', 'x')")
+    for k, (at, entry) in made.items():
+        c.execute("INSERT INTO blobs(sha256, bytes, media_type, created_at) VALUES(?,?,?,?)",
+                  (sha[k], len(files[k]), "image/png", at))
+        name = entry.rsplit("_", 1)[1] if entry else "a-4.png"
+        c.execute("INSERT INTO attachments(id, sha256, filename, kind, state, created_at, "
+                  "batch_id) VALUES(?, ?, ?, 'image', 'ready', ?, ?)",
+                  (k, sha[k], name, at, "bm" if k == "song" else "bi"))
+        if entry:
+            (tmp_path / entry).parent.mkdir(parents=True, exist_ok=True)
+            (tmp_path / entry).write_bytes(files[k])
+    (tmp_path / "images/2026-11-09/13-00-02_a-1.png").write_bytes(b"other bytes, same name")
+    c.execute("INSERT INTO blobs(sha256, bytes, media_type, created_at) VALUES(?, 4, "
+              "'image/png', 'x')", (sha["own"],))
+    c.execute("INSERT INTO attachments(id, sha256, filename, kind, state, created_at) "
+              "VALUES('own', ?, 'mine.png', 'image', 'ready', 'x')", (sha["own"],))
+    c.commit()
+    c.close()
+    shutil.copy(MIGRATIONS_DIR / "0033_made_life.py", d)
+    assert migrate_all(db) == 33
+    c = sqlite3.connect(db, isolation_level=None)
+    rows = {r[0]: r[1:] for r in c.execute(
+        "SELECT id, life, life_at, folder_path FROM attachments")}
+    assert rows == {
+        "img": ("temporary", made["img"][0], made["img"][1]),
+        "late": ("temporary", made["late"][0], made["late"][1]),
+        "song": ("temporary", made["song"][0], made["song"][1]),
+        "lost": ("temporary", made["lost"][0], None),
+        "own": (None, None, None)}, "its life from when it was made; yours has none"
+    for k in ("img", "late", "song"):
+        blob = tmp_path / "blobs" / sha[k][:2] / sha[k][2:4] / sha[k]
+        assert os.path.samefile(blob, tmp_path / made[k][1]), "its copy is now a link"
+    assert (tmp_path / "images/2026-11-09/13-00-02_a-1.png").read_bytes() == \
+        b"other bytes, same name"
+    assert "attachments_life" in {r[1] for r in c.execute("PRAGMA index_list(attachments)")}
+    with pytest.raises(sqlite3.IntegrityError):
+        c.execute("UPDATE attachments SET life = 'gone' WHERE id = 'img'")
+    spec = importlib.util.spec_from_file_location("made_life", MIGRATIONS_DIR / "0033_made_life.py")
+    step = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(step)
+    c.execute("UPDATE attachments SET life = 'kept', life_at = 'then' WHERE id = 'img'")
+    step.up(c, db)
+    assert c.execute("SELECT life, life_at FROM attachments WHERE id = 'img'").fetchone() == \
+        ("kept", "then"), "run again, it writes nothing new"
+    c.close()

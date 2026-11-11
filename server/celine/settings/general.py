@@ -139,6 +139,10 @@ FIELDS: list[dict[str, Any]] = [
             "How long a backup is kept before it is deleted."),
     _number("Storage", "requests_keep", "Model requests kept", "days", 0, 36_500, 0,
             "How long to keep what each step sent to its model. 0 keeps it forever."),
+    # comfyui/life.py: what a batch made is cleared this many days after it was made
+    _number("Storage", "generated_keep_days", "Images and tracks kept", "days", 0, 36_500, 14,
+            "Images and tracks are cleared this many days after they are created, unless "
+            "they are kept. 0 means no limit.", zero="No limit"),
 ]
 
 

@@ -35,6 +35,61 @@ export type Backlink = {
   title: string
 }
 
+/** A batch of images or tracks (batches.view). */
+export type Batch = {
+  id: string
+  kind: "images" | "music"
+  conversation_id: string | null
+  /** where its conversation opens; null for yours */
+  link: string | null
+  tool_call_id: string | null
+  state: "running" | "done" | "stopped"
+  created_at: string
+  finished_at: string | null
+  items: BatchItem[]
+}
+
+/** One slot of a batch: the request and what became of it. */
+export type BatchItem = {
+  index: number
+  state: "waiting" | "running" | "done" | "failed" | "stopped"
+  seed: number
+  preset?: string | null
+  provider?: string | null
+  attachment?: MadeFile | null
+  seconds?: number | null
+  /** why it failed */
+  error?: string | null
+  /** what a running item does now */
+  note?: string | null
+  warnings?: string[] | null
+  prompt?: string | null
+  negative?: string | null
+  width?: number | null
+  height?: number | null
+  mode?: string | null
+  model?: string | null
+  loras?: string[] | null
+  triggers?: string[] | null
+  source?: SourceImage | null
+  source2?: SourceImage | null
+  source3?: SourceImage | null
+  source4?: SourceImage | null
+  style?: string | null
+  lyrics?: string | null
+  title?: string | null
+  instrumental?: boolean | null
+  duration?: number | null
+}
+
+export type BatchItemPatch = {
+  kept: boolean
+}
+
+export type BatchList = {
+  batches: Batch[]
+}
+
 export type Body_upload_api_documents_post = {
   files: string[]
   paths?: string[]
@@ -267,10 +322,33 @@ export type Keys = {
   auth: string
 }
 
+/** How long what an item made stays (life.py). */
+export type Life = {
+  state: MadeLife
+  display: Display
+  /** when it took this state: made or let go, kept, cleared */
+  at: string
+}
+
 export type LinkBody = {
   refs: string[]
   name: string
 }
+
+/** What an item made: its attachment. */
+export type MadeFile = {
+  id: string
+  sha256: string
+  filename: string
+  media_type: string
+  bytes: number
+  width?: number | null
+  height?: number | null
+  life?: Life | null
+}
+
+/** How long an image or track a batch made stays (attachments.life, comfyui/life.py): temporary until its days are up, kept until it is let go, or cleared. */
+export type MadeLife = "temporary" | "kept" | "cleared"
 
 export type MayType = {
   may_type: boolean
@@ -420,6 +498,14 @@ export type Segments = {
   segments: Segment[]
   has_before: boolean
   has_after: boolean
+}
+
+/** An image an edit starts from: an attachment, or the agent's portrait (id portrait). */
+export type SourceImage = {
+  id: string
+  sha256: string
+  filename: string
+  media_type: string
 }
 
 export type Started = {

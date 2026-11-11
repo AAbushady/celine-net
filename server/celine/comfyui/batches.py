@@ -24,8 +24,9 @@ renders the items that wait, one after the other:
    (server.run). A failed item (ComfyUI refused or failed, the timeout, a model or LoRA
    the catalog lacks) is one failed slot; the next item goes on.
 3. What an item made is an attachment: of the message that holds its call (its image
-   list and edits find it), or of the batch alone (one the user started). It is also
-   kept as a file in images/<date>/ or music/<date>/.
+   list and edits find it), or of the batch alone (one the user started). It also has an
+   entry in images/<date>/ or music/<date>/, a hard link to its blob, and a life: it is
+   cleared after its days unless kept (life.py).
 4. At the end, also after a Stop, an error or a restart's cut: ComfyUI frees its models
    and memory (POST /free), then the leases are released.
 5. A batch of the agent's call that had to wait for the comfy helper's GPU and settled
@@ -44,8 +45,6 @@ import secrets
 import sqlite3
 import time
 from collections.abc import Callable
-from datetime import datetime
-from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -55,9 +54,10 @@ import httpx
 
 from .. import homes
 from ..attachments import blob_path, image_size
-from ..core.ids import new_id, now
+from ..core.ids import new_id, now, when
+from ..core.statuses import MadeLife
 from ..settings.registry import provider_headers
-from . import presets as presets_mod, server as server_mod
+from . import life, presets as presets_mod, server as server_mod
 from .presets import ImageError
 from ..core.event_types import IMAGES_BATCH, MUSIC_BATCH
 
@@ -76,11 +76,22 @@ _EXT = {"image/jpeg": ".jpg", "image/webp": ".webp"}    # a media type's file na
 
 
 def view(b: dict) -> dict:
-    """One shape for a batch wherever it appears: the routes, the event, the display
-    of the call that started it. `link`: where its conversation opens (homes.of), None
-    for the user's own."""
-    return {k: b.get(k) for k in ("id", "kind", "conversation_id", "link", "tool_call_id",
-                                  "state", "created_at", "finished_at", "items")}
+    """One shape for a batch wherever it appears: the routes (api.Batch), the event, the
+    display of the call that started it. `link`: where its conversation opens (homes.of),
+    None for the user's own. A made item's attachment has its `life` (life.view) from the
+    rows, read with the batch (`lives`, never stored in its items)."""
+    lives = b.get("lives") or {}
+    out = {k: b.get(k) for k in ("id", "kind", "conversation_id", "link", "tool_call_id",
+                                 "state", "created_at", "finished_at")}
+    out["items"] = [_with_life(i, lives) for i in b["items"]]
+    return out
+
+
+def _with_life(item: dict, lives: dict[str, dict]) -> dict:
+    a = item.get("attachment")
+    if not a or a.get("id") not in lives:
+        return item
+    return {**item, "attachment": {**a, "life": lives[a["id"]]}}
 
 
 def _link(c: sqlite3.Connection, cid: str | None) -> str | None:
@@ -91,6 +102,7 @@ def _row(c: sqlite3.Connection, r: sqlite3.Row) -> dict:
     d = dict(r)
     d["items"] = json.loads(d["items"])
     d["link"] = _link(c, d["conversation_id"])
+    d["lives"] = life.lives(c, d["id"])
     return d
 
 
@@ -136,6 +148,7 @@ async def list_batches(store, kind: str, conversation: str | None = None,
 
 
 def _publish(store, c: sqlite3.Connection, b: dict) -> None:
+    b["lives"] = life.lives(c, b["id"])
     v = view(b)
     if b["tool_call_id"]:
         c.execute("UPDATE tool_calls SET display=? WHERE id=?",
@@ -159,14 +172,26 @@ async def _insert(store, b: dict) -> None:
     await store.write(fn)
 
 
-async def _save(store, b: dict) -> None:
+async def _save(store, b: dict, drop: tuple[str, ...] = ()) -> None:
+    """The batch as it is now, published; `drop`: attachments it no longer shows (a
+    cleared one made again), their rows gone in the same write."""
     def fn(c: sqlite3.Connection) -> None:
         if c.execute("UPDATE media_batches SET state=?, items=?, finished_at=? WHERE id=?",
                      (b["state"], json.dumps(b["items"], ensure_ascii=False),
                       b["finished_at"], b["id"])).rowcount == 0:
             return                      # gone with its conversation
+        c.executemany("DELETE FROM attachments WHERE id=? AND batch_id=?",
+                      [(aid, b["id"]) for aid in drop])
         _publish(store, c, b)
     await store.write(fn)
+
+
+def publish_stored(store, c: sqlite3.Connection, bid: str) -> None:
+    """Inside a write: batch `bid` as stored, published again (its call's display and its
+    event), after a change to the lives of what it made (life.py)."""
+    r = c.execute("SELECT * FROM media_batches WHERE id=?", (bid,)).fetchone()
+    if r is not None:
+        _publish(store, c, _row(c, r))
 
 
 async def sweep(store) -> int:
@@ -186,6 +211,13 @@ async def sweep(store) -> int:
     return await store.write(fn)
 
 
+def _cleared(b: dict, item: dict) -> bool:
+    """A done item whose file was cleared (life.py), by the lives read with the batch."""
+    a = item.get("attachment") or {}
+    got = (b.get("lives") or {}).get(a.get("id"))
+    return item["state"] == "done" and got is not None and got["state"] == MadeLife.CLEARED
+
+
 def _settle(b: dict) -> None:
     """The end of a batch: what did not finish is stopped."""
     for item in b["items"]:
@@ -194,18 +226,6 @@ def _settle(b: dict) -> None:
         item.pop("note", None)
     b["state"] = "stopped" if any(i["state"] == "stopped" for i in b["items"]) else "done"
     b["finished_at"] = now()
-
-
-def keep(cfg, data: bytes, kind: str, name: str) -> Path:
-    """Everything made also lands in images/<date>/ or music/<date>/ in the data folder
-    (its time zone), a plain folder to browse outside the app."""
-    from ..clock import zone
-    t = datetime.now(zone(cfg))
-    folder = cfg.data_dir / kind / f"{t:%Y-%m-%d}"
-    folder.mkdir(parents=True, exist_ok=True)
-    path = folder / f"{t:%H-%M-%S}_{name}"
-    path.write_bytes(data)
-    return path
 
 
 BATCH_MAX = 16          # slots in one batch: items times count
@@ -397,8 +417,13 @@ class Batches:
             row = await attachments.get(store, wanted)
             if row is None or row["kind"] != "image":
                 raise ImageError(f"There is no image {wanted}.")
+            if row["life"] == MadeLife.CLEARED:
+                from ..clock import zone
+                raise ImageError(f"The image was cleared on "
+                                 f"{when(row['life_at'], zone(self.app.cfg))}: Retry on it "
+                                 f"makes it again.")
             return row
-        row = await attachments.agent_image(store, wanted, cid, self.app.cfg.user)
+        row = await attachments.agent_image(store, wanted, cid, self.app.cfg)
         if isinstance(row, str):
             raise ImageError(row)
         return row
@@ -566,8 +591,10 @@ class Batches:
     async def _notice(self, b: dict, report: Callable[[dict, float], str],
                       waited: float) -> None:
         """The notice from the app to the conversation of the agent's call whose batch
-        waited for the GPU (the module docstring, 5)."""
+        waited for the GPU (the module docstring, 5), with the batch as stored (the lives
+        of what it made)."""
         try:
+            b = await get(self.app.store, b["id"]) or b
             await self.app.intercom.send("system:app", f"agent:{b['conversation_id']}",
                                          report(b, waited), kind="notice")
         except KeyError:
@@ -577,21 +604,24 @@ class Batches:
                                                         "batch": b["id"]})
 
     async def retry(self, bid: str, index: int) -> dict:
-        """Makes one failed or stopped item again, as it was asked (its prompt, preset,
-        size and seed), together with every other failed or stopped item of the batch,
-        and runs the batch for them. ImageError with the sentence why not:
-        the batch is still running, the item is done, or it never reached a preset (its
-        own error says why). -> the batch as it is then."""
+        """Makes one failed, stopped or cleared item again, as it was asked (its prompt,
+        preset, size and seed), together with every other failed or stopped item of the
+        batch, and runs the batch for them. What a cleared item made goes with its row: made
+        again, it is a new file with a new life (life.py). ImageError with the sentence why
+        not: the batch is still running, the item is done and not cleared, or it never
+        reached a preset (its own error says why). -> the batch as it is then."""
         b = await get(self.app.store, bid)
         if b is None:
             raise ImageError("There is no such batch.")
         if b["state"] == "running" or bid in self.running:
             raise ImageError("The batch is still running.")
         item = next((i for i in b["items"] if i["index"] == index), None)
-        if item is None or item["state"] not in ("failed", "stopped"):
-            raise ImageError("Only a failed or stopped item can be made again.")
+        cleared = item is not None and _cleared(b, item)
+        if item is None or not (cleared or item["state"] in ("failed", "stopped")):
+            raise ImageError("Only a failed, stopped or cleared item can be made again.")
         if "preset" not in item:
             raise ImageError(item.get("error") or "This item cannot be made again.")
+        drop = (item["attachment"]["id"],) if cleared else ()
         # one Retry makes every other failed or stopped item again too (a ComfyUI crash
         # usually takes the whole rest of the batch with it)
         for it in b["items"]:
@@ -605,7 +635,7 @@ class Batches:
         # held as running before the first await: a second Retry at once is refused
         self.running[bid] = (anyio.CancelScope(), anyio.Event())
         try:
-            await _save(self.app.store, b)
+            await _save(self.app.store, b, drop)
         except BaseException:
             self.running.pop(bid, None)
             # the runner never started: a batch left "running" could not be stopped or retried
@@ -717,7 +747,7 @@ class Batches:
         data, media_type = await server_mod.run(comfy, graph, note, timeout)
         w, h = image_size(data) or (item["width"], item["height"])
         ext = _EXT.get(media_type, ".png")
-        row = await self._keep(b, data, f"{p.id}-{item['seed']}{ext}", media_type)
+        row = await self._store(b, data, f"{p.id}-{item['seed']}{ext}", media_type)
         item["attachment"] = {**row, "width": w, "height": h}
         item.update(choice.recipe())
 
@@ -732,15 +762,19 @@ class Batches:
         data, media_type = await server_mod.run(comfy, p.build(values), note, timeout)
         slug = re.sub(r"[^a-z0-9]+", "_", item["title"].lower()).strip("_")[:32] or "track"
         ext = ".mp3" if "mpeg" in media_type or "mp3" in media_type else ".flac"
-        item["attachment"] = await self._keep(b, data, f"{slug}-{item['seed']}{ext}",
-                                              media_type)
+        item["attachment"] = await self._store(b, data, f"{slug}-{item['seed']}{ext}",
+                                               media_type)
 
-    async def _keep(self, b: dict, data: bytes, name: str, media_type: str) -> dict:
+    async def _store(self, b: dict, data: bytes, name: str, media_type: str) -> dict:
+        """What an item made: an attachment of the batch (and of its call's message), and
+        its entry in the dated folder (life.dated)."""
         from .. import attachments
-        cfg = self.app.cfg
-        row = await attachments.save_generated(cfg, self.app.store, data, name, media_type,
+        cfg, store = self.app.cfg, self.app.store
+        row = await attachments.save_generated(cfg, store, data, name, media_type,
                                                b["tool_call_id"], batch_id=b["id"])
-        keep(cfg, data, b["kind"], name)
+        entry = await anyio.to_thread.run_sync(life.dated, cfg, row["sha256"], b["kind"], name)
+        await store.write(lambda c: c.execute(
+            "UPDATE attachments SET folder_path=? WHERE id=?", (entry, row["id"])))
         return {k: row[k] for k in ("id", "sha256", "filename", "media_type", "bytes")}
 
 

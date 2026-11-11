@@ -199,7 +199,7 @@ class IntercomSkill:
             return ToolResult(content=IN_CHAT.format(user=self.cfg.user), is_error=True)
         files = []
         for ref in attachments or []:
-            row = await agent_file(ctx.store, ref.strip(), ctx.conversation_id, self.cfg.user)
+            row = await agent_file(ctx.store, ref.strip(), ctx.conversation_id, self.cfg)
             if isinstance(row, str):
                 return ToolResult(content=row, is_error=True)
             files.append(row["id"])

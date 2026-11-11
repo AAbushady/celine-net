@@ -142,8 +142,22 @@ AGENT_ENDED = {
     TurnState.CAPPED: AgentState.PAUSED,
 }
 
+class MadeLife(Shown):
+    """How long an image or track a batch made stays (attachments.life, comfyui/life.py):
+    temporary until its days are up, kept until it is let go, or cleared."""
+    TEMPORARY = "temporary"
+    KEPT = "kept"
+    CLEARED = "cleared"
+
+
+_MADE_LIFE_SHOWN = {
+    MadeLife.TEMPORARY: ("Temporary", Tone.MUTED),
+    MadeLife.KEPT: ("Kept", Tone.SUCCESS),
+    MadeLife.CLEARED: ("Cleared", Tone.MUTED),
+}
+
 # each shown set's members as (words, tone); one table per set, since a member equals its
 # string and "done" of one set would be "done" of another in a shared table
 _DISPLAYS: dict[type[Shown], Mapping[Any, tuple[str, Tone]]] = {
     RunState: _RUN_SHOWN, MissionStatus: _MISSION_SHOWN,
-    PlanStepState: _PLAN_STEP_SHOWN, AgentState: _AGENT_SHOWN}
+    PlanStepState: _PLAN_STEP_SHOWN, AgentState: _AGENT_SHOWN, MadeLife: _MADE_LIFE_SHOWN}

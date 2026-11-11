@@ -52,8 +52,7 @@ class Appearance:
     async def _image(self, ctx: ToolContext, ref: str) -> tuple[bytes, str] | str:
         """(the image's bytes, how to name it), or the sentence why there is none."""
         ref = ref.strip()
-        row = await attachments.agent_image(ctx.store, ref, ctx.conversation_id,
-                                          self.cfg.user)
+        row = await attachments.agent_image(ctx.store, ref, ctx.conversation_id, self.cfg)
         if not isinstance(row, str):
             data = attachments.blob_path(self.cfg, row["sha256"]).read_bytes()
             return data, f"image {row['id'][:attachments.SHORT]}"

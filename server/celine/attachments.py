@@ -17,7 +17,9 @@ answers, so a fallback in the chat list gets what it can take:
 An image or a track a batch makes (comfyui/batches.py) is stored the same way and
 belongs to its batch, and in its batch also to the message that holds its call. That
 message goes to a model as its tool calls only, so a generated image never reaches a
-model. A batch the user started has no message: its files are the batch's alone. A
+model. A batch the user started has no message: its files are the batch's alone. Such a
+file has a life (`life`, `life_at`, comfyui/life.py): temporary, kept, or cleared after
+its days, when its row stays and its bytes go. A
 picture a tool keeps for the user, like a browser shot (skills/browser.py), belongs to
 the call alone: no message holds it, so only the call's row shows it, and its image
 list and edits never see it.
@@ -29,6 +31,7 @@ carries (a file the agent sent the user there) stays. A file nothing points
 at goes once it is KEEP old, a half-written upload once untouched for KEEP. A picture's
 smaller copies (`resized`) go with its file. A file and
 its rows are written and dropped in one writer job, so gc never sees one without the other.
+A blob's file is written once: the same bytes saved again find it in place.
 """
 from __future__ import annotations
 
@@ -137,7 +140,10 @@ async def _finish(cfg, store, tmp: Path, sha: str, size: int, head: bytes,
         row = _insert(c, sha, size, media_type, filename, kind, store=store, pixels=pixels,
                       **where)
         final.parent.mkdir(parents=True, exist_ok=True)
-        tmp.replace(final)
+        if final.exists():          # the same bytes: the file in place stays, with its links
+            tmp.unlink()
+        else:
+            tmp.replace(final)
         return row
 
     try:
@@ -462,10 +468,7 @@ async def gc(cfg, store, at: datetime | None = None) -> int:
             "(SELECT portrait FROM agent WHERE portrait IS NOT NULL)", (iso(old),))]
         for sha in shas:
             c.execute("DELETE FROM blobs WHERE sha256=?", (sha,))
-            path = blob_path(cfg, sha)
-            path.unlink(missing_ok=True)
-            for copy in path.parent.glob(f"{sha}.w*.webp"):     # resized()
-                copy.unlink(missing_ok=True)
+            drop_blob(cfg, sha)
         return shas
 
     orphans = await store.write(fn)
@@ -480,6 +483,15 @@ async def gc(cfg, store, at: datetime | None = None) -> int:
     if orphans:
         log.info("blobs swept", extra={"event": "attachment.gc", "count": len(orphans)})
     return len(orphans)
+
+
+def drop_blob(cfg, sha: str) -> None:
+    """A blob's file and its smaller copies (`resized`) off the disk; its row is the
+    caller's."""
+    path = blob_path(cfg, sha)
+    path.unlink(missing_ok=True)
+    for copy in path.parent.glob(f"{sha}.w*.webp"):
+        copy.unlink(missing_ok=True)
 
 
 # ---- the rows: attachments and the blobs they point at ----------------------------
@@ -578,11 +590,13 @@ def _insert(c: sqlite3.Connection, sha: str, size: int, media_type: str, filenam
               "VALUES(?,?,?,?,?,?) ON CONFLICT(sha256) DO UPDATE SET "
               "width=coalesce(width, excluded.width), height=coalesce(height, excluded.height)",
               (sha, size, media_type, w, h, ts))
+    # what a batch makes begins its life now (comfyui/life.py)
+    life, life_at = ("temporary", ts) if batch_id is not None else (None, None)
     c.execute("INSERT INTO attachments(id,message_id,tool_call_id,batch_id,sha256,"
-              "filename,kind,state,created_at,description,described_by,described_for) "
-              "VALUES(?,?,?,?,?,?,?,'ready',?,?,?,?)",
+              "filename,kind,state,created_at,description,described_by,described_for,"
+              "life,life_at) VALUES(?,?,?,?,?,?,?,'ready',?,?,?,?,?,?)",
               (aid, mid, call, batch_id, sha, filename, kind, ts, text, by,
-               "" if described else None))
+               "" if described else None, life, life_at))
     if mid is not None:
         store.event(c, r["conversation_id"], MESSAGE_ATTACHMENTS,
                     {"message_id": mid, "attachments": of_message(c, mid)})
@@ -592,11 +606,12 @@ def _insert(c: sqlite3.Connection, sha: str, size: int, media_type: str, filenam
 
 
 async def get(store, aid: str) -> dict | None:
+    """One attachment; `life` and `life_at` for one a batch made (comfyui/life.py)."""
     def fn(c: sqlite3.Connection) -> dict | None:
         r = c.execute(
             "SELECT a.id, a.message_id, a.filename, a.kind, a.sha256, b.bytes, "
-            "b.media_type, a.description, a.described_by, a.described_for "
-            "FROM attachments a JOIN blobs b ON b.sha256 = a.sha256 "
+            "b.media_type, a.description, a.described_by, a.described_for, a.batch_id, "
+            "a.life, a.life_at FROM attachments a JOIN blobs b ON b.sha256 = a.sha256 "
             "WHERE a.id=?", (aid,)).fetchone()
         return dict(r) if r else None
 
@@ -630,14 +645,15 @@ async def set_box_path(store, aid: str, path: str) -> None:
 async def images(store, conversation_id: str | None = None,
                  aid: str | None = None) -> list[dict]:
     """Sent image attachments with the role of their message and its conversation,
-    newest first: those of one conversation, or those whose id starts with `aid`."""
+    newest first: those of one conversation, or those whose id starts with `aid`. One a
+    batch made has its `life` and `life_at` (comfyui/life.py)."""
     def fn(c: sqlite3.Connection) -> list[dict]:
         where, args = (("substr(a.id, 1, ?)=?", (len(aid), aid)) if aid
                        else ("m.conversation_id=?", (conversation_id,)))
         out = []
         for r in c.execute(
                 "SELECT a.id, a.filename, a.sha256, b.media_type, m.role, "
-                "m.conversation_id, a.created_at, "
+                "m.conversation_id, a.created_at, a.life, a.life_at, "
                 # the batch item that made it: prompt, preset, seed, size, source
                 "(SELECT je.value FROM media_batches mb, json_each(mb.items) je "
                 " WHERE mb.id = a.batch_id AND je.value ->> '$.attachment.id' = a.id) "
@@ -657,10 +673,11 @@ async def images(store, conversation_id: str | None = None,
 SHORT = 8           # an image's short id: the first characters of its attachment id
 
 
-async def agent_image(store, ref: str, cid: str | None, user: str) -> dict | str:
+async def agent_image(store, ref: str, cid: str | None, cfg) -> dict | str:
     """An image it may use by its short id (or a longer start of its id): one it made
     (an attachment of its own message, in any conversation) or one the user attached to
-    conversation `cid`. -> its attachment row, or the sentence that says why not."""
+    conversation `cid`, and not cleared. -> its attachment row, or the sentence that says
+    why not."""
     wanted = ref
     if not re.fullmatch(r"[0-9a-f]{4,32}", wanted):
         return (f"{wanted} is not an image's short id: use the {SHORT} characters from "
@@ -673,23 +690,26 @@ async def agent_image(store, ref: str, cid: str | None, user: str) -> dict | str
         r["role"] == "user" and r["conversation_id"] == cid)), None)
     if row is None:
         return (f"There is no image {wanted} that you may use: only an image you made, or "
-                f"one {user} attached to this conversation.")
+                f"one {cfg.user} attached to this conversation.")
+    if row["life"] == "cleared":
+        from .comfyui.life import cleared_line
+        return cleared_line(cfg, "images", row["id"], row["life_at"], "")
     return row
 
 
-async def agent_file(store, ref: str, cid: str, user: str) -> dict | str:
+async def agent_file(store, ref: str, cid: str, cfg) -> dict | str:
     """A file it may send on by its short id (or a longer start of its id): one on its
     own message (in any conversation: a voice note, a file it sent) or one the user
-    attached to conversation `cid`. -> its attachment row, or the sentence that says
-    why not."""
+    attached to conversation `cid`, and not cleared. -> its attachment row, or the
+    sentence that says why not."""
     if not re.fullmatch(r"[0-9a-f]{4,32}", ref):
         return f"{ref} is not a file's short id: use the {SHORT} characters, like f5ef648c."
 
     def fn(c: sqlite3.Connection) -> list[dict]:
         return [dict(r) for r in c.execute(
-            "SELECT a.id, a.filename, m.role, m.conversation_id FROM attachments a "
-            "JOIN messages m ON m.id = a.message_id WHERE substr(a.id, 1, ?)=?",
-            (len(ref), ref))]
+            "SELECT a.id, a.filename, a.kind, a.life, a.life_at, m.role, m.conversation_id "
+            "FROM attachments a JOIN messages m ON m.id = a.message_id "
+            "WHERE substr(a.id, 1, ?)=?", (len(ref), ref))]
     rows = await store.read(fn)
     if len(rows) > 1:
         return f"Several files start with {ref}: use all {SHORT} characters of its short id."
@@ -697,7 +717,11 @@ async def agent_file(store, ref: str, cid: str, user: str) -> dict | str:
         r["role"] == "user" and r["conversation_id"] == cid)), None)
     if row is None:
         return (f"There is no file {ref} that you may send: only a file on your own "
-                f"message, or one {user} attached to this conversation.")
+                f"message, or one {cfg.user} attached to this conversation.")
+    if row["life"] == "cleared":
+        from .comfyui.life import cleared_line
+        kind = "images" if row["kind"] == "image" else "music"
+        return cleared_line(cfg, kind, row["id"], row["life_at"], " and cannot be sent")
     return row
 
 
