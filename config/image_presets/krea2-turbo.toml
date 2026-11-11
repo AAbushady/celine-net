@@ -38,10 +38,9 @@ Variant: direct (the default) sends your prompt as written. expand has the text 
 rewrite a short brief as a full caption first; gently keeps your wording and adds only
 the framing and the light.
 
-Models: the turbo model runs 8 steps (about 10 to 15 s). model "krea2/krea2_raw_bf16"
-runs 40 steps at cfg 3.5 (about 50 s): use it for full quality, fine skin, or several
-people interacting. A model whose file name has no "turbo" gets the full settings by
-itself.
+Speed: 8 steps, about 7 s an image at the default size once the models are loaded;
+expand and gently add about 3 s for the rewrite. The first image of a batch also loads
+the models, about a minute more.
 """
 example = "A 35mm candid portrait of a 26-year-old barista resting her chin on one hand behind a worn wooden counter. She wears a dark green canvas apron over a cream knit sweater, loose strands of brown hair across her forehead, natural skin with subtle freckles. Morning sun comes through the front windows of the busy coffee shop and lights the copper espresso pipes. Shot on an 85mm f/1.8 lens, shallow depth of field, gentle film grain."
 
