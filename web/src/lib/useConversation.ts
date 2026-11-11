@@ -303,6 +303,9 @@ function apply(s: State, ev: Frame): State {
       if (!b) return s
       return mapCalls(s, c => c.id === b.tool_call_id || asBatch(c.display)?.id === b.id, c => ({ ...c, display: b }))
     }
+    // a model file it asked for moved on: its row says where the request stands now
+    case 'model_file.state':
+      return mapCalls(s, c => c.id === ev.tool_call_id, c => ({ ...c, display: ev.display ?? null, words: ev.words }))
     case 'tool.progress':
       return mapCalls(s, c => c.id === ev.tool_call_id, c => ({ ...c, progress: { note: ev.note } }))
     case 'llm.queue': {

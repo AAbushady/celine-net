@@ -3,7 +3,8 @@
    page, in Waiting for you. Bastet's banner row (GuardBanner.css): the raised hand, the
    server's one-sentence title, its "?" (why it is asked), Approve, Deny and Details (the
    long text, whole, in a Sheet); the call's own data as facts under it, where long
-   values wrap. `onOpen` (Waiting for you): the line that names where its work lives,
+   values wrap, a fact with an address a link that opens it in a new tab (a model file's
+   page). `onOpen` (Waiting for you): the line that names where its work lives,
    and Open. Your answer is the server's to apply; the card goes by the events
    approval.closed and approvals.changed, here and in every other tab. */
 import { useState } from 'react'
@@ -43,7 +44,13 @@ export function ApprovalCard({ ask, alone = false, onOpen }: {
       {(where || ask.facts.length > 0) && (
         <div className="guard-banner__thread">
           {where && <p className="guard-banner__said">{where}</p>}
-          {ask.facts.length > 0 && <Facts items={ask.facts} className="approval__facts" />}
+          {ask.facts.length > 0 && (
+            <Facts className="approval__facts" items={ask.facts.map(f => ({
+              label: f.label,
+              value: f.href?.startsWith('https://')
+                ? <a href={f.href} target="_blank" rel="noopener noreferrer">{f.value}</a> : f.value,
+            }))} />
+          )}
         </div>
       )}
       {details && ask.detail && (

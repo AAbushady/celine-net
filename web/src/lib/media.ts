@@ -5,11 +5,11 @@
    item made has its life (temporary, kept, cleared), the server's; Keep and Unkeep ask
    for a change and the batch's event brings it. */
 import { del, json, post, request } from './api'
-import type { Batch, BatchList, MadeFile } from './api.gen'
+import type { Batch, BatchList, MadeFile, ModelFileList, Removed } from './api.gen'
 import type { ServerEvent } from './bus'
 import type { FormField } from '../ui'
 
-export type { Batch, BatchItem, MadeFile } from './api.gen'
+export type { Batch, BatchItem, MadeFile, ModelFile, ModelFileList } from './api.gen'
 
 export type Kind = 'images' | 'music'
 
@@ -60,6 +60,8 @@ export type Preset = {
   ref: string | null
   /** shipped as it came, a shipped one the user edited, or the user's own upload */
   origin: 'shipped' | 'edited' | 'own'
+  /** an own one the agent proposed and the user approved */
+  proposed: boolean
   /** the editor: its fields and their values (comfyui/presets.py fields, values) */
   fields: FormField[]
   values: Record<string, unknown>
@@ -109,7 +111,14 @@ export const mediaApi = {
     request<Preset>(`/generation-presets/${encodeURIComponent(id)}/workflow`, json('PUT', { workflow })),
   reset: (id: string) => post<Preset>(`/generation-presets/${encodeURIComponent(id)}/reset`),
   remove: (id: string) => del<{ deleted: boolean }>(`/generation-presets/${encodeURIComponent(id)}`),
+  /** the model files the agent asked for, from the comfy helper (comfyui/model_files.py) */
+  modelFiles: () => request<ModelFileList>('/model-files'),
+  removeModelFile: (path: string) =>
+    del<Removed>(`/model-files/${path.split('/').map(encodeURIComponent).join('/')}`),
 }
+
+/** the global events that change the list of model files */
+export const MODEL_FILE_EVENTS = (ev: ServerEvent) => ev.type === 'model_files.changed'
 
 /** a preset's workflow with its placeholders, as a file */
 export const workflowUrl = (id: string) => `/api/generation-presets/${encodeURIComponent(id)}/workflow`

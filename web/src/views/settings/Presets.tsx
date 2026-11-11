@@ -7,7 +7,7 @@
    edited shipped one) or Remove (the user's own), and a form with one field per parameter
    that makes a batch (POST /api/batches). Upload workflow (the head) makes a new preset
    from a workflow in API format with placeholders; the server says what is missing.
-   Below the cards, the newest batches, yours and its own, each a gallery following its
+   A preset the agent proposed says so on its card. Below the cards, the newest batches, yours and its own, each a gallery following its
    events on the global feed; a track's row has Keep and Play, or when it was cleared and
    Retry. */
 import { useState } from 'react'
@@ -17,6 +17,7 @@ import { useServerEvents } from '../../lib/bus'
 import { clock, errorText } from '../../lib/format'
 import { batchEvent, fileUrl, madeFile, mediaApi, ROLE, tileUrl, workflowUrl, type Batch, type Kind, type Param, type Preset } from '../../lib/media'
 import { clearedLine } from '../../lib/pictures'
+import { useName } from '../../lib/name'
 import { useOnline } from '../../lib/socket'
 import { SETTINGS_EVENTS, settingsApi, type Cap, type ProviderView, type RoleView } from '../../lib/settingsApi'
 import { useAction } from '../../lib/useAction'
@@ -31,6 +32,7 @@ export function Presets({ kind, providers, roles, onChanged }: {
   kind: Kind; providers: ProviderView[]; roles: Record<string, RoleView>; onChanged: () => void
 }) {
   const online = useOnline()
+  const agentName = useName()
   const list = useResource(() => mediaApi.presets(kind), [kind], { events: SETTINGS_EVENTS })
   const probe = useResource(() => settingsApi.probeFeature(kind), [kind], { events: SETTINGS_EVENTS })
   const recent = useRecent(kind)
@@ -62,7 +64,8 @@ export function Presets({ kind, providers, roles, onChanged }: {
         <CardGrid on={list.data?.presets} className="presets">
           {presets.map(p => {
             const at = p.ref ? chain.indexOf(p.ref) : -1
-            const facts = [p.family, TASK[p.task], p.size && `${p.size.width}x${p.size.height}`].filter(Boolean).join(', ')
+            const facts = [p.family, TASK[p.task], p.size && `${p.size.width}x${p.size.height}`,
+                           p.proposed && `proposed by ${agentName}`].filter(Boolean).join(', ')
             return (
               <Card key={p.id} title={p.label} subtitle={facts} selected={open === p.id}
                     meta={at >= 0 ? <span title={`Used ${at === 0 ? 'first' : `as number ${at + 1}`}`}><Step n={at + 1} /></span> : undefined}

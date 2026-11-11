@@ -389,6 +389,42 @@ export type MissionIn = {
 /** Where a mission stands (missions.status). */
 export type MissionStatus = "active" | "needs_you" | "done" | "stopped"
 
+/** A model file that came by request, or a request still on its way (model_files.py). */
+export type ModelFile = {
+  /** where it is under the models folder */
+  path: string
+  /** what a batch's loras or model takes */
+  id: string
+  kind: ("lora" | "model") | null
+  /** bytes */
+  size: number | null
+  /** when it came, or when it was asked for */
+  at: string | null
+  preset: string | null
+  preset_label: string | null
+  /** where it came from: huggingface.co, civitai.red */
+  site: string | null
+  /** the hub's title, or the Hugging Face repo */
+  title: string | null
+  /** its page */
+  address: string | null
+  request: string | null
+  state: ModelFileState
+  display: Display
+  /** bytes downloaded, while it downloads */
+  done: number | null
+  removable: boolean
+}
+
+export type ModelFileList = {
+  files: ModelFile[]
+  /** bytes free on the models disk */
+  free: number | null
+}
+
+/** Where a model file the agent asked for stands (model_requests.state, comfyui/model_files.py): its request waits for the user, was denied or not answered; the comfy helper downloads it, has it and waits for ComfyUI to list it, has it listed, or failed. */
+export type ModelFileState = "asked" | "denied" | "unanswered" | "fetching" | "listing" | "ready" | "failed"
+
 export type MusicIn = {
   kind: "music"
   items: MusicItemIn[]
@@ -470,6 +506,10 @@ export type Reindexed = {
 export type Rejected = {
   name: string
   reason: string
+}
+
+export type Removed = {
+  removed: boolean
 }
 
 /** A sub-agent's report up: the intercom message's id and its text. */

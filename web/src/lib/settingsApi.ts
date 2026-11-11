@@ -171,19 +171,21 @@ type EmailView = {
 
 type SecretState = { state: 'set' | 'not set'; set_at: string | null }
 
-type AskKind = 'vault' | 'gate' | 'agent' | 'share' | 'settings' | 'model'
+type AskKind = 'vault' | 'gate' | 'agent' | 'share' | 'settings' | 'model' | 'model_file' | 'preset'
 
 /** one request of the agent's that waits for you, as its card (server/celine/approvals.py
     Ask.card): `vault` a tap, `gate` a tool Bastet asks you about, `agent` an edit of
     itself, `share` a public share, `settings` a change of Settings, `model` work it
     sends to a cloud model you did not pick (a sub-agent, a mission, a coding task, a plan
-    step, messages to it). Every word is the server's: the title, the call's own data as
-    facts, its long text whole (`detail`, under Details), why it is asked (`help`) */
+    step, messages to it), `model_file` a model file or LoRA to download, `preset` a preset
+    of its own. Every word is the server's: the title, the call's own data as facts (one
+    with `href` opens that page), its long text whole (`detail`, under Details), why it is
+    asked (`help`) */
 export type Approval = {
   id: string
   kind: AskKind
   title: string
-  facts: { label: string; value: string }[]
+  facts: { label: string; value: string; href?: string }[]
   detail: { title: string; text: string } | null
   help: string
   /** where its work lives, by name ("Mission Night"), and the link that opens it */

@@ -107,6 +107,7 @@ export type Frame =
        result?: string | null; job_id?: string | null; finished_at?: string | null; runs?: TurnRuns | null; place?: Place } & Of)
   | ({ type: 'tool.detached'; tool_call_id: string; job_id: string; name: string; place?: Place } & Of)
   | ({ type: 'images.batch' | 'music.batch'; batch: unknown } & Of)
+  | ({ type: 'model_file.state'; tool_call_id: string; display: ToolCall['display']; words: ToolWords } & Of)
   | ({ type: 'tool.progress'; tool_call_id: string; note: string } & Of)
   | ({ type: 'tool.reset'; tool_call_id: string; runs?: TurnRuns | null } & Of)
   | ({ type: 'llm.queue'; message_id?: string | null; state: 'waiting' | 'loading' | 'running' | string; model: string

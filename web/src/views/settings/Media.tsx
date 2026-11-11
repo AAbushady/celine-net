@@ -1,7 +1,8 @@
 /* Images & Music (/settings/media), listed while the Images or the Music feature is on:
    the ComfyUI server (its Address, saved when the field is left; its key; its options,
    each saved on change; Check provider; Remove this provider), then the presets of each
-   kind that is on (Presets.tsx). The one place ComfyUI is set up in Settings: the Models
+   kind that is on (Presets.tsx), and while Images is on and the ComfyUI starts on demand,
+   the model files the agent asked for (ModelFiles.tsx). The one place ComfyUI is set up in Settings: the Models
    page leaves it out. Every state comes from the server (the provider's, each feature's
    probe). API: lib/settingsApi.ts, lib/media.ts. */
 import { useEffect, useMemo, useState } from 'react'
@@ -16,6 +17,7 @@ import { kindInfo } from '../../components/ProviderFields'
 import { Button, ConfirmDialog, Field, Form, InlineError, Input, Loaded, Section } from '../../ui'
 import { KeySection, ReachWord, optionSchema } from './Models'
 import { Page } from './parts'
+import { ModelFiles } from './ModelFiles'
 import { Presets } from './Presets'
 import './settings.css'
 
@@ -45,6 +47,7 @@ export function Media() {
         )}
         {roles.data ? <>
           {imagesOn && <Presets kind="images" providers={list} roles={roles.data} onChanged={reload} />}
+          {imagesOn && comfy?.provider.options?.on_demand === true && <ModelFiles />}
           {musicOn && <Presets kind="music" providers={list} roles={roles.data} onChanged={reload} />}
         </> : <Section><Loaded res={roles} /></Section>}
       </>}
