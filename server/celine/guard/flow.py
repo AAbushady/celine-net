@@ -54,7 +54,7 @@ from . import banners, bastet, facts, intent, judge as hijack, passes as passes_
 from . import questions, rules as rule_set, store as decisions, switch
 from .mark import spans as spans_of
 from .small_role import Unanswerable, Unavailable, Unreadable
-from .sources import NEVER
+from .sources import never
 from .trigger import look
 from .verdict import STRENGTH, Judge, Ruling, Verdict, confirm
 
@@ -157,7 +157,7 @@ async def check(turn: dict, call: dict, request: list[dict], *, mode: str,
     stated = None
     # image and music prompts are never checked (image moderation is left to the ComfyUI
     # server), the vault has its own taps: only the owner's confirm list reaches them
-    if ask is not None and not call["name"].startswith(NEVER):
+    if ask is not None and not never(call["name"]):
         if on["leak"] and sink != "house" and (pieces := [
                 p for p in facts.copies(await facts.private(store, turn, request), sent,
                                         await facts.outside(store, request))
@@ -277,11 +277,11 @@ async def closed(turn: dict, call: dict, request: list[dict], *, mode: str, stor
     copied into the call whose class's gate to the call's sink is closed. -> a stop
     with Bastet's plain line, its row decision "closed" (rule `gates`); None when no
     closed gate holds the call. No model is asked; passes and allow-once are never read.
-    Image and music prompts and the vault are never looked at (NEVER)."""
+    Image and music prompts and the vault are never looked at (sources.never)."""
     rules = rule_set.current(cfg)
     sink, sent = facts.sink(call)
     shut = {c for c in rule_set.GATED if rule_set.gate(rules, c, sink) == "closed"}
-    if not shut or call["name"].startswith(NEVER) or not "".join(sent).strip():
+    if not shut or never(call["name"]) or not "".join(sent).strip():
         return None
     corpus = [p for p in await facts.private(store, turn, request) if p.cls in shut]
     pieces = facts.copies(corpus, sent, await facts.outside(store, request))

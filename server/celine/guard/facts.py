@@ -28,6 +28,16 @@ from .trigger import EGRESS, EMAIL, HANDLE, URL, norm, shared_run, strings, text
 CLASSES = ("public", "informal", "nsfw", "unclassed", "sensitive")   # loosest first
 SENSITIVE = {"chat_archive", "user_documents", "email", "discord", "whatsapp"}
 PUBLIC = {"web", "browser"}
+# tools of another skill whose results are public text, as PUBLIC's skills are: a model
+# hub searched, read and looked at (a result the hub marks mature says nsfw itself)
+PUBLIC_TOOLS = {"image_generator__search_models", "image_generator__read_model",
+                "image_generator__look_examples"}
+# tools of another skill that send to the public internet, as web__search does: what
+# goes out is these arguments (a model hub's search, a model read, the file asked for)
+PUBLIC_ARGS = {"image_generator__search_models": ("query", "base", "tag"),
+               "image_generator__read_model": ("model",),
+               "image_generator__look_examples": ("model",),
+               "image_generator__request_model": ("file",)}
 SENDS = ("public", "people", "house")
 
 
@@ -45,7 +55,8 @@ def result_class(name: str, display: dict, registry) -> str | None:
     if (m := mcp_of(registry, name)) is not None:
         return m.cls
     skill = name.split("__")[0]
-    return "sensitive" if skill in SENSITIVE else "public" if skill in PUBLIC else None
+    return "sensitive" if skill in SENSITIVE else \
+        "public" if skill in PUBLIC or name in PUBLIC_TOOLS else None
 
 
 def strictest(classes) -> str | None:
@@ -93,6 +104,8 @@ def sink(call: dict) -> tuple[str, list[str]]:
         return "public", [t]
     if name == "web__search":
         return "public", [str(args.get("query") or "")]
+    if name in PUBLIC_ARGS:
+        return "public", [str(args.get(k) or "") for k in PUBLIC_ARGS[name]]
     if name in ("web__read_page", "browser__open"):
         return "public", _address(args.get("url"))
     if name == "browser__act" and (t := typed(args.get("steps"))):

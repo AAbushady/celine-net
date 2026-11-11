@@ -18,12 +18,34 @@ from . import patterns
 # never looked at: image and music generation (their prompts are never checked, image
 # moderation is left to the ComfyUI server) and the vault (it has its own tap)
 NEVER = ("image_generator__", "music_generator__", "vault__")
+# the generators' tools that reach outside or change what the app runs: looked at as
+# their like are (a model hub searched and read as web__search and web__read_page, a
+# model file asked for and a preset proposed as settings__propose), never as a prompt
+LOOKED = frozenset({"image_generator__search_models", "image_generator__read_model",
+                    "image_generator__look_examples", "image_generator__request_model",
+                    "image_generator__propose_preset", "music_generator__propose_preset"})
 # skills whose results hold text someone else wrote. Shell output counts only when
 # plain code finds a reason (network, a file from outside, text aimed at an AI);
 # every other MCP server counts too (its display names the server), but one whose
 # mcp.toml block says `outside = "shell"` (the agent's device's shell and files) counts as shell
 OUTSIDE = {"browser", "web", "email", "discord", "whatsapp", "chat_archive",
            "user_documents", "shell"}
+# tools of another skill whose results others wrote, as a skill of OUTSIDE's are: a
+# model hub searched, read and its example pictures looked at (its titles, trigger
+# words, descriptions and prompts are the hub's users')
+OUTSIDE_TOOLS = frozenset({"image_generator__search_models", "image_generator__read_model",
+                           "image_generator__look_examples"})
+
+
+def never(name: str) -> bool:
+    """A call the guard never looks at (NEVER, but LOOKED)."""
+    return name.startswith(NEVER) and name not in LOOKED
+
+
+def from_outside(name: str) -> bool:
+    """A tool whose results others wrote: its skill is in OUTSIDE, or it is in
+    OUTSIDE_TOOLS."""
+    return name.split("__")[0] in OUTSIDE or name in OUTSIDE_TOOLS
 
 # a command that reaches the network, or a file it got from there: curl, wget, git
 # clone/pull/fetch, installs, ssh, scp, nc, http clients; anything piped from them
@@ -52,7 +74,9 @@ def label(name: str, args: dict, result, mcp=None) -> dict | None:
     given = d.get("outside")
     if isinstance(given, dict):
         return given                         # labelled already (a job, an old call read again)
-    if name.startswith(NEVER):
+    if name in OUTSIDE_TOOLS:
+        return {"source": _source(name, args, d), "by": None}
+    if never(name):
         return None
     skill = name.split("__")[0]
     if skill == "shell" or getattr(mcp, "outside", None) == "shell":
@@ -103,6 +127,10 @@ def _source(skill: str, args: dict, d: dict) -> str:
         return f"{host}/{path}" if path else host or skill
     if skill == "web":
         return "web search"
+    if skill == "image_generator__search_models":
+        return f"{args.get('hub') or 'model'} search"
+    if skill in OUTSIDE_TOOLS:
+        return f"model page {str(args.get('model') or '')[:60]}".strip()
     if skill == "sub_agents":
         return f"sub-agent {d.get('name') or ''}".strip()
     if skill == "user_documents" and isinstance(args.get("path"), str):

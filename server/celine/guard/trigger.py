@@ -14,7 +14,7 @@ from urllib.parse import parse_qsl, urlsplit
 
 from .bastet import ADDR
 from .mark import Span
-from .sources import NEVER
+from .sources import never
 
 ALWAYS = {"notebook__write", "notebook__edit", "notebook__delete", "notebook__move",
           "notebook__restore",
@@ -22,7 +22,13 @@ ALWAYS = {"notebook__write", "notebook__edit", "notebook__delete", "notebook__mo
           "email__delete", "email__move", "user_documents__write",
           "me__edit", "routines__write", "code__start"}
 # read-only, but data can leave in the URL or the query
-OUT_IN_URL = {"browser__open": "url", "web__read_page": "url", "web__search": "query"}
+OUT_IN_URL = {"browser__open": "url", "web__read_page": "url", "web__search": "query",
+              "image_generator__search_models": "query",
+              "image_generator__read_model": "model",
+              "image_generator__look_examples": "model"}
+# of those, the ones whose argument goes out whole: words, or a model hub's value
+QUERIES = ("web__search", "image_generator__search_models", "image_generator__read_model",
+           "image_generator__look_examples")
 
 # shell commands with egress: data leaves the box, or code comes in to run. Read before
 # a call runs; once it ran, the box's own verdict (display "net", facts.sink) counts
@@ -170,7 +176,7 @@ def _out(name: str, args: dict) -> list[str]:
     v = args.get(OUT_IN_URL[name])
     if not isinstance(v, str):
         return []
-    if name == "web__search":
+    if name in QUERIES:
         return [v]
     u = urlsplit(v)
     return [x for _, x in parse_qsl(u.query)] + ([u.fragment] if u.fragment else [])
@@ -184,7 +190,7 @@ def look(name: str, args: dict, read_only: bool, spans: list[Span],
     """The layer 1 hit for one call, None when the judge does not see it. `raised`: the
     page check found words aimed at an AI in this turn, so every acting call is looked
     at."""
-    if not spans or name.startswith(NEVER):
+    if not spans or never(name):
         return None
     if name == "intercom__send" and to_house(args):
         return None
