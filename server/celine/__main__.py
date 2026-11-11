@@ -19,17 +19,16 @@ from fastapi.staticfiles import StaticFiles
 
 from . import config as config_mod
 from .api import origin as origin_mod
-from .conversations import api as conversations_api, store as conversations, tree
+from .conversations import store as conversations
 from . import attachments, boot, keys, reload
 from .backends import llm as llm_mod
-from .core.parts import Part
+from .core.parts import Part, Run
 from .core.services import Services
 from .api.part import part as api_part
 from .jobs.part import part as jobs_part
 from .conversations.part import part as conversations_part
 from .missions.part import part as missions_part
-from .triggers.part import part as triggers_part
-from .schedules.part import part as schedules_part
+from .schedules.part import part as routines_part
 from .sub_agents.part import part as sub_agents_part
 from .intercom.part import part as intercom_part
 from .terminals.part import part as terminals_part
@@ -38,11 +37,13 @@ from .artifacts.part import part as artifacts_part
 from .shares import part as shares_part
 from .push import part as push_part
 from .comfyui.part import part as comfyui_part
+from .kb.part import part as kb_part
+from .leftovers import part as leftovers_part
+from .skills.part import part as skills_part
 from .guard.part import part as guard_part
 from .bugreports.part import part as bugreports_part
 from .events import part as events_part
 from .mcp import Supervisor
-from .triggers import Triggers
 from .db.migrate import migrate_all
 from .core.store import Store
 from .core.bus import EventBus
@@ -52,7 +53,6 @@ from .turns.dispatcher import Dispatcher
 from .errors import install_error_handler, set_secrets
 from .clock import use_zone
 from .logs import setup as setup_logging
-from .core.event_types import KB_CHANGED
 
 log = logging.getLogger("celine")
 
@@ -145,11 +145,13 @@ def preflight(argv: argparse.Namespace) -> config_mod.Config:
     return cfg
 
 
-# Every feature's part (core/parts.py), in the order their steps run.
+# Every feature's part (core/parts.py), in the order their steps run: a sub-agent's report
+# lands before its mission is looked at, and Routines start before the check-ins.
 PARTS: tuple[Part, ...] = (
-    api_part, jobs_part, conversations_part, missions_part, triggers_part, schedules_part,
-    sub_agents_part, intercom_part, terminals_part, browser_part, artifacts_part, shares_part,
-    push_part, comfyui_part, guard_part, bugreports_part, events_part,
+    api_part, jobs_part, conversations_part, sub_agents_part, leftovers_part, routines_part,
+    guard_part, missions_part, skills_part, kb_part, comfyui_part, intercom_part,
+    terminals_part, browser_part, artifacts_part, shares_part, push_part, bugreports_part,
+    events_part,
 )
 
 
@@ -242,45 +244,12 @@ def build_app(cfg: config_mod.Config, dev: bool) -> FastAPI:
                 cfg, kbs, store.emit_global)
             tg.start_soon(connectors.run)
 
-            def connector_runner(f: features.Feature) -> Runner:
-                async def run() -> None:
-                    for kid in f.kbs:
-                        kbs.open(kid)
-                    for sid in f.mcp:
-                        connectors.open(sid)
-                    try:
-                        async with anyio.create_task_group() as g:
-                            for sid in f.mcp:
-                                g.start_soon(mcp.run_one, cfg.mcp.get(sid))
-                    finally:
-                        for sid in f.mcp:
-                            connectors.close(sid)
-                        for kid in f.kbs:
-                            kbs.close(kid)
-                return Runner(tg, run)
-            for f in features.BASE:          # a plugin's servers run under its own runner
-                if f.mcp:
-                    runners[f.id] = connector_runner(f)
-                    if on[f.id]:
-                        await runners[f.id].start()
-
-            # before the workers start: what a crash or restart left behind
-            from .comfyui import batches as comfy_batches, server as comfy_server
+            from .comfyui import server as comfy_server
             if on["images"] or on["music"]:
                 tg.start_soon(comfy_server.free_shared, cfg, llm)
             tg.start_soon(llm.router.check_all)  # each provider asked once; then requests tell
 
-            async def media_run() -> None:     # images and music: the batches
-                await comfy_batches.sweep(store)
-                async with anyio.create_task_group() as g:
-                    services.batches = comfy_batches.Batches(services, g)
-                    try:
-                        await anyio.sleep_forever()
-                    finally:
-                        services.batches = None
-            runners["media"] = Runner(tg, media_run, features=("images", "music"))
-            if on["images"] or on["music"]:
-                await runners["media"].start()
+            # before the workers start: what a crash or restart left behind
             await attachments.gc(cfg, store)
             await conversations.prune_events(store, keep=int(cfg.r("events_keep")),
                                              requests_days=int(cfg.r("requests_keep")))
@@ -296,31 +265,6 @@ def build_app(cfg: config_mod.Config, dev: bool) -> FastAPI:
                                                           registry, llm=llm)
             dispatcher.ready = services.vault.ready
             dispatcher.approvals = services.approvals
-            tree.prefills = lambda cid: conversations_api.prefills(services, cid)
-
-            async def describe_again(p: dict) -> None:   # kb/documents_describe.py
-                if (kb := kbs.get(p["kb"])) is not None:
-                    await anyio.to_thread.run_sync(kb.kick_describe)
-
-            async def documents_run() -> None:   # Documents: the folder, its index, its watcher
-                for kid in features.get("documents").kbs:
-                    await anyio.to_thread.run_sync(kbs.open, kid)
-                try:
-                    dispatcher.work.handle("documents.describe", ("small",), describe_again)
-                    dispatcher.work.notify()
-                    if (documents := kbs.documents()) is not None:
-                        documents.work = dispatcher.work
-                        scanned = await anyio.to_thread.run_sync(documents.rescan)
-                        log.info("documents scanned",
-                                 extra={"event": "documents.scanned", **scanned})
-                        await _watch_documents(documents, store)
-                    await anyio.sleep_forever()
-                finally:
-                    for kid in features.get("documents").kbs:
-                        kbs.close(kid)
-            runners["documents"] = Runner(tg, documents_run)
-            if on["documents"]:
-                await runners["documents"].start()
             from .push import Push              # the notices to devices without a focused page
             push = services.push = Push(cfg, store, bus, app.state.auth)
             tg.start_soon(push.run)
@@ -329,70 +273,41 @@ def build_app(cfg: config_mod.Config, dev: bool) -> FastAPI:
             from .intercom import Intercom      # messages between everyone, and their timer
             intercom = services.intercom = Intercom(store, dispatcher.notify, dispatcher.user_wrote)
             dispatcher.intercom = intercom       # a Stop's cascade cancels schedules
-            # every on_end before the workers start: a turn resumed at start that ends
-            # while the awaits below run still reports
-            for part in PARTS:                   # what must hear every turn's end
+            # its terminals, for the pages: the routes always have the sync, its loop
+            # follows the shellbox only when there is one (terminals/part.py)
+            from .terminals.sync import TerminalSync
+            services.terminals = TerminalSync(cfg, store)
+            services.terminals.ready = services.vault.ready
+
+            # the parts, phase by phase (core/parts.py). Every on_end before the workers
+            # start: a turn resumed at start that ends while the awaits below run still
+            # reports
+            for part in PARTS:
                 if part.wire is not None:
                     part.wire(services)
-            from . import leftovers              # a done mission's terminals and tabs close
-            dispatcher.on_end(lambda cid, _turn: leftovers.on_end(services, cid))
-            from .missions import watch as mission_watch    # a mission keeps going
-            mission_watch.start(services)
-            from .skills import mind                 # its mood: the appraisal after a turn
-            mind.start(services)
+            runs: dict[str, Run] = {}
+            for part in PARTS:
+                if part.runs is not None:
+                    runs.update(part.runs(services))
+            from . import plugins                # each plugin's runner, by its switch
+            from .api import plugins as plugins_api
+            for p in plugins.all():
+                runs[p.id] = Run(functools.partial(
+                    plugins_api.run, services, app.state.plugin_routes, p))
+            for fid, run in runs.items():
+                runners[fid] = Runner(tg, run.what, features=run.features, on_stop=run.on_stop)
+
+            async def start_runs(early: bool) -> None:
+                for fid, run in runs.items():
+                    if run.early is early and any(on[f] for f in run.features or (fid,)):
+                        await runners[fid].start()
+            await start_runs(early=True)
             await dispatcher.start(tg)
             await intercom.run(tg)
             for part in PARTS:                   # what queues or starts turns
                 if part.start is not None:
                     await part.start(services)
-            from .schedules.runs import Scheduler   # the schedules' runs
-            scheduler = Scheduler(services)          # made once: its turn-end hook
-
-            async def routines_run() -> None:       # the skills' triggers, the schedules
-                try:
-                    async with anyio.create_task_group() as g:
-                        services.triggers = Triggers(services)
-                        await services.triggers.run(g)
-                        services.schedules = scheduler
-                        await scheduler.run(g)
-                        await anyio.sleep_forever()
-                finally:
-                    services.triggers = services.schedules = None
-
-            async def guard_run() -> None:          # Bastet: its answers, its patrol
-                from .guard import patrol, store as guard_rows, talk
-                await guard_rows.close_asked(store)     # its asks of the last run
-                talk.start(services)                    # Bastet answers the agent on the Intercom
-                dispatcher.work.notify()
-                try:
-                    await patrol.run(services)
-                finally:
-                    for kind in (talk.KIND, talk.NOTE):
-                        dispatcher.work.handlers.pop(kind, None)
-            runners["routines"] = Runner(tg, routines_run, on_stop=scheduler.forget)
-            runners["guard"] = Runner(tg, guard_run)
-            runners["missions"] = Runner(tg, lambda: mission_watch.run(services))  # check-ins
-            for fid in ("routines", "guard", "missions"):
-                if on[fid]:
-                    await runners[fid].start()
-            # its terminals, for the pages: the routes always have the sync, its loop
-            # follows the shellbox only when there is one
-            from .terminals.sync import TerminalSync
-            services.terminals = TerminalSync(cfg, store)
-            services.terminals.ready = services.vault.ready
-            runners["shellbox"] = Runner(tg, services.terminals.run)
-            from .browser import sync as browser_sync    # its browser: pages hear browser.state
-            runners["browser"] = Runner(tg, lambda: browser_sync.watch(cfg, store))
-            for fid in ("shellbox", "browser"):
-                if on[fid]:
-                    await runners[fid].start()
-            from . import plugins                # each plugin's runner, by its switch
-            from .api import plugins as plugins_api
-            for p in plugins.all():
-                runners[p.id] = Runner(tg, functools.partial(
-                    plugins_api.run, services, app.state.plugin_routes, p))
-                if on[p.id]:
-                    await runners[p.id].start()
+            await start_runs(early=False)
             tg.start_soon(reload.watch, services)
             from .turns import warm               # Keep the chat ready (Advanced, Models)
             tg.start_soon(warm.run, services)
@@ -494,23 +409,6 @@ async def _announce_shutdown(store, intercom) -> None:
                                 kind="notice", wake=False)
     except Exception:
         log.exception("restart notice failed", extra={"event": "shutdown.notice_failed"})
-
-
-async def _watch_documents(documents, store) -> None:
-    """Edits made outside the app (an editor, git) reach the index within a second."""
-    import watchfiles
-    try:
-        async for _ in watchfiles.awatch(documents.root, debounce=800, recursive=True,
-                                          rust_timeout=500):
-            try:
-                changed = await anyio.to_thread.run_sync(documents.rescan)
-            except Exception:
-                log.exception("documents rescan failed")
-                continue
-            if any(changed.get(k) for k in ("new", "changed", "moved", "removed")):
-                store.emit_global({"type": KB_CHANGED, "kb": documents.id})
-    except Exception:
-        log.exception("documents watcher stopped")
 
 
 def main() -> None:

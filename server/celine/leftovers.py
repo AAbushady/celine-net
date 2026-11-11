@@ -8,6 +8,8 @@ from __future__ import annotations
 import sqlite3
 
 from .browser import tabs
+from .core.parts import Part
+from .core.services import Services
 from .activity import busy
 
 
@@ -27,3 +29,12 @@ async def on_end(services, cid: str) -> None:
     if services.terminals is not None:
         await services.terminals.close_opened_by(cid)
     await tabs.close_opened_by(services.cfg, services.store, cid)
+
+
+def _wire(services: Services) -> None:
+    async def ended(cid: str, _turn: str | None) -> None:
+        await on_end(services, cid)
+    services.dispatcher.on_end(ended)
+
+
+part = Part(name="leftovers", wire=_wire)     # core/parts.py
