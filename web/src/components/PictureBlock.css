@@ -31,7 +31,7 @@
 .picture-block__acts > * { opacity: 0; transition: opacity var(--dur-fast) var(--ease-exit); }
 .picture-block:is(:hover, :focus-within) > .picture-block__acts > * { opacity: 1; transition: opacity var(--dur-fast) var(--ease); }
 .picture-block__acts > .is-on { opacity: 1; }
-.picture-block__keep.is-on { color: var(--accent); }
+.btn.picture-block__keep.is-on { color: var(--accent); }
 @media (hover: none) { .picture-block__acts > * { opacity: 1; } }
 
 @media (prefers-reduced-motion: reduce) { .picture-block__shade { animation: none; } }
