@@ -554,8 +554,8 @@ def test_a_lora_chain_and_a_model_go_into_the_graph():
     p = presets.of("images")["krea2-turbo"]
     graph = {"prompt": "x", "seed": 1, "width": 64, "height": 64}
     cat = Catalog([
-        Resource("model", "krea2/turbo/krea2_turbo_nvfp4.safetensors", "Krea 2 turbo", "base",
-                 turbo=True),
+        Resource("model", "krea2/turbo/krea2_turbo_fp8_scaled.safetensors", "Krea 2 turbo",
+                 "base", turbo=True),
         Resource("model", "krea2/krea2_raw_bf16.safetensors", "Krea 2 raw", "base",
                  turbo=False, settings={"steps": 30}),
         Resource("lora", "krea_2/custom/my_character_v1.safetensors", "My character", "character",
@@ -578,8 +578,33 @@ def test_a_lora_chain_and_a_model_go_into_the_graph():
     assert g["3"]["inputs"]["unet_name"] == "krea2/krea2_raw_bf16.safetensors"
     assert g["8"]["inputs"]["steps"] == 30, "the model's own setting"
     assert g["8"]["inputs"]["cfg"] == 3.5, "the rest of the preset's full settings"
-    assert g["2"]["inputs"]["mode"] == "expand", "a mode word becomes the node's value"
+    assert g["11"]["inputs"]["value"] == "expand", "a mode word becomes the node's value"
     assert "celine_triggers" not in g
+
+
+def test_krea2_turbo_encodes_the_prompt_as_written_or_its_rewrite_by_the_variant():
+    p = presets.of("images")["krea2-turbo"]
+    assert p.default("mode") == "direct"
+    assert list(p.parameters["mode"].choices) == ["direct", "expand", "gently"]
+    g = p.build({"prompt": "a cat", "seed": 7, "width": 1024, "height": 768,
+                 "mode": "gently"})
+    assert g["2"]["inputs"]["value"] == "a cat" and g["18"]["inputs"]["prompt"] == ["2", 0]
+    assert g["8"]["inputs"]["seed"] == g["18"]["inputs"]["sampling_mode.seed"] == 7
+    assert (g["7"]["inputs"]["width"], g["7"]["inputs"]["height"]) == (1024, 768)
+    assert g["11"]["inputs"]["value"] == "gently"
+    # the encoder takes the prompt as written when the variant is direct, else the rewrite
+    assert g["5"]["inputs"]["text"] == ["14", 0]
+    assert (g["12"]["inputs"]["string_a"], g["12"]["inputs"]["string_b"]) == (["11", 0],
+                                                                              "direct")
+    assert g["14"]["inputs"] == {"switch": ["12", 0], "on_false": ["18", 0],
+                                 "on_true": ["2", 0]}
+    # the rewrite's system prompt: gently's when the variant is gently, else expand's
+    assert (g["13"]["inputs"]["string_a"], g["13"]["inputs"]["string_b"]) == (["11", 0],
+                                                                              "gently")
+    assert g["17"]["inputs"] == {"switch": ["13", 0], "on_false": ["15", 0],
+                                 "on_true": ["16", 0]}
+    assert g["18"]["inputs"]["system_prompt"] == ["17", 0]
+    assert g["15"]["inputs"]["value"].startswith("You write prompts for an image model")
 
 
 # ---- the user's presets (Settings, Images & Music) -------------------------------------
@@ -697,7 +722,7 @@ async def test_a_shipped_preset_is_edited_and_reset_to_shipped(app):
         assert edited["origin"] == "edited" and edited["label"] == "Krea fast"
         assert edited["size"]["width"] == 1024 and edited["values"]["default.mode"] == "gently"
         p = presets.of("images")["krea2-turbo"]
-        assert p.workflow["2"]["inputs"]["mode"] == "expand gently"
+        assert p.workflow["11"]["inputs"]["value"] == "gently"
         assert p.full_settings == {"steps": 30, "cfg": 3.5}
         assert sorted(_user_files()) == ["krea2-turbo.json", "krea2-turbo.toml"]
 

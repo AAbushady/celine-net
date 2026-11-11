@@ -5,52 +5,44 @@
       "clip_name": "krea2/qwen3vl_4b_fp16.safetensors",
       "type": "krea2",
       "device": "default"
-    }
+    },
+    "_meta": {"title": "Text encoder (Qwen3-VL 4B)"}
   },
   "2": {
-    "class_type": "Krea2PromptEnhancer",
+    "class_type": "PrimitiveStringMultiline",
     "inputs": {
-      "clip": [
-        "1",
-        0
-      ],
-      "brief": "",
-      "aspect_ratio": "manual (advanced width/height)",
-      "megapixels": 1.0,
-      "width": 1376,
-      "height": 768,
-      "mode": "passthrough (no rewrite)",
-      "language": "English",
-      "temperature": 0.7,
-      "seed": 0,
-      "system_prompt": ""
-    }
+      "value": ""
+    },
+    "_meta": {"title": "Prompt"}
   },
   "3": {
     "class_type": "UNETLoader",
     "inputs": {
-      "unet_name": "krea2/turbo/krea2_turbo_nvfp4.safetensors",
+      "unet_name": "krea2/turbo/krea2_turbo_fp8_scaled.safetensors",
       "weight_dtype": "default"
-    }
+    },
+    "_meta": {"title": "Model"}
   },
   "4": {
     "class_type": "VAELoader",
     "inputs": {
       "vae_name": "krea2/qwen_image_vae.safetensors"
-    }
+    },
+    "_meta": {"title": "VAE"}
   },
   "5": {
     "class_type": "CLIPTextEncode",
     "inputs": {
       "text": [
-        "2",
+        "14",
         0
       ],
       "clip": [
         "1",
         0
       ]
-    }
+    },
+    "_meta": {"title": "Encode the prompt or its rewrite"}
   },
   "6": {
     "class_type": "ConditioningZeroOut",
@@ -64,16 +56,11 @@
   "7": {
     "class_type": "EmptyLatentImage",
     "inputs": {
-      "width": [
-        "2",
-        1
-      ],
-      "height": [
-        "2",
-        2
-      ],
+      "width": 1376,
+      "height": 768,
       "batch_size": 1
-    }
+    },
+    "_meta": {"title": "Size"}
   },
   "8": {
     "class_type": "KSampler",
@@ -100,7 +87,8 @@
         0
       ],
       "denoise": 1.0
-    }
+    },
+    "_meta": {"title": "Sampler"}
   },
   "9": {
     "class_type": "VAEDecode",
@@ -123,5 +111,118 @@
         0
       ]
     }
+  },
+  "11": {
+    "class_type": "PrimitiveString",
+    "inputs": {
+      "value": "direct"
+    },
+    "_meta": {"title": "Variant: direct, expand or gently"}
+  },
+  "12": {
+    "class_type": "StringCompare",
+    "inputs": {
+      "string_a": [
+        "11",
+        0
+      ],
+      "string_b": "direct",
+      "mode": "Equal",
+      "case_sensitive": true
+    },
+    "_meta": {"title": "direct?"}
+  },
+  "13": {
+    "class_type": "StringCompare",
+    "inputs": {
+      "string_a": [
+        "11",
+        0
+      ],
+      "string_b": "gently",
+      "mode": "Equal",
+      "case_sensitive": true
+    },
+    "_meta": {"title": "gently?"}
+  },
+  "14": {
+    "class_type": "ComfySwitchNode",
+    "inputs": {
+      "switch": [
+        "12",
+        0
+      ],
+      "on_false": [
+        "18",
+        0
+      ],
+      "on_true": [
+        "2",
+        0
+      ]
+    },
+    "_meta": {"title": "The prompt as written (direct) or rewritten"}
+  },
+  "15": {
+    "class_type": "PrimitiveStringMultiline",
+    "inputs": {
+      "value": "You write prompts for an image model trained on dense, literal image captions. Rewrite the user's idea as a caption of the finished image, as one plain paragraph.\n- Start with the main subject, then the setting and background.\n- Detail color, shape, size, texture, materials and quantity of what is visible.\n- State spatial relationships plainly: left/right, foreground/background, on, behind, next to.\n- Quote any visible text exactly, in double quotes, and say where it appears.\n- Name the medium and look plainly: photo with lens and lighting, or the specific illustration or painting style.\n- Keep every element the user asked for. Do not add new characters or objects they did not imply.\n- No quality tags or buzzwords such as 8k, masterpiece, best quality, hyperrealistic, award-winning, trending, Unreal Engine.\nOutput only the caption, no preamble."
+    },
+    "_meta": {"title": "System prompt: expand"}
+  },
+  "16": {
+    "class_type": "PrimitiveStringMultiline",
+    "inputs": {
+      "value": "You write prompts for an image model trained on dense, literal image captions. Keep the user's prompt as written and add only what it is missing, as one plain paragraph.\n- Keep the user's words, their order and every element they asked for.\n- Add the framing (shot distance and angle) and the light (direction and quality) when the prompt does not give them.\n- Do not add new characters, objects or details the user did not imply.\n- No quality tags or buzzwords such as 8k, masterpiece, best quality, hyperrealistic, award-winning, trending, Unreal Engine.\nOutput only the caption, no preamble."
+    },
+    "_meta": {"title": "System prompt: gently"}
+  },
+  "17": {
+    "class_type": "ComfySwitchNode",
+    "inputs": {
+      "switch": [
+        "13",
+        0
+      ],
+      "on_false": [
+        "15",
+        0
+      ],
+      "on_true": [
+        "16",
+        0
+      ]
+    },
+    "_meta": {"title": "expand / gently"}
+  },
+  "18": {
+    "class_type": "TextGenerateV2",
+    "inputs": {
+      "clip": [
+        "1",
+        0
+      ],
+      "prompt": [
+        "2",
+        0
+      ],
+      "max_length": 512,
+      "sampling_mode": "on",
+      "sampling_mode.temperature": 0.7,
+      "sampling_mode.top_k": 64,
+      "sampling_mode.top_p": 0.95,
+      "sampling_mode.min_p": 0.05,
+      "sampling_mode.repetition_penalty": 1.05,
+      "sampling_mode.presence_penalty": 0.0,
+      "sampling_mode.seed": 0,
+      "thinking": false,
+      "use_default_template": true,
+      "mtp": "auto",
+      "system_prompt": [
+        "17",
+        0
+      ]
+    },
+    "_meta": {"title": "Rewrite the prompt"}
   }
 }

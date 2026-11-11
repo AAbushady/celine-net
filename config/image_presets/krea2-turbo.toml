@@ -1,6 +1,8 @@
-# Krea 2 text to image. The workflow is the Krea 2 text to image one (8 steps, cfg 1.0,
-# euler, beta) in API format; the prompt enhancer node gets the size as manual width and
-# height, and its mode is the `mode` parameter.
+# Krea 2 text to image on ComfyUI's own nodes, after its "Text to Image (Krea-2 Turbo)"
+# template: the turbo model in fp8 (krea2_turbo_fp8_scaled), 8 steps, cfg 1.0, euler,
+# beta. `mode` (node 11) picks the variant: direct encodes the prompt as written; expand
+# and gently have the text encoder (Qwen3-VL 4B, TextGenerateV2, seeded with the image's
+# seed) rewrite it first, with the system prompt in node 15 or node 16.
 label = "Krea 2 turbo"
 family = "Krea 2"
 task = "generate"
@@ -32,8 +34,9 @@ should be seen, like in a mirror selfie. No tag lists (1girl, 8k). No quality wo
 
 Plain words only: no slang, no acronyms. Describe what is seen.
 
-Variant: direct (the default) sends your prompt as written. expand lets Krea's enhancer
-write a full scene from a short brief; gently keeps your wording and adds little.
+Variant: direct (the default) sends your prompt as written. expand has the text encoder
+rewrite a short brief as a full caption first; gently keeps your wording and adds only
+the framing and the light.
 
 Models: the turbo model runs 8 steps (about 10 to 15 s). model "krea2/krea2_raw_bf16"
 runs 40 steps at cfg 3.5 (about 50 s): use it for full quality, fine skin, or several
@@ -43,23 +46,23 @@ itself.
 example = "A 35mm candid portrait of a 26-year-old barista resting her chin on one hand behind a worn wooden counter. She wears a dark green canvas apron over a cream knit sweater, loose strands of brown hair across her forehead, natural skin with subtle freckles. Morning sun comes through the front windows of the busy coffee shop and lights the copper espresso pipes. Shot on an 85mm f/1.8 lens, shallow depth of field, gentle film grain."
 
 [parameters.prompt]
-inputs = [["2", "brief"]]
+inputs = [["2", "value"]]
 
 [parameters.seed]
-inputs = [["2", "seed"], ["8", "seed"]]
+inputs = [["8", "seed"], ["18", "sampling_mode.seed"]]
 
 [parameters.width]
-inputs = [["2", "width"]]
+inputs = [["7", "width"]]
 
 [parameters.height]
-inputs = [["2", "height"]]
+inputs = [["7", "height"]]
 
 [parameters.model]
 inputs = [["3", "unet_name"]]
 
 [parameters.mode]
-inputs = [["2", "mode"]]
-choices = { direct = "passthrough (no rewrite)", expand = "expand", gently = "expand gently" }
+inputs = [["11", "value"]]
+choices = { direct = "direct", expand = "expand", gently = "gently" }
 
 [catalog]
 models = ["krea2/"]
