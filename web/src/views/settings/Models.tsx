@@ -30,6 +30,7 @@ import {
 } from '../../ui'
 import { Page } from './parts'
 import { ROLE } from '../../lib/media'
+import type { Display } from '../../lib/api.gen'
 import './settings.css'
 
 /* Providers and roles load on their own: the page and the roles show at once, the
@@ -480,19 +481,21 @@ function ProviderDialog({ p, kinds, cloudHelp, onClose, onChanged }: {
 }
 
 /* ── a key, write-only: typed once, kept on the server (a provider's) or by the comfy helper
-   (the Civitai key, Media.tsx), never shown again. Set or Not set, the field, Save key, and
-   Remove key while one is set; `save` and `remove` bring the new state. ── */
-export function KeySection({ title, set, save, remove }: {
-  title: string; set: boolean; save: (key: string) => Promise<unknown>; remove: () => Promise<unknown>
+   (the Civitai key, Media.tsx), never shown again. The server's word for its state beside
+   the title; the field, Save key, and Remove key while one is set; `save` and `remove`
+   bring the new state. ── */
+export function KeySection({ title, kept, save, remove }: {
+  title: string; kept: { state: string; display: Display }
+  save: (key: string) => Promise<unknown>; remove: () => Promise<unknown>
 }) {
   const online = useOnline()
   const [key, setKey] = useState('')
   const put = useAction(async () => { await save(key.trim()); setKey('') })
   const drop = useAction(remove)
+  const set = kept.state === 'set'
   return (
-    <Section title={title}>
+    <Section title={title} detail={<StateWord tone={kept.display.tone}>{kept.display.words}</StateWord>}>
       <form className="row-actions" onSubmit={e => { e.preventDefault(); if (key.trim()) void put.run() }}>
-        <StateWord>{set ? 'Set' : 'Not set'}</StateWord>
         <Input type="password" autoComplete="off" spellCheck={false} value={key} onChange={e => setKey(e.target.value)}
                placeholder={set ? 'New key' : 'Paste the key'} aria-label={title} className="key-input" />
         <Button type="submit" variant="primary" icon={KeyRound} loading={put.busy} disabled={!key.trim() || !online}>Save key</Button>
@@ -505,7 +508,7 @@ export function KeySection({ title, set, save, remove }: {
 
 /** KeySection's props for a provider's key */
 export const providerKey = (p: ProviderView, required: boolean, onChanged: () => void) => ({
-  title: required ? 'API key' : 'API key (optional)', set: p.key.state === 'set',
+  title: required ? 'API key' : 'API key (optional)', kept: p.key,
   save: (key: string) => settingsApi.setKey(p.id, key).then(onChanged),
   remove: () => settingsApi.deleteKey(p.id).then(onChanged),
 })

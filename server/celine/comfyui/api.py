@@ -35,7 +35,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..core.dto import Answer, Display
-from ..core.statuses import MadeLife, ModelFileState
+from ..core.statuses import KeyState, MadeLife, ModelFileState
 from ..errors import CelineError, NotFound
 from . import batches as batches_mod, life as life_mod, model_files as files_mod
 from . import presets as presets_mod
@@ -315,7 +315,8 @@ async def remove_model_file(services: TheServices, path: str) -> Removed:
 
 class CivitaiKey(Answer):
     """Whether the comfy helper keeps a Civitai key; the key never comes back."""
-    set: bool
+    state: KeyState
+    display: Display
 
 
 class CivitaiKeyIn(BaseModel):

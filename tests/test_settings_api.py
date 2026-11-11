@@ -73,6 +73,7 @@ async def test_bad_writes_are_refused_with_a_field_and_change_nothing(api):
 async def test_keys_are_write_only(api):
     r = await api.put("/api/secrets/or", json={"key": KEY})
     assert r.status_code == 200 and r.json()["state"] == "set" and KEY not in r.text
+    assert r.json()["display"] == {"words": "Set", "tone": "success"}, "the server's word"
     for path in ("/api/secrets", "/api/providers",
                  "/api/providers/or", "/api/status"):
         assert KEY not in (await api.get(path)).text, path
@@ -81,7 +82,8 @@ async def test_keys_are_write_only(api):
     bad = await api.put("/api/secrets/or", json={"kye": KEY})
     assert bad.status_code == 400 and KEY not in bad.text, "a wrong body never echoes"
     assert (await api.put("/api/secrets/nobody", json={"key": KEY})).status_code == 404
-    assert (await api.delete("/api/secrets/or")).json()["state"] == "not set"
+    gone = (await api.delete("/api/secrets/or")).json()
+    assert (gone["state"], gone["display"]["words"]) == ("not set", "Not set")
     assert backend_config(api.cfg.settings, "or/anthropic/claude-x").api_key is None
 
 

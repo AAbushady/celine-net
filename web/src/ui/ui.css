@@ -609,6 +609,7 @@ a.list-row, button.list-row, .list-row[role='button'] { cursor: pointer; }
 .ui-section__title { margin: 0; min-width: 0; font-size: var(--t-lg); line-height: var(--lh-title); font-weight: var(--fw-bold);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ui-section__count { flex: none; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.ui-section__detail { flex: none; display: inline-flex; align-items: center; }
 .ui-section__search { flex: 0 1 260px; min-width: 160px; margin-left: auto; }
 .ui-section__action { flex: none; display: flex; gap: var(--s-2); margin-left: auto; }
 .ui-section__search + .ui-section__action { margin-left: 0; }

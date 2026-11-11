@@ -155,8 +155,8 @@ folded (`folded`, before Previous 7 days) until the user folds or opens one on t
 
 ### Section
 **When:** a block of a page: a settings group, a section of a page with an index.
-**Props:** `id` (the PageIndex target), `title`, `help` (a Help after the title), `count`, `search` (optional, right
-aligned), `action` (one Button, such as "New entry"), `more` (its rare actions behind "..."
+**Props:** `id` (the PageIndex target), `title`, `help` (a Help after the title), `count`, `detail` (its state
+beside the title, a StateWord, as a page's head has one: a key's Set), `search` (optional, right aligned), `action` (one Button, such as "New entry"), `more` (its rare actions behind "..."
 at the head's end: Move to Trash), children.
 **Do:** sit on its own surface with `--pad-section`. A group of rows inside it gets a
 `SubHead` (`children` the heading, `help`, `count`, `action`): a small heading, never a Section.

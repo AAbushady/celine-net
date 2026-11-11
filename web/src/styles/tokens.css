@@ -103,6 +103,7 @@
   --card-min:       clamp(10rem, 4rem + 12vw, 20rem);    /* the narrowest card in a grid: two on a phone, larger on a wide screen */
   --dialog-sm: 440px; --dialog-md: 560px; --dialog-lg: 720px;   /* Dialog and Sheet widths */
   --head-row:       20rem;                               /* a row in a head's actions (the model): the title's state word keeps its room */
+  --key-field: 14rem; --key-field-max: 20rem;            /* a key's field: narrowest with Save key and Remove key on its row, widest */
 
   /* ── radii: soft. A button, a chip and a search field are pills. ── */
   --r-sm: 6px;     /* small marks, inline code */

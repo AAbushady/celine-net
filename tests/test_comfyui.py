@@ -948,7 +948,8 @@ def test_on_demand_is_a_switch():
 def test_settings_asks_for_the_key_of_a_comfyui_that_starts_on_demand():
     from celine.settings.registry import key_state
     assert key_state("od", OD_PROVIDERS["od"], None) == {
-        "state": "not set", "set_at": None, "required": False, "asked": True}
+        "state": "not set", "display": {"words": "Not set", "tone": "muted"}, "set_at": None,
+        "required": False, "asked": True}
     assert key_state("comfy", PROVIDERS["comfy"], None)["asked"] is False
 
 

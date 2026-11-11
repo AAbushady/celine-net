@@ -24,6 +24,7 @@ from fastapi import APIRouter, Header, Request, Response
 
 from .. import reload, saves
 from ..config import build as config_build
+from ..core.statuses import KeyState
 from ..errors import CelineError, NotFound
 from ..settings import features as features_mod, files, general as general_mod, kinds
 from ..settings import mail as mail_mod, services as services_mod
@@ -252,8 +253,9 @@ async def delete_secret(cfg: TheConfig, services: TheServices, pid: str) -> dict
     write.publish(services, ["secrets"])
     s = settings_of(cfg)
     p = s.providers.get(pid)
-    return key_state(pid, p, root) if p else {"state": "not set", "source": None,
-                                              "set_at": None}
+    gone = KeyState.NOT_SET
+    return key_state(pid, p, root) if p else {"state": gone.value, "display": gone.display,
+                                              "source": None, "set_at": None}
 
 
 # ---- roles ---------------------------------------------------------------------------

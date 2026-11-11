@@ -57,7 +57,7 @@ import httpx
 
 from ..core.event_types import MODEL_FILE_STATE, MODEL_FILES_CHANGED
 from ..core.ids import new_id, now
-from ..core.statuses import MODEL_FILE_SETTLED, ModelFileState
+from ..core.statuses import MODEL_FILE_SETTLED, KeyState, ModelFileState
 from ..settings.registry import provider_headers
 from . import hubs, presets as presets_mod, server as server_mod
 from .presets import ImageError
@@ -762,13 +762,15 @@ async def remove(app, path: str) -> None:
 
 
 async def civitai_key(app, method: str, key: str | None = None) -> dict:
-    """/api/civitai-key: GET whether the comfy helper keeps a Civitai key, PUT a new one,
-    DELETE it -> {"set"}. The key goes from the page to the helper and the app keeps
-    nothing of it; after a change every page reads the state again
-    (`model_files.changed`). HelperRefused with the helper's sentence (a key it does not
-    take, nothing changed); httpx's error when it did not answer."""
+    """/api/civitai-key: GET whether the comfy helper keeps a Civitai key, PUT a new one
+    (the helper asks Civitai about it), DELETE it -> {state, display} (KeyState). The key
+    goes from the page to the helper and the app keeps nothing of it; after a change every
+    page reads the state again (`model_files.changed`). HelperRefused with the helper's
+    sentence (a key it or Civitai refuses, nothing changed); httpx's error when it did not
+    answer."""
     async with client(app, helper_provider(app)) as comfy:
         got = await comfy.civitai_key(method, key)
     if method != "GET":
         app.store.emit_global({"type": MODEL_FILES_CHANGED, "what": "civitai_key"})
-    return {"set": got.get("set") is True}
+    kept = KeyState.SET if got.get("set") is True else KeyState.NOT_SET
+    return {"state": kept.value, "display": kept.display}

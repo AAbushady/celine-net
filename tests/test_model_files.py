@@ -50,6 +50,7 @@ KEY = ("Civitai gives this file only to a signed-in account, and the helper has 
 KEY_REFUSED = ("Civitai refused the helper's key for this file. The owner sets another with "
                "`comfyd.py set-civitai-key`.")
 CIVITAI_KEY = "civitai-made-up-key-5e1d"
+CHECK_REFUSED = "Civitai refused this key; nothing was saved."
 LOOKS = {
     "hf": {"source": {**HF, "revision": REV}, "name": "fusal.safetensors", "size": 420 * MB,
            "sha256": "a" * 64, "license": "apache-2.0", "about": None},
@@ -140,8 +141,12 @@ class Stand(Helper):
                 if " " in key:
                     return httpx.Response(400, json={"error": "That is not an API key (it has "
                                                               "spaces); nothing changed."})
+                if key.startswith("wrong"):         # Civitai refuses it
+                    return httpx.Response(403, json={"error": CHECK_REFUSED,
+                                                     "code": "civitai_key_refused"})
                 self.civitai = key
-            elif method == "DELETE":
+                return httpx.Response(200, json={"set": True, "checked": True})
+            if method == "DELETE":
                 self.civitai = None
             return httpx.Response(200, json={"set": self.civitai is not None})
         if path == "/object_info":
@@ -767,23 +772,28 @@ async def test_the_page_lists_what_came_and_what_is_on_its_way_and_removes_one(h
 async def test_the_civitai_key_goes_to_the_helper_and_the_app_keeps_nothing_of_it(
         hub, tmp_path, caplog):
     caplog.set_level(logging.DEBUG)
+    kept = {"state": "set", "display": {"words": "Set", "tone": "success"}}
+    none = {"state": "not set", "display": {"words": "Not set", "tone": "muted"}}
     async with client(_web(hub)) as c:
-        assert (await c.get("/api/civitai-key")).json() == {"set": False}
+        assert (await c.get("/api/civitai-key")).json() == none
         r = await c.put("/api/civitai-key", json={"key": "two words"})
         assert (r.status_code, r.json()["error"]["message"]) == (
             400, "That is not an API key (it has spaces); nothing changed.")
         assert (await c.put("/api/civitai-key", json={"key": 5})).status_code == 400
+        r = await c.put("/api/civitai-key", json={"key": "wrong-" + CIVITAI_KEY})
+        assert (r.status_code, r.json()["error"]["message"]) == (400, CHECK_REFUSED), \
+            "Civitai's refusal is the save's error, in the helper's words"
         assert hub.helper.civitai is None
         r = await c.put("/api/civitai-key", json={"key": CIVITAI_KEY})
-        assert r.json() == {"set": True} and hub.helper.civitai == CIVITAI_KEY
-        assert (await c.get("/api/civitai-key")).json() == {"set": True}
-        assert (await c.delete("/api/civitai-key")).json() == {"set": False}
+        assert r.json() == kept and hub.helper.civitai == CIVITAI_KEY
+        assert (await c.get("/api/civitai-key")).json() == kept
+        assert (await c.delete("/api/civitai-key")).json() == none
         assert hub.helper.civitai is None
         await c.put("/api/civitai-key", json={"key": CIVITAI_KEY})
 
     events: list[str] = []
 
-    async def changed() -> bool:            # the two puts that went through and the delete
+    async def changed() -> bool:    # the two puts that went through and the delete; no refused one
         events[:] = await hub.store.read(lambda c: [r[0] for r in c.execute(
             "SELECT data FROM global_events WHERE type='model_files.changed'")])
         return len(events) == 3

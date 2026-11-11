@@ -129,7 +129,8 @@ export type ChatPatch = {
 
 /** Whether the comfy helper keeps a Civitai key; the key never comes back. */
 export type CivitaiKey = {
-  set: boolean
+  state: KeyState
+  display: Display
 }
 
 export type CivitaiKeyIn = {
@@ -325,6 +326,9 @@ export type ItemsPage = {
   items: Item[]
   next: string | null
 }
+
+/** Whether a key is kept: a provider's (settings/registry.key_state), the Civitai key the comfy helper keeps (comfyui/model_files.civitai_key). */
+export type KeyState = "set" | "not set"
 
 export type Keys = {
   p256dh: string

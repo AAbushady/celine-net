@@ -184,9 +184,22 @@ _MODEL_FILE_SHOWN = {
 MODEL_FILE_SETTLED = (ModelFileState.DENIED, ModelFileState.UNANSWERED, ModelFileState.READY,
                       ModelFileState.FAILED)
 
+
+class KeyState(Shown):
+    """Whether a key is kept: a provider's (settings/registry.key_state), the Civitai key the
+    comfy helper keeps (comfyui/model_files.civitai_key)."""
+    SET = "set"
+    NOT_SET = "not set"
+
+
+_KEY_SHOWN = {
+    KeyState.SET: ("Set", Tone.SUCCESS),
+    KeyState.NOT_SET: ("Not set", Tone.MUTED),
+}
+
 # each shown set's members as (words, tone); one table per set, since a member equals its
 # string and "done" of one set would be "done" of another in a shared table
 _DISPLAYS: dict[type[Shown], Mapping[Any, tuple[str, Tone]]] = {
     RunState: _RUN_SHOWN, MissionStatus: _MISSION_SHOWN,
     PlanStepState: _PLAN_STEP_SHOWN, AgentState: _AGENT_SHOWN, MadeLife: _MADE_LIFE_SHOWN,
-    ModelFileState: _MODEL_FILE_SHOWN}
+    ModelFileState: _MODEL_FILE_SHOWN, KeyState: _KEY_SHOWN}

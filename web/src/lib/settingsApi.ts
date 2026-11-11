@@ -8,6 +8,7 @@
 import { del, json, post, request } from './api'
 import { LOCALE } from './format'
 import type { Agent } from './agent'
+import type { Display, KeyState as KeyWord } from './api.gen'
 import type { GuardRules as GuardPage } from './guard'
 import type { ServerEvent } from './bus'
 import type { FormField } from '../ui'
@@ -52,7 +53,9 @@ type ProviderConfig = {
 }
 
 type KeyState = {
-  state: 'set' | 'not set'
+  state: KeyWord
+  /** the server's word for it (core/statuses.py KeyState) */
+  display: Display
   set_at: string | null
   required: boolean
   /** Settings asks for a key while none is set: its kind requires one, or it is a ComfyUI that starts on demand */

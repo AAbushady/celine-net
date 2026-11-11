@@ -12,13 +12,15 @@ import { reduced } from './motion'
 import { useEdgeFade } from './Bits'
 
 /* ── Section ── */
-export function Section({ id, title, help, count, search, action, more, children, className }: {
+export function Section({ id, title, help, count, detail, search, action, more, children, className }: {
   /** the PageIndex target */
   id?: string
   title?: ReactNode
   /** what it holds, behind a "?" after the title */
   help?: string
   count?: number
+  /** its state beside the title, a StateWord ("Set"), as a page's head has it */
+  detail?: ReactNode
   /** a search in this section, right aligned */
   search?: PlaceSearch
   /** one Button ("New entry"), at the right end of the head */
@@ -28,7 +30,7 @@ export function Section({ id, title, help, count, search, action, more, children
   children?: ReactNode
   className?: string
 }) {
-  const head = title != null || count != null || search || action || more
+  const head = title != null || count != null || detail || search || action || more
   return (
     <section id={id} className={cx('ui-section', className)}>
       {head && (
@@ -36,6 +38,7 @@ export function Section({ id, title, help, count, search, action, more, children
           {title != null && <h2 className="ui-section__title">{title}</h2>}
           {help && <Help text={help} label={typeof title === 'string' ? title : ''} />}
           {count != null && <span className="ui-section__count">{count}</span>}
+          {detail && <span className="ui-section__detail">{detail}</span>}
           {search && (
             <SearchField value={search.value} onChange={search.onChange} placeholder={search.placeholder ?? 'Search'}
                          label={search.label} loading={search.loading} inputRef={search.inputRef} className="ui-section__search" />

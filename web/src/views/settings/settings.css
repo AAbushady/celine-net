@@ -172,7 +172,8 @@ a.batches__time:hover { text-decoration: underline; }
 .batches__what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
 .batches__count { flex: none; font-size: var(--t-xs); font-variant-numeric: tabular-nums; color: var(--text-muted); }
 .batches__count--running { color: var(--running); }
-.key-input { max-width: 320px; }
+/* a key's field takes the room its two buttons leave, so the three stay on one row; alone on a phone */
+.key-input { flex: 1 1 var(--key-field); max-width: var(--key-field-max); }
 .key-form { display: flex; align-items: flex-end; gap: var(--s-2); flex-wrap: wrap; }
 .key-form > .field-group { flex: 1; min-width: 12rem; }
 

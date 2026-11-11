@@ -68,11 +68,12 @@ export function Media() {
 }
 
 /* ── the Civitai key the comfy helper keeps for files that need a sign-in: handed to it
-   (GET, PUT, DELETE /api/civitai-key), the app keeps nothing of it ── */
+   (GET, PUT, DELETE /api/civitai-key), which asks Civitai about a new one; the app keeps
+   nothing of it. A key Civitai refuses is the save's error. ── */
 function CivitaiKey() {
   const civitai = useResource(() => mediaApi.civitaiKey(), [], { events: MODEL_FILE_EVENTS })
   return civitai.data
-    ? <KeySection title="Civitai key" set={civitai.data.set} save={k => mediaApi.setCivitaiKey(k).then(civitai.set)}
+    ? <KeySection title="Civitai key" kept={civitai.data} save={k => mediaApi.setCivitaiKey(k).then(civitai.set)}
                   remove={() => mediaApi.removeCivitaiKey().then(civitai.set)} />
     : <Section title="Civitai key"><Loaded res={civitai} compact /></Section>
 }
