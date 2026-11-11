@@ -415,8 +415,9 @@ class Gen:
             sha = self.blob(data, at)
             aid = self.id()
             self.x("INSERT INTO attachments(id, message_id, batch_id, sha256, filename, kind, "
-                   "state, created_at) VALUES(?,?,?,?,?,'image','ready',?)",
-                   (aid, reply, bid, sha, f"harbour-{n + 1}.png", at))
+                   "state, created_at, life, life_at) "
+                   "VALUES(?,?,?,?,?,'image','ready',?,'temporary',?)",
+                   (aid, reply, bid, sha, f"harbour-{n + 1}.png", at, at))
             items.append({"index": n, "state": "done", "prompt": "a small harbour at sunset",
                           "seed": 1000 + n, "width": 192, "height": 128, "seconds": 9.5,
                           "attachment": {"id": aid, "sha256": sha,
