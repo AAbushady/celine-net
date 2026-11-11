@@ -348,6 +348,41 @@ TOOLS: dict[str, dict[str, str]] = {
                                       "summary": "Lists the presets, or the models and "
                                                  "LoRAs a preset can use with what each "
                                                  "does and its trigger words."},
+    "image_generator__search_models": {"label": "Image generation: search models",
+                                       "summary": "Searches Civitai or Hugging Face for "
+                                                  "LoRAs and models the comfy helper can "
+                                                  "download, or lists them."},
+    "image_generator__read_model": {"label": "Image generation: read a model",
+                                    "summary": "Reads what Civitai or Hugging Face says of "
+                                               "one model: its versions and files, its "
+                                               "description and example prompts."},
+    "image_generator__look_examples": {"label": "Image generation: look at examples",
+                                       "summary": "Looks at up to four example pictures "
+                                                  "of a model, with their prompts."},
+    "image_generator__request_model": {"label": "Image generation: request a model file",
+                                       "summary": "Asks you to download a LoRA or a model "
+                                                  "for a preset; it comes once you "
+                                                  "approve it."},
+    "image_generator__read_preset": {"label": "Image generation: read a preset",
+                                     "summary": "Reads an image preset as its editor has "
+                                                "it, with its workflow."},
+    "image_generator__look_up_node": {"label": "Image generation: look up a node",
+                                      "summary": "Reads what ComfyUI says of one node, or "
+                                                 "finds nodes by words."},
+    "image_generator__propose_preset": {"label": "Image generation: propose a preset",
+                                        "summary": "Proposes an image preset of "
+                                                   "{{name}}'s own; it is saved once you "
+                                                   "approve it."},
+    "music_generator__read_preset": {"label": "Music generation: read a preset",
+                                     "summary": "Reads a music preset as its editor has "
+                                                "it, with its workflow."},
+    "music_generator__look_up_node": {"label": "Music generation: look up a node",
+                                      "summary": "Reads what ComfyUI says of one node, or "
+                                                 "finds nodes by words."},
+    "music_generator__propose_preset": {"label": "Music generation: propose a preset",
+                                        "summary": "Proposes a music preset of "
+                                                   "{{name}}'s own; it is saved once you "
+                                                   "approve it."},
     "music_generator__generate": {"label": "Music generation: make tracks",
                                   "summary": "Makes a batch of tracks, one after the "
                                              "other, each shown in the chat once it is done."},

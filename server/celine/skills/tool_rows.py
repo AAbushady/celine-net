@@ -372,13 +372,57 @@ def _keep(unit: str) -> Sentence:
     return say
 
 
+HUBS = {"civitai": "Civitai", "huggingface": "Hugging Face"}
+
+
+def _search_models(a, d, r):
+    hub = HUBS.get(_str(a.get("hub")) or "", "a model hub")
+    what = "models" if a.get("kind") == "model" else "LoRAs"
+    q = _str(a.get("query"))
+    return f"Searched {hub} for {quote(q)}" if q else f"Listed the {what} of {hub}"
+
+
+def _model_file(a, d, r):
+    """A request for a model file: what it asked for, and where it stands now (its
+    display, which follows the request: comfyui/model_files.py)."""
+    m = _dict(d.get("model_file"))
+    what = "model" if (m.get("kind") or a.get("kind")) == "model" else "LoRA"
+    said = " ".join(x for x in (f"Asked for the {what}", _str(m.get("file"))) if x)
+    words = _str(_dict(m.get("display")).get("words"))
+    if not words:
+        return said
+    if m.get("state") == "fetching" and _num(m.get("size")) and _num(m.get("done")) is not None:
+        from ..comfyui.hubs import size_words
+        words += f", {size_words(m['done'])} of {size_words(m['size'])}"
+    return f"{said}: {words}"
+
+
+def _node(a, d, r):
+    node = _str(a.get("node"))
+    return f"Looked up the node {node}" if node else \
+        f"Looked for nodes {quote(_str(a.get('search')) or '')}"
+
+
+PRESETS: dict[str, Sentence] = {
+    "read_preset": lambda a, d, r: f"Read the preset {_path(a, 'preset')}".strip(),
+    "look_up_node": _node,
+    "propose_preset": lambda a, d, r: "Proposed the preset" +
+        (f" {quote(_str(a.get('label')))}" if _str(a.get("label")) else ""),
+}
+
 IMAGE_GENERATOR: dict[str, Sentence] = {
     "list_images": lambda a, d, r: "Listed the images in this chat",
     "list_presets": _presets,
     "keep": _keep("image"),
+    "search_models": _search_models,
+    "read_model": lambda a, d, r: f"Read the model {_path(a, 'model')}".strip(),
+    "look_examples": lambda a, d, r: f"Looked at the examples of {_path(a, 'model')}"
+                                     .strip(),
+    "request_model": _model_file,
+    **PRESETS,
 }
 
-MUSIC_GENERATOR: dict[str, Sentence] = {"keep": _keep("track")}
+MUSIC_GENERATOR: dict[str, Sentence] = {"keep": _keep("track"), **PRESETS}
 
 
 def _terminal(a: Args, d: dict) -> str | None:
@@ -891,12 +935,14 @@ def _alone(state: str, time_up: Any) -> bool:
 
 def _apart(call: dict) -> bool:
     """A call that keeps its own row or block: a sub-agent (Open, Stop), a message it sent
-    (Cancel), a batch of pictures, a page, a share, files it sent."""
+    (Cancel), a batch of pictures, a page, a share, files it sent, a model file it asked
+    for (its row says where the request stands)."""
     if call["name"] in APART:
         return True
     d = _dict(json_object(call.get("display")))
     return isinstance(d.get("items"), list) or bool(d.get("artifact")) or \
-        bool(d.get("share")) or isinstance(d.get("blocks"), list)
+        bool(d.get("share")) or isinstance(d.get("blocks"), list) or \
+        bool(d.get("model_file"))
 
 
 def _stretch_words(calls: list[dict], own: Own | None) -> str:

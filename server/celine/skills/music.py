@@ -12,8 +12,10 @@ from typing import Annotated, Required, TypedDict
 
 from ..comfyui import batches as batches_mod, life, presets as presets_mod
 from . import ToolContext, ToolResult, guide, tool, described
-from .images import (REPORTS, WAIT, Generator, batch_generate, batch_keep, batch_read,
-                     batch_stop, settled_head)
+from .images import (LABEL, NODE, NODE_SEARCH, PRESET_PART, PROPOSE_WHY, REPLACES, REPORTS,
+                     VALUES, WAIT, WORKFLOW, Generator, batch_generate, batch_keep,
+                     batch_read, batch_stop, node_look_up, preset_propose, preset_read,
+                     settled_head)
 
 SHORT = batches_mod.SHORT
 
@@ -136,3 +138,52 @@ class MusicGenerator(Generator):
         """Keep tracks you made, so they are never cleared; what is not kept is cleared
         after the number of days set in Settings. Returns: one line per track."""
         return await batch_keep(self.cfg, ctx, "music", tracks, let_go)
+
+    # ---- presets of its own (comfyui/proposals.py) ---------------------------------------
+
+    @tool()
+    async def read_preset(
+        self,
+        ctx: ToolContext,
+        preset: Annotated[str, "A music preset id, like yue2."],
+        part: Annotated[int | None, PRESET_PART] = None,
+    ) -> ToolResult:
+        """Read a music preset as Settings' editor has it: its values, what each field
+        is, and its workflow with its placeholders, the way propose_preset takes them.
+        Example: music_generator__read_preset(preset="yue2"). Returns: JSON, a long one
+        in parts."""
+        return await preset_read(self.cfg, ctx, "music", preset, part)
+
+    @tool(open_world=True)
+    async def look_up_node(
+        self,
+        ctx: ToolContext,
+        node: Annotated[str, NODE] = "",
+        search: Annotated[str, NODE_SEARCH] = "",
+    ) -> ToolResult:
+        """Look up a node of ComfyUI, for a workflow you write: one class's inputs with
+        their types and choices and its outputs, or the classes that match some words.
+        Example: music_generator__look_up_node(node="SaveAudio"). Returns: the node, or
+        one line per class."""
+        return await node_look_up(self.app, "music", node, search)
+
+    @tool(read_only=False, destructive=False, open_world=True)
+    async def propose_preset(
+        self,
+        ctx: ToolContext,
+        label: Annotated[str, LABEL],
+        workflow: Annotated[dict, WORKFLOW],
+        why: Annotated[str, PROPOSE_WHY],
+        values: Annotated[dict | None, VALUES] = None,
+        replaces: Annotated[str, REPLACES] = "",
+    ) -> ToolResult:
+        """Propose a music preset of your own: a ComfyUI workflow with the app's
+        placeholders ({{style}}, {{lyrics}}, {{seed}}, {{duration:120}},
+        {{instrumental:true}}) and its texts. Checked at once as Settings checks an
+        uploaded workflow and an edit; then it waits until {{username}} approves it, and
+        is saved as one of {{username}}'s presets, on, at the end of the Music generation
+        list. With replaces, it replaces a preset you proposed before; a preset that came
+        with the app or one {{username}} made is never replaced. Returns: the preset's
+        id, or every problem, or why nothing was saved."""
+        return await preset_propose(self.app, ctx, "music", label, workflow, values,
+                                    replaces, why)

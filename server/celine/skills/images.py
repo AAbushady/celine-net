@@ -20,8 +20,9 @@ from .. import attachments
 from ..clock import zone
 from ..core.ids import iso, span, when as when_
 from ..core.statuses import MadeLife
-from ..comfyui import batches as batches_mod, life, presets as presets_mod
-from . import ToolContext, ToolResult, guide, tool, described
+from ..comfyui import batches as batches_mod, life, model_files, presets as presets_mod
+from ..comfyui import proposals
+from . import ToolContext, ToolResult, guide, parts, tool, described
 
 SHORT = batches_mod.SHORT
 # the last line of a call with wait=true that returns a batch still waiting for the GPU
@@ -240,6 +241,60 @@ async def batch_keep(cfg, ctx: ToolContext, role: str, refs: list[str],
         return ToolResult(content=f"Name the {unit.lower()}s by their short ids.",
                           is_error=True)
     return ToolResult(content="\n".join(lines), is_error=done == 0, display={"count": done})
+
+
+# ---- what images and music share: their presets, read, looked up and proposed -----------
+
+async def preset_read(cfg, ctx: ToolContext, kind: str, preset: str,
+                      part: int | None) -> ToolResult:
+    """A preset of `kind` as the editor has it (comfyui/proposals.py read)."""
+    p = presets_mod.of(kind).get((preset or "").strip())
+    if p is None:
+        ids = ", ".join(presets_mod.of(kind)) or "none"
+        return ToolResult(content=f"There is no {presets_mod.NOUN[kind]} preset {preset!r}. "
+                                  f"The presets are: {ids}.", is_error=True)
+    out, _, _ = parts.read(proposals.read_text(p), part, ctx,
+                           head=[proposals.read_head(p, cfg.user)],
+                           call=f"{proposals.SKILL[kind]}__read_preset(preset=\"{p.id}\"")
+    return ToolResult(content=out, display={"preset": p.id})
+
+
+async def node_look_up(app, kind: str, node: str, search: str) -> ToolResult:
+    """One node of ComfyUI, or the nodes whose names hold some words."""
+    if bool(node.strip()) == bool(search.strip()):
+        return ToolResult(content="Give node (a class name) or search (words), one of them.",
+                          is_error=True)
+    if app is None:
+        return ToolResult(content=OFF[kind], is_error=True)
+    text, bad = await (proposals.node(app, kind, node.strip()) if node.strip() else
+                       proposals.nodes(app, kind, search.strip()))
+    return ToolResult(content=text, is_error=bad)
+
+
+async def preset_propose(app, ctx: ToolContext, kind: str, label: str, workflow, values,
+                         replaces: str, why: str) -> ToolResult:
+    if app is None:
+        return ToolResult(content=OFF[kind], is_error=True)
+    text, bad, display = await proposals.propose(app, ctx, kind, label=label,
+                                                 workflow=workflow, values=values,
+                                                 replaces=replaces, why=why)
+    return ToolResult(content=text, is_error=bad, display=display or None)
+
+
+PRESET_PART = ("Which part of a long preset, from 1; the head says how many. Default 1.")
+NODE = "A node's class name, like \"KSampler\": its inputs and outputs."
+NODE_SEARCH = ("Words: the node classes whose name, display name or category hold them all, "
+               "like \"lora loader\".")
+LABEL = "The preset's name, as Settings shows it."
+WORKFLOW = ("The workflow in ComfyUI's API format, {id: {class_type, inputs}}; an input the "
+            "app fills holds its placeholder as its whole value, like \"{{prompt}}\", "
+            "\"{{seed}}\" or \"{{width:1024}}\" with its default. read_preset shows a whole "
+            "one.")
+VALUES = ("The editor's values, by the keys read_preset shows (family, good_at, prompting, "
+          "example, default.<parameter>, variants, size.step, catalog.loras and the rest). "
+          "Empty: none.")
+REPLACES = "The id of a preset you proposed before, to replace it. Empty: a new preset."
+PROPOSE_WHY = "Why, in one sentence, shown to {{username}} with the preset."
 
 
 class Generator:
@@ -467,6 +522,178 @@ class ImageGenerator(Generator):
         if more > 0:
             text += f"\n\n{more} older images are not listed."
         return ToolResult(content=text, display={"count": len(rows)})
+
+    # ---- model files: found on a hub, asked of the user (comfyui/model_files.py) --------
+
+    @tool(open_world=True)
+    async def search_models(
+        self,
+        ctx: ToolContext,
+        hub: Annotated[Literal["civitai", "huggingface"], "civitai: Civitai's catalog. "
+                       "huggingface: Hugging Face's .safetensors files."],
+        kind: Annotated[Literal["lora", "model"], "lora: LoRAs. model: diffusion models, "
+                        "for a preset's model field."],
+        query: Annotated[str, "Words to search for. Empty: the hub's listing in the order "
+                              "of sort."] = "",
+        preset: Annotated[str, "The image preset the file is for, by its id: checked first "
+                               "that it takes files of this kind. Empty: none."] = "",
+        base: Annotated[str, "The base model as the hub names it, like \"Qwen\" or "
+                             "\"Flux.1 D\". Empty: any."] = "",
+        sort: Annotated[Literal["newest", "most_downloaded", "highest_rated"] | None,
+                        "The order: newest, most_downloaded or highest_rated. Empty: the "
+                        "hub's own."] = None,
+        period: Annotated[Literal["day", "week", "month", "year", "all"] | None,
+                          "With sort: the time it counts over, day, week, month, year or "
+                          "all. Empty: all."] = None,
+        tag: Annotated[str, "One tag of the hub, like \"anime\" or \"style\". Empty: "
+                            "any."] = "",
+        after: Annotated[str, "The next page: the after value the last line of a page "
+                              "gives."] = "",
+    ) -> ToolResult:
+        """Search a model hub, or list it with no words, for LoRAs or diffusion models
+        the comfy helper can download. One line per file: title, type, base model, size,
+        downloads, whether the hub marks it mature, trigger words, and the file value
+        that request_model takes as it is. The hub's titles and words were written by its
+        users. Example: image_generator__search_models(hub="civitai", kind="lora",
+        query="ink wash", base="Qwen"); a listing: image_generator__search_models(
+        hub="civitai", kind="lora", sort="most_downloaded", period="week").
+        Returns: a page of files, and the call for the next page when there is one."""
+        if self.app is None:
+            return ToolResult(content=OFF["images"], is_error=True)
+        text, bad, display = await model_files.search(
+            self.app, hub=hub, kind=kind, query=query, preset=preset, base=base,
+            sort=sort or "", period=period or "", tag=tag, after=after)
+        return ToolResult(content=text, is_error=bad, display=display or None)
+
+    @tool(open_world=True)
+    async def read_model(
+        self,
+        ctx: ToolContext,
+        model: Annotated[str, "The model: a file value search_models printed, a Civitai "
+                              "page address (with or without modelVersionId), or "
+                              "hf:<owner>/<name>."],
+        part: Annotated[int | None, "Which part of a long read, from 1; the head says how "
+                                    "many. Default 1."] = None,
+    ) -> ToolResult:
+        """Read what a hub says of one model: its facts, each version with each file and
+        the file value request_model takes (or why the comfy helper does not take a
+        file), its description and its example prompts with their settings, numbered
+        for look_examples. The description and prompts were written by its users. A
+        long read comes in parts. Example: image_generator__read_model(
+        model="civitai:1234567"). Returns: the model as text."""
+        if self.app is None:
+            return ToolResult(content=OFF["images"], is_error=True)
+        head, text, bad, display = await model_files.read(self.app, model)
+        if bad:
+            return ToolResult(content=text, is_error=True)
+        out, _, _ = parts.read(text, part, ctx, head=[head],
+                               call=f"image_generator__read_model(model=\"{model.strip()}\"")
+        return ToolResult(content=out, display=display)
+
+    @tool(open_world=True)
+    async def look_examples(
+        self,
+        ctx: ToolContext,
+        model: Annotated[str, "The model, as read_model takes it."],
+        examples: Annotated[list[int] | None, "Which examples, by their numbers in "
+                                              "read_model, at most 4. Empty: the first 4 "
+                                              "that have a picture."] = None,
+    ) -> ToolResult:
+        """Look at a model's example pictures, at most 4 a call, each with its prompt
+        and settings as its maker gave them. Example: image_generator__look_examples(
+        model="civitai:1234567", examples=[1, 3]). Returns: the pictures, or their
+        descriptions when your model cannot see images."""
+        if self.app is None:
+            return ToolResult(content=OFF["images"], is_error=True)
+        sees = await attachments.turn_sees_images(self.cfg, ctx)
+        text, bad, display, ids = await model_files.pictures(self.app, ctx, model, examples,
+                                                             sees)
+        return ToolResult(content=text, is_error=bad, display=display or None,
+                          images=ids if sees and ids else None)
+
+    @tool(read_only=False, destructive=False, open_world=True)
+    async def request_model(
+        self,
+        ctx: ToolContext,
+        preset: Annotated[str, "The image preset the file is for, by its id from "
+                               "list_presets."],
+        kind: Annotated[Literal["lora", "model"], "lora: a LoRA, given later in loras. "
+                        "model: a diffusion model, given later in model."],
+        file: Annotated[str, "Which file: the file value search_models or read_model "
+                             "printed (civitai:<version>, civitai:<version>/<file>, "
+                             "hf:<owner>/<name>/<path>), a Civitai page address with "
+                             "modelVersionId, or a Hugging Face file's address."],
+        why: Annotated[str, "Why, in one sentence, shown to {{username}} with the "
+                            "request."],
+    ) -> ToolResult:
+        """Ask {{username}} to download a LoRA or a diffusion model for a preset, from
+        Civitai or Hugging Face, through the comfy helper. Checked at once: the preset
+        takes such files, the helper finds the file and takes it, and it is not there
+        yet. Then it waits for {{username}}'s approval; the call returns at once and your
+        turn goes on. A message from the app says when the file is ready, with the id to
+        give in loras or model and its trigger words, or why it did not come.
+        Example: image_generator__request_model(preset="qwen2.1-smart", kind="lora",
+        file="civitai:1234567", why="An ink wash style for the poster {{username}} asked
+        for."). Example: image_generator__request_model(preset="krea2-turbo",
+        kind="model", file="hf:Comfy-Org/Krea-2/diffusion_models/krea2_raw.safetensors",
+        why="The full Krea 2 model for a slower, finer picture.").
+        Returns: what was asked for, or why nothing was."""
+        files = getattr(self.app, "model_files", None)
+        if files is None:
+            return ToolResult(content=OFF["images"], is_error=True)
+        text, bad, display = await files.request(ctx, preset=preset, kind=kind, file=file,
+                                                 why=why)
+        return ToolResult(content=text, is_error=bad, display=display)
+
+    # ---- presets of its own (comfyui/proposals.py) ---------------------------------------
+
+    @tool()
+    async def read_preset(
+        self,
+        ctx: ToolContext,
+        preset: Annotated[str, "A preset id, as list_presets shows it."],
+        part: Annotated[int | None, PRESET_PART] = None,
+    ) -> ToolResult:
+        """Read an image preset as Settings' editor has it: its values, what each field
+        is, and its workflow with its placeholders, the way propose_preset takes them.
+        Example: image_generator__read_preset(preset="krea2-turbo"). Returns: JSON, a long
+        one in parts."""
+        return await preset_read(self.cfg, ctx, "images", preset, part)
+
+    @tool(open_world=True)
+    async def look_up_node(
+        self,
+        ctx: ToolContext,
+        node: Annotated[str, NODE] = "",
+        search: Annotated[str, NODE_SEARCH] = "",
+    ) -> ToolResult:
+        """Look up a node of ComfyUI, for a workflow you write: one class's inputs with
+        their types and choices and its outputs, or the classes that match some words.
+        Example: image_generator__look_up_node(search="lora loader"). Returns: the node,
+        or one line per class."""
+        return await node_look_up(self.app, "images", node, search)
+
+    @tool(read_only=False, destructive=False, open_world=True)
+    async def propose_preset(
+        self,
+        ctx: ToolContext,
+        label: Annotated[str, LABEL],
+        workflow: Annotated[dict, WORKFLOW],
+        why: Annotated[str, PROPOSE_WHY],
+        values: Annotated[dict | None, VALUES] = None,
+        replaces: Annotated[str, REPLACES] = "",
+    ) -> ToolResult:
+        """Propose an image preset of your own: a ComfyUI workflow with the app's
+        placeholders and its texts. Checked at once as Settings checks an uploaded
+        workflow and an edit; then it waits until {{username}} approves it, and is saved
+        as one of {{username}}'s presets, on, at the end of the Image generation list.
+        With replaces, it replaces a preset you proposed before; a preset that came with
+        the app or one {{username}} made is never replaced. Example:
+        image_generator__propose_preset(label="Ink wash", workflow={...}, values={
+        "good_at": "Ink wash paintings."}, why="..."). Returns: the preset's id, or every
+        problem, or why nothing was saved."""
+        return await preset_propose(self.app, ctx, "images", label, workflow, values,
+                                    replaces, why)
 
 
 def _with_presets(ids: tuple[str, ...]):

@@ -25,4 +25,9 @@ GPU is free, and answer.
 When to use: {{username}} asks you to compose music, make an instrumental or an
 ambient background, or write a song.
 
+A preset of your own: `music_generator__read_preset` shows a preset's values and workflow
+with its placeholders, `music_generator__look_up_node` what ComfyUI says of a node, and
+`music_generator__propose_preset` sends yours to {{username}}, checked at once; approved,
+it is at the end of the list. It replaces only a preset you proposed before.
+
 The preset, with how it takes a style and an example, comes at the end of this guide.
