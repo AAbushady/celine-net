@@ -164,10 +164,12 @@ async def lease(comfy: Comfy, holder: str, kind: str,
     held. `on_wait(lease)` hears every look while it waits or starts. A lease the helper
     does not know while it waits (it restarted) is asked for again. `failed` raises
     ImageError with the helper's sentence; a helper that does not answer raises httpx's
-    error. On exit, also after a Stop or an error, the renewal ends and the lease is
-    released (shielded, CLEANUP_SECONDS at most)."""
+    error. On exit, also after a Stop or an error, the renewal is cancelled and waited
+    for, then the lease is released (shielded, CLEANUP_SECONDS at most each), so no
+    renewal outlives the lease or its client."""
     held = Lease()
     renewal = anyio.CancelScope()
+    renewing: anyio.Event | None = None     # set when the renewal has ended
     try:
         got: dict[str, Any] | None = None
         while True:
@@ -182,10 +184,14 @@ async def lease(comfy: Comfy, holder: str, kind: str,
             await on_wait(got)
             await anyio.sleep(LEASE_POLL)
             got = await comfy.renew_lease(lid)
-        tg.start_soon(_renew, comfy, held, lid, renewal)
+        renewing = anyio.Event()
+        tg.start_soon(_renew, comfy, held, lid, renewal, renewing)
         yield held
     finally:
         renewal.cancel()
+        if renewing is not None:
+            with anyio.CancelScope(shield=True), anyio.move_on_after(CLEANUP_SECONDS):
+                await renewing.wait()
         if held.id is not None:
             await _release(comfy, held.id)
 
@@ -199,25 +205,30 @@ def waiting_note(lease: dict[str, Any]) -> str:
     return f"{head}. {why}" if why else head
 
 
-async def _renew(comfy: Comfy, held: Lease, lid: str, scope: anyio.CancelScope) -> None:
+async def _renew(comfy: Comfy, held: Lease, lid: str, scope: anyio.CancelScope,
+                 ended: anyio.Event) -> None:
     """Renews lease `lid` every LEASE_RENEW seconds until `scope` is cancelled (the
-    lease's exit). An answer that the helper does not hold it ready marks it lost and
-    ends the renewal; a helper that does not answer is asked again at the next renewal
-    (a lease lives 90 s past its last one)."""
-    with scope:
-        while True:
-            await anyio.sleep(LEASE_RENEW)
-            try:
-                got = await comfy.renew_lease(lid)
-            except (httpx.HTTPError, ImageError) as e:
-                log.info("lease not renewed", extra={"event": "comfyui.lease_not_renewed",
-                                                     "error": str(e) or type(e).__name__})
-                continue
-            if got is None or got["state"] != "ready":
-                held.lost = True
-                log.info("lease lost", extra={"event": "comfyui.lease_lost",
-                                              "state": got and got["state"]})
-                return
+    lease's exit), then sets `ended`. An answer that the helper does not hold it ready
+    marks it lost and ends the renewal; a renewal that fails is tried again at the next
+    one (a lease lives 90 s past its last one) and never fails the batch."""
+    try:
+        with scope:
+            while True:
+                await anyio.sleep(LEASE_RENEW)
+                try:
+                    got = await comfy.renew_lease(lid)
+                except Exception as e:
+                    log.info("lease not renewed", extra={
+                        "event": "comfyui.lease_not_renewed",
+                        "error": str(e) or type(e).__name__})
+                    continue
+                if got is None or got["state"] != "ready":
+                    held.lost = True
+                    log.info("lease lost", extra={"event": "comfyui.lease_lost",
+                                                  "state": got and got["state"]})
+                    return
+    finally:
+        ended.set()
 
 
 async def _release(comfy: Comfy, lid: str) -> None:
