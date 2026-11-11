@@ -25,7 +25,9 @@ tell {{username}} it is made when the GPU is free, and answer.
 `image_generator__list_images` lists the images in this conversation with the prompt,
 the preset, the size and the seed each one was made from, and its short id: read it
 before you edit an earlier image or make a variation of one. `image_generator__list_presets`
-lists the presets, or with `kind` lora or model what a preset can use.
+lists the presets, or with `kind` lora or model what a preset can use. What you make is
+cleared after the number of days set in Settings unless `image_generator__keep` keeps it:
+keep an image {{username}} wants to keep or one you will edit again.
 
 When to use: {{username}} asks for a picture or a change to a picture, or a picture
 shows a thing better than words. When not: to look at a photo. These tools make and

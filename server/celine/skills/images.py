@@ -18,8 +18,9 @@ from typing import Annotated, Literal, Required, TypedDict
 
 from .. import attachments
 from ..clock import zone
-from ..core.ids import span, when as when_
-from ..comfyui import batches as batches_mod, presets as presets_mod
+from ..core.ids import iso, span, when as when_
+from ..core.statuses import MadeLife
+from ..comfyui import batches as batches_mod, life, presets as presets_mod
 from . import ToolContext, ToolResult, guide, tool, described
 
 SHORT = batches_mod.SHORT
@@ -60,8 +61,9 @@ class Item(TypedDict, total=False):
                             "a preset id: that goes in preset. Empty: its default."]
 
 
-def item_line(i: dict) -> str:
-    """One slot of a batch, as it reads it."""
+def item_line(i: dict, cfg, lives: bool = False) -> str:
+    """One slot of a batch (as batches.view gives it), as it reads it; `lives`: with when
+    what it made is cleared, or that it is kept (life.words)."""
     n = i["index"] + 1
     warned = "".join(f" Note: {w}" for w in i.get("warnings") or [])
     if i["state"] == "failed":
@@ -95,6 +97,8 @@ def item_line(i: dict) -> str:
         line += f" Trigger words added: {', '.join(i['triggers'])}."
     if i.get("mode"):
         line += f" Variant {i['mode']}."
+    if lives and (lived := life.words(cfg, att.get("life"))):
+        line += f" {lived}"
     return line + warned
 
 
@@ -127,20 +131,20 @@ WAIT = ("True: your turn waits until the batch is done or the user writes, as lo
         "Default false: the call returns at once.")
 
 
-def batch_text(b: dict, user: str, *, started: bool, chat: bool = True,
-               waited: float | None = None) -> str:
-    """A batch as it reads it; started in a chat (`chat`), {user} sees it there.
-    `waited`: the seconds it waited for the GPU (settled_head)."""
-    items = b["items"]
+def batch_text(b: dict, cfg, *, started: bool, chat: bool = True,
+               waited: float | None = None, lives: bool = False) -> str:
+    """A batch as it reads it; started in a chat (`chat`), the user sees it there.
+    `waited`: the seconds it waited for the GPU (settled_head); `lives`: item_line's."""
+    items = batches_mod.view(b)["items"]
     if started:
-        sees = f" {user} sees each one in this conversation when it is done." if chat \
+        sees = f" {cfg.user} sees each one in this conversation when it is done." if chat \
             else ""
         head = (f"Batch {short(b['id'])} started: {len(items)} image"
                 f"{'s' if len(items) != 1 else ''}, made one after the other.{sees} "
                 f"{REPORTS} image_generator__read shows the batch.")
     else:
         head = settled_head(b, waited)
-    lines = [head] + [item_line(i) for i in items]
+    lines = [head] + [item_line(i, cfg, lives) for i in items]
     return "\n".join(lines)
 
 
@@ -181,12 +185,12 @@ async def batch_generate(app, ctx: ToolContext, role: str, items, count: int, wa
 
 
 async def batch_read(ctx: ToolContext, role: str, batch: str,
-                     text: Callable[[dict, bool], str]) -> ToolResult:
+                     text: Callable[..., str]) -> ToolResult:
     try:
         b = await batches_mod.find(ctx.store, role, batch)
     except presets_mod.ImageError as e:
         return ToolResult(content=str(e), is_error=True)
-    return ToolResult(content=text(b, False), display=batches_mod.view(b))
+    return ToolResult(content=text(b, False, lives=True), display=batches_mod.view(b))
 
 
 async def batch_stop(app, ctx: ToolContext, role: str, batch: str,
@@ -202,6 +206,40 @@ async def batch_stop(app, ctx: ToolContext, role: str, batch: str,
                                   f"{b['state']}.")
     b = await batches_mod.get(ctx.store, b["id"])
     return ToolResult(content=text(b, False), display=batches_mod.view(b))
+
+
+async def batch_keep(cfg, ctx: ToolContext, role: str, refs: list[str],
+                     let_go: bool) -> ToolResult:
+    """Keeps what batches of `role` made, or lets it go (life.keep): one line per id."""
+    unit = life.UNIT[role].capitalize()
+    found = [(ref, await life.find(ctx.store, role, ref)) for ref in refs or []]
+    ids = [got["id"] for _, got in found if isinstance(got, dict)]
+    rows = {r["id"]: r for r in await life.keep(cfg, ctx.store, ids, not let_go)} \
+        if ids else {}
+    lines, done = [], 0
+    for _, got in found:
+        if isinstance(got, str):
+            lines.append(got)
+            continue
+        r = rows[got["id"]]
+        s = short(r["id"])
+        if r["life"] == MadeLife.CLEARED:
+            lines.append(life.cleared_line(cfg, role, r["id"], r["life_at"],
+                                           "" if let_go else " and cannot be kept"))
+            continue
+        done += 1
+        if not let_go:
+            lines.append(f"{unit} {s} is kept." if r["changed"] else
+                         f"{unit} {s} was kept already.")
+            continue
+        due = life.clears_at(cfg, life.view(r["life"], r["life_at"]))
+        lines.append((f"{unit} {s} is let go." if r["changed"] else f"{unit} {s} is "
+                      f"temporary.") + (f" It is cleared on {when_(iso(due), zone(cfg))}."
+                                        if due else ""))
+    if not lines:
+        return ToolResult(content=f"Name the {unit.lower()}s by their short ids.",
+                          is_error=True)
+    return ToolResult(content="\n".join(lines), is_error=done == 0, display={"count": done})
 
 
 class Generator:
@@ -241,8 +279,9 @@ class ImageGenerator(Generator):
             self.generate = types.MethodType(_with_presets(ids), self)
 
     def _text(self, b: dict, started: bool, chat: bool = True,
-              waited: float | None = None) -> str:
-        return batch_text(b, self.cfg.user, started=started, chat=chat, waited=waited)
+              waited: float | None = None, lives: bool = False) -> str:
+        return batch_text(b, self.cfg, started=started, chat=chat, waited=waited,
+                          lives=lives)
 
     @property
     def docs(self) -> dict[str, str]:
@@ -272,6 +311,8 @@ class ImageGenerator(Generator):
         {{username}} sees them there. You do not see them. A batch reports back only
         when it had to wait for the GPU: one message from the app once it is done.
         image_generator__read shows a batch, image_generator__stop stops one.
+        What you make is cleared after the number of days set in Settings unless
+        image_generator__keep keeps it.
         Your prompt reaches the model as you wrote it, a LoRA's trigger word in front.
         An item that does not fit its preset (an unknown variant, a size past the
         limits, a LoRA id that is none) fails with the reason in its line. Which preset
@@ -294,7 +335,8 @@ class ImageGenerator(Generator):
         batch: Annotated[str, "The batch id from generate, like 3f2a9c1e."],
     ) -> ToolResult:
         """A batch's state: each slot, waiting, being made, made (with its image's
-        short id), failed (with why) or stopped. Returns: one line per image."""
+        short id and when it is cleared, or that it is kept), failed (with why) or
+        stopped. Returns: one line per image."""
         return await batch_read(ctx, "images", batch, self._text)
 
     @tool(read_only=False, destructive=False)
@@ -306,6 +348,19 @@ class ImageGenerator(Generator):
         """Stop a batch: the image being made is interrupted, the ones after it are not
         made. What was made stays. Returns: the batch."""
         return await batch_stop(self.app, ctx, "images", batch, self._text)
+
+    @tool(read_only=False, destructive=False)
+    async def keep(
+        self,
+        ctx: ToolContext,
+        images: Annotated[list[str], "The images' short ids, like f5ef648c, from a result "
+                                     "or list_images."],
+        let_go: Annotated[bool, "True: let them go, so they are cleared after their days "
+                                "again. Default false: keep them."] = False,
+    ) -> ToolResult:
+        """Keep images you made, so they are never cleared; what is not kept is cleared
+        after the number of days set in Settings. Returns: one line per image."""
+        return await batch_keep(self.cfg, ctx, "images", images, let_go)
 
     @tool()
     async def list_presets(
@@ -372,10 +427,10 @@ class ImageGenerator(Generator):
     @tool()
     async def list_images(self, ctx: ToolContext) -> ToolResult:
         """The images in this conversation, newest first: the ones you made, each with
-        the prompt, the preset, the size and the seed it was made from, and the ones
-        {{username}} attached. Use it to see what an earlier image was asked for before
-        you edit it or make a variation. Returns: one block per image with its short
-        id, the source of an edit."""
+        the prompt, the preset, the size and the seed it was made from and whether it is
+        kept or cleared, and the ones {{username}} attached. Use it to see what an earlier
+        image was asked for before you edit it or make a variation. Returns: one block
+        per image with its short id, the source of an edit."""
         rows = await attachments.images(ctx.store, ctx.conversation_id)
         if not rows:
             return ToolResult(content="There are no images in this conversation.")
@@ -393,6 +448,10 @@ class ImageGenerator(Generator):
                     head += f", model {made['model']}"
                 if made.get("loras"):
                     head += f", LoRAs {', '.join(made['loras'])}"
+                if r["life"] == MadeLife.KEPT:
+                    head += ", kept"
+                elif r["life"] == MadeLife.CLEARED:
+                    head += f", cleared on {when_(r['life_at'], zone(self.cfg))}"
                 lines = [head, f"  prompt: {made.get('prompt') or '(not recorded)'}"]
                 if made.get("negative"):
                     lines.append(f"  negative: {made['negative']}")

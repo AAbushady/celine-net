@@ -10,10 +10,10 @@ from __future__ import annotations
 
 from typing import Annotated, Required, TypedDict
 
-from ..comfyui import batches as batches_mod, presets as presets_mod
+from ..comfyui import batches as batches_mod, life, presets as presets_mod
 from . import ToolContext, ToolResult, guide, tool, described
-from .images import (REPORTS, WAIT, Generator, batch_generate, batch_read, batch_stop,
-                     settled_head)
+from .images import (REPORTS, WAIT, Generator, batch_generate, batch_keep, batch_read,
+                     batch_stop, settled_head)
 
 SHORT = batches_mod.SHORT
 
@@ -30,7 +30,9 @@ class Item(TypedDict, total=False):
                              "preset's default."]
 
 
-def item_line(i: dict) -> str:
+def item_line(i: dict, cfg, lives: bool = False) -> str:
+    """One slot of a batch (as batches.view gives it), as it reads it; `lives`: as
+    images.item_line."""
     n = i["index"] + 1
     if i["state"] == "failed":
         return f"{n}. failed: {i['error']}"
@@ -39,24 +41,25 @@ def item_line(i: dict) -> str:
     what = "instrumental" if i["instrumental"] else "song"
     if i["state"] != "done":
         return f"{n}. {i['title']} ({what}), seed {i['seed']}: {i.get('note') or i['state']}."
+    lived = life.words(cfg, i["attachment"].get("life")) if lives else ""
     return (f"{n}. track {i['attachment']['id'][:SHORT]}: {i['title']} ({what}), seed "
-            f"{i['seed']}, {i.get('seconds', 0):.0f} s.")
+            f"{i['seed']}, {i.get('seconds', 0):.0f} s." + (f" {lived}" if lived else ""))
 
 
-def batch_text(b: dict, user: str, *, started: bool, chat: bool = True,
-               waited: float | None = None) -> str:
-    """A batch as it reads it; started in a chat (`chat`), {user} hears it there.
+def batch_text(b: dict, cfg, *, started: bool, chat: bool = True,
+               waited: float | None = None, lives: bool = False) -> str:
+    """A batch as it reads it; started in a chat (`chat`), the user hears it there.
     `waited`: the seconds it waited for the GPU (images.settled_head)."""
-    items = b["items"]
+    items = batches_mod.view(b)["items"]
     if started:
-        hears = f" {user} hears each one in this conversation when it is done." if chat \
+        hears = f" {cfg.user} hears each one in this conversation when it is done." if chat \
             else ""
         head = (f"Batch {b['id'][:SHORT]} started: {len(items)} track"
                 f"{'s' if len(items) != 1 else ''}, made one after the other, a few "
                 f"minutes each.{hears} {REPORTS} music_generator__read shows the batch.")
     else:
         head = settled_head(b, waited)
-    return "\n".join([head] + [item_line(i) for i in items])
+    return "\n".join([head] + [item_line(i, cfg, lives) for i in items])
 
 
 class MusicGenerator(Generator):
@@ -66,8 +69,9 @@ class MusicGenerator(Generator):
     role = "music"
 
     def _text(self, b: dict, started: bool, chat: bool = True,
-              waited: float | None = None) -> str:
-        return batch_text(b, self.cfg.user, started=started, chat=chat, waited=waited)
+              waited: float | None = None, lives: bool = False) -> str:
+        return batch_text(b, self.cfg, started=started, chat=chat, waited=waited,
+                          lives=lives)
 
     @property
     def docs(self) -> dict[str, str]:
@@ -90,9 +94,10 @@ class MusicGenerator(Generator):
         each, and appear in this conversation as each is done; in a chat {{username}}
         hears them there. A batch reports back only when it had to wait for the GPU:
         one message from the app once it is done. music_generator__read shows a batch,
-        music_generator__stop stops one. Returns: the batch id and each slot; with
-        wait=true, the batch when it is done, or as it is when it still waits for the
-        GPU after a short try."""
+        music_generator__stop stops one. What you make is cleared after the number of
+        days set in Settings unless music_generator__keep keeps it. Returns: the batch
+        id and each slot; with wait=true, the batch when it is done, or as it is when it
+        still waits for the GPU after a short try."""
         from .places import place_of
         chat = await ctx.store.read(lambda c: place_of(c, ctx.conversation_id)) == "chat"
         return await batch_generate(self.app, ctx, "music", items, count, wait,
@@ -105,7 +110,8 @@ class MusicGenerator(Generator):
         batch: Annotated[str, "The batch id from generate, like 3f2a9c1e."],
     ) -> ToolResult:
         """A batch's state: each slot, waiting, being made, made (with its track's
-        short id), failed (with why) or stopped. Returns: one line per track."""
+        short id and when it is cleared, or that it is kept), failed (with why) or
+        stopped. Returns: one line per track."""
         return await batch_read(ctx, "music", batch, self._text)
 
     @tool(read_only=False, destructive=False)
@@ -117,3 +123,16 @@ class MusicGenerator(Generator):
         """Stop a batch: the track being made is interrupted, the ones after it are not
         made. What was made stays. Returns: the batch."""
         return await batch_stop(self.app, ctx, "music", batch, self._text)
+
+    @tool(read_only=False, destructive=False)
+    async def keep(
+        self,
+        ctx: ToolContext,
+        tracks: Annotated[list[str], "The tracks' short ids, like f5ef648c, from a "
+                                     "batch's lines."],
+        let_go: Annotated[bool, "True: let them go, so they are cleared after their days "
+                                "again. Default false: keep them."] = False,
+    ) -> ToolResult:
+        """Keep tracks you made, so they are never cleared; what is not kept is cleared
+        after the number of days set in Settings. Returns: one line per track."""
+        return await batch_keep(self.cfg, ctx, "music", tracks, let_go)

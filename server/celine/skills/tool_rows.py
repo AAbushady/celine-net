@@ -363,10 +363,22 @@ def _presets(a, d, r):
         "Listed the LoRAs" if kind == "lora" else "Listed the image presets"
 
 
+def _keep(unit: str) -> Sentence:
+    """keep: "Kept 2 images", or with let_go "Let go of 2 images"."""
+    def say(a, d, r):
+        n = len(_list(a.get("images") or a.get("tracks")))
+        what = count(n, unit) if n else f"{unit}s"
+        return f"Let go of {what}" if a.get("let_go") is True else f"Kept {what}"
+    return say
+
+
 IMAGE_GENERATOR: dict[str, Sentence] = {
     "list_images": lambda a, d, r: "Listed the images in this chat",
     "list_presets": _presets,
+    "keep": _keep("image"),
 }
+
+MUSIC_GENERATOR: dict[str, Sentence] = {"keep": _keep("track")}
 
 
 def _terminal(a: Args, d: dict) -> str | None:
@@ -680,7 +692,7 @@ SENTENCES: dict[str, dict[str, Sentence]] = {
     "chat_archive": CHAT_ARCHIVE, "user_documents": USER_DOCUMENTS, "notebook": NOTEBOOK,
     "past_conversations": PAST_CONVERSATIONS, "sub_agents": SUB_AGENTS,
     "intercom": INTERCOM, "artifacts": ARTIFACTS, "image_generator": IMAGE_GENERATOR,
-    "shell": SHELL, "code": CODE, "web": WEB, "discord": DISCORD, "whatsapp": WHATSAPP,
+    "music_generator": MUSIC_GENERATOR, "shell": SHELL, "code": CODE, "web": WEB, "discord": DISCORD, "whatsapp": WHATSAPP,
     "skills": SKILLS, "email": EMAIL, "vault": VAULT, "browser": BROWSER, "plan": PLAN,
     "mind": MIND, "models": MODELS, "routines": ROUTINES, "bugreport": BUGREPORT,
     "video": VIDEO,
@@ -758,7 +770,8 @@ VERBS = {
     "Pasted": ("Pasting", "paste"), "Dropped": ("Dropping", "drop"),
     "Selected": ("Selecting", "select"), "Switched": ("Switching", "switch"),
     "Hovered": ("Hovering", "hover"), "Created": ("Creating", "create"),
-    "Restored": ("Restoring", "restore"),
+    "Restored": ("Restoring", "restore"), "Kept": ("Keeping", "keep"),
+    "Let": ("Letting", "let"),
 }
 
 

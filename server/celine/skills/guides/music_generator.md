@@ -8,7 +8,8 @@ a `style`; a song also has `lyrics` and `instrumental=false`. `count` makes that
 tracks of each item, each with its own seed. The call returns at once with the batch
 id and one slot per track. The tracks are made one after the other, a few minutes
 each, and each appears in this conversation when it is done, where {{username}} hears
-it. It is also saved in the music folder of the data folder.
+it. It is also saved in the music folder of the data folder. What you make is cleared
+after the number of days set in Settings unless `music_generator__keep` keeps it.
 
 The GPU is shared. While it is in use, a batch waits in line until it is free, as long
 as that takes, and its slots say "Waiting for the GPU" and why. A batch that had to

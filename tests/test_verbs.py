@@ -32,7 +32,9 @@ VERBS = {"search", "read", "list", "get", "count", "look_up", "scroll", "write",
          # a video it watches, and the Plex account it watches from (skills/video.py)
          "watch", "link",
          # a deleted note back from the trash (skills/notebook.py)
-         "restore"}
+         "restore",
+         # an image or track it made, kept from clearing (comfyui/life.py)
+         "keep"}
 PAGING = {"part", "from", "count", "offset", "page", "from_line", "before", "after",
           "limit"}
 

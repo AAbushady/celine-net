@@ -337,6 +337,9 @@ TOOLS: dict[str, dict[str, str]] = {
                               "summary": "Shows a batch's images and their state."},
     "image_generator__stop": {"label": "Image generation: stop",
                               "summary": "Stops a batch; what was made stays."},
+    "image_generator__keep": {"label": "Image generation: keep images",
+                              "summary": "Keeps images {{name}} made past their days, "
+                                         "or lets them go to be cleared."},
     "image_generator__list_images": {"label": "Image generation: list images",
                                      "summary": "Lists the images in the chat "
                                                 "with the prompt, preset, size and seed "
@@ -352,6 +355,9 @@ TOOLS: dict[str, dict[str, str]] = {
                               "summary": "Shows a batch's tracks and their state."},
     "music_generator__stop": {"label": "Music generation: stop",
                               "summary": "Stops a batch; what was made stays."},
+    "music_generator__keep": {"label": "Music generation: keep tracks",
+                              "summary": "Keeps tracks {{name}} made past their days, "
+                                         "or lets them go to be cleared."},
     "models__list": {"label": "Models: list", "summary": "The models {{name}} may use."},
     "models__ask": {"label": "Models: ask", "summary": "Sends one request to one of {{name}}'s "
                                                        "models and returns its answer."},
