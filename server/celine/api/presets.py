@@ -1,7 +1,8 @@
 """The user's presets (Settings, Images & Music; comfyui/presets.py), changed over HTTP:
 
 - POST /api/generation-presets {kind, label, workflow (the file's text)}: the user's own
-  preset from a workflow with placeholders (presets.upload), at the end of its role;
+  preset from a workflow with placeholders (comfyui/adding.py, which an approved proposal of
+  the agent's saves through too), at the end of its role;
 - PUT /api/generation-presets/{id} {values}: the editor's values, saved as the user's;
 - PUT /api/generation-presets/{id}/workflow {workflow}: another workflow for it;
 - GET /api/generation-presets/{id}/workflow: the workflow with its placeholders, a file;
@@ -18,7 +19,7 @@ from fastapi import APIRouter, Response
 from pydantic import BaseModel
 
 from .. import reload
-from ..comfyui import presets as presets_mod
+from ..comfyui import adding, presets as presets_mod
 from ..errors import CelineError, NotFound
 from ..settings import write
 from ..core.route_params import TheConfig, TheServices
@@ -47,35 +48,22 @@ def _preset(pid: str) -> presets_mod.Preset:
     return presets_mod.of(kind)[pid]
 
 
-async def _saved(services, p: presets_mod.Preset, changes: dict | None = None
-                 ) -> dict:
-    """After a preset's files changed: the settings `changes` (its role, its provider)
-    committed, else the config loaded again; every page hears it."""
-    if changes:
-        await reload.commit(services, changes)
-    else:
-        reload.apply(services)
-    write.publish(services, ["presets"])
+def _listed(services, p: presets_mod.Preset) -> dict:
     return next(x for x in presets_mod.listing(services.cfg.settings, p.kind) if x["id"] == p.id)
 
 
+async def _saved(services, p: presets_mod.Preset) -> dict:
+    """After a preset's files changed: the config loaded again; every page hears it."""
+    reload.apply(services)
+    write.publish(services, ["presets"])
+    return _listed(services, p)
+
+
 @router.post("/generation-presets", status_code=201)
-async def upload_preset(services: TheServices, cfg: TheConfig, body: UploadIn) -> dict:
-    async with write.lock():
-        p = presets_mod.upload(body.kind, body.label, body.workflow)
-        s = cfg.settings
-        comfy = next((pid for pid, x in (s.providers if s else {}).items()
-                      if x.get("kind") == "comfyui"), None)
-        changes = None
-        if comfy is not None:
-            providers = {**s.providers, comfy: {**s.providers[comfy], "models": {
-                **(s.providers[comfy].get("models") or {}),
-                p.id: {"label": p.label, "caps": [p.role]}}}}
-            role = s.roles.get(p.role) or {}
-            roles = {**s.roles, p.role: {**role, "chain": [*(role.get("chain") or []),
-                                                           f"{comfy}/{p.id}"]}}
-            changes = {"providers": providers, "roles": roles}
-        return await _saved(services, p, changes)
+async def upload_preset(services: TheServices, body: UploadIn) -> dict:
+    """The one save of a new preset (comfyui/adding.py), also an approved proposal's."""
+    return _listed(services, await adding.add(services, body.kind, body.label,
+                                                body.workflow))
 
 
 @router.put("/generation-presets/{pid}")

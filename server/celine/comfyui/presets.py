@@ -113,6 +113,7 @@ class Preset:
     parameters: dict[str, Param]
     task: str = "generate"          # generate | edit | music
     origin: str = "shipped"         # shipped | edited (a shipped one the user changed) | own
+    proposed: bool = False          # an own one the agent proposed and the user approved
     source: dict[str, Any] = field(default_factory=dict)    # the TOML as read
     size_step: int = STEP
     max_pixels: int = PIXELS_MAX
@@ -283,7 +284,7 @@ def load(kind: str) -> tuple[dict[str, Preset], list[Problem]]:
                             f"var/settings/{FOLDERS[kind]}", origin="own")
     found = dict(shipped)
     for pid, p in user.items():
-        found[pid] = _with(p, origin="edited") if pid in shipped else p
+        found[pid] = _with(p, origin="edited", proposed=False) if pid in shipped else p
     return found, problems + theirs
 
 
@@ -366,10 +367,12 @@ def build(kind: str, pid: str, data: dict[str, Any], workflow: dict[str, Any],
         return v.strip()
 
     known = {"label", "family", "good_at", "prompting", "example", "workflow", "task",
-             "parameters", "size", "catalog"}
+             "parameters", "size", "catalog", "proposed"}
     for k in data:
         if k not in known:
             bad.append(f"{k} is not a preset setting.")
+    if not isinstance(data.get("proposed", False), bool):
+        bad.append("proposed is true or false.")
     label = text("label", required=True)
     family, good_at = text("family"), text("good_at")
     prompting, example = text("prompting"), text("example")
@@ -460,7 +463,8 @@ def build(kind: str, pid: str, data: dict[str, Any], workflow: dict[str, Any],
     return Preset(
         id=pid, kind=kind, label=label, family=family, good_at=good_at,
         prompting=prompting, example=example, workflow=workflow, parameters=params,
-        task=task, origin=origin, source=copy.deepcopy(data),
+        task=task, origin=origin, proposed=origin == "own" and data.get("proposed") is True,
+        source=copy.deepcopy(data),
         size_step=int(size.get("step", STEP)),
         max_pixels=int(size.get("max_pixels", PIXELS_MAX)), models=models, loras=loras,
         lora_after=lora_after, sampler=sampler, text=text_in, max_loras=max_loras,
@@ -497,7 +501,7 @@ def view(p: Preset) -> dict[str, Any]:
         out["images"] = p.images
         out["catalog"] = {"models": bool(p.models), "max_loras": p.max_loras} \
             if p.models or p.loras else None
-    out.update(origin=p.origin, fields=fields(p), values=values(p))
+    out.update(origin=p.origin, proposed=p.proposed, fields=fields(p), values=values(p))
     return out
 
 
@@ -847,16 +851,24 @@ def edited(p: Preset, new: dict[str, Any]) -> tuple[dict[str, Any], dict[str, An
 
 # ---- the user's presets: var/settings/<folder>/ -------------------------------------------
 
+def checked(kind: str, pid: str, data: dict[str, Any], workflow: dict[str, Any],
+            origin: str) -> Preset:
+    """The preset its TOML and workflow make, as `load` would read it once written;
+    PresetError with every sentence when it has a problem."""
+    bad: list[str] = []
+    p = build(kind, pid, {**data, "workflow": f"{pid}.json"}, workflow, bad, origin)
+    if p is None or bad:
+        raise PresetError(bad or ["The preset is not valid."])
+    return p
+
+
 def save(kind: str, pid: str, data: dict[str, Any], workflow: dict[str, Any],
          origin: str) -> Preset:
     """The preset checked, then written as the user's (TOML and workflow); nothing is
     written when it has a problem (PresetError with every sentence)."""
     from ..settings.files import write_bytes, write_toml
     data = {**data, "workflow": f"{pid}.json"}
-    bad: list[str] = []
-    p = build(kind, pid, data, workflow, bad, origin)
-    if p is None or bad:
-        raise PresetError(bad or ["The preset is not valid."])
+    p = checked(kind, pid, data, workflow, origin)
     root = user_folder(kind)
     write_bytes(root / f"{pid}.json", (json.dumps(workflow, indent=2, ensure_ascii=False)
                                        + "\n").encode())
@@ -871,21 +883,45 @@ def forget(kind: str, pid: str) -> None:
         (root / f"{pid}{ext}").unlink(missing_ok=True)
 
 
-def upload(kind: str, label: str, text: str) -> Preset:
-    """A new preset of the user's from an uploaded workflow with placeholders."""
-    label = label.strip()
-    if not label:
-        raise PresetError(["Give the preset a name."])
-    graph, found, task = placeholders(kind, parse_workflow(text))
+def new_id(label: str) -> str:
+    """A preset id from its name that no preset of either kind has."""
     base = re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")[:40] or "preset"
     taken = {pid for k in FOLDERS for pid in of(k)}
     pid, n = base, 2
     while pid in taken:
         pid, n = f"{base}-{n}", n + 1
+    return pid
+
+
+def drafted(kind: str, label: str, text: str, values: dict[str, Any] | None = None, *,
+            pid: str | None = None, proposed: bool = False
+            ) -> tuple[str, dict[str, Any], dict[str, Any]]:
+    """A preset of the user's from a workflow with placeholders, nothing written: (its
+    id, its TOML, its workflow), checked as `save` checks it. `values`: the editor's
+    values on top (`edited`, the editor's keys); `pid`: the id it is saved under (a
+    new one from its name when None); `proposed`: the agent proposed it. PresetError
+    with every sentence."""
+    label = label.strip()
+    if not label:
+        raise PresetError(["Give the preset a name."])
+    graph, found, task = placeholders(kind, parse_workflow(text))
+    pid = pid or new_id(label)
     data: dict[str, Any] = {"label": label}
     if kind == "images":
         data["task"] = task
     data["parameters"] = {n: {"inputs": paths} for n, paths in found.items()}
+    if proposed:
+        data["proposed"] = True
+    if values:
+        data, graph = edited(checked(kind, pid, data, graph, "own"), values)
+        data.pop("workflow", None)
+    checked(kind, pid, data, graph, "own")
+    return pid, data, graph
+
+
+def upload(kind: str, label: str, text: str) -> Preset:
+    """A new preset of the user's from an uploaded workflow with placeholders."""
+    pid, data, graph = drafted(kind, label, text)
     return save(kind, pid, data, graph, "own")
 
 
