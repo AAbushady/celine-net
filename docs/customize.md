@@ -240,8 +240,8 @@ size and licence, where it is saved and the free space after it; nothing comes b
 you approve. The file goes into the preset's first catalog folder (Models or LoRAs in its
 settings), and the agent hears when it is ready. Civitai gives some files only to a
 signed-in account: set your Civitai API key on Settings, Images & Music (Civitai key). The
-app hands it to the helper, which keeps it and sends it to Civitai's own hosts only; the
-app keeps no copy. Settings, Images & Music lists every file that came this way, with
+app hands it to the helper, which asks Civitai once whether it takes the key, keeps it and
+sends it to Civitai's own hosts only; the app keeps no copy. Settings, Images & Music lists every file that came this way, with
 Remove.
 
 The agent can propose a preset of its own the same way: it reads a preset's workflow,
