@@ -224,7 +224,8 @@ async def keep_item(store: TheStore, cfg: TheConfig, bid: str, index: int,
     made = (item or {}).get("attachment")
     unit = life_mod.UNIT[b["kind"]]
     if item is None or item["state"] != "done" or not made:
-        raise CelineError("conflict", f"Only a {unit} that was made can be kept.", 409)
+        raise CelineError("conflict", f"Only {'an' if unit == 'image' else 'a'} {unit} "
+                                      f"that was made can be kept.", 409)
     rows = await life_mod.keep(cfg, store, [made["id"]], body.kept)
     if body.kept and rows and rows[0]["life"] == MadeLife.CLEARED:
         from ..clock import zone

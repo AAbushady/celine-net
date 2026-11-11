@@ -310,7 +310,8 @@ async def test_the_agent_and_the_user_keep_and_let_go_with_the_kept_folder(app, 
         assert r.json()["items"][1]["attachment"]["life"]["state"] == "temporary"
         assert not (folder / f"{two['id'][:8]}_{two['filename']}").exists()
         r = await c.patch(f"/api/batches/{b['id']}/items/5", json={"kept": True})
-        assert r.status_code == 409
+        assert r.status_code == 409 and r.json()["error"]["message"] == \
+            "Only an image that was made can be kept."
 
 
 async def test_a_track_is_kept_and_its_line_says_so(app, store):
