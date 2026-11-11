@@ -1,5 +1,7 @@
 """The legend at the top of its prompt: what each mark the app puts into what it reads
-means, and who wrote what follows it.
+means, and who wrote what follows it. Its second line says who wrote the text no mark
+stands over: the user what they typed, the agent its replies, its calls' arguments and
+its notes, so its own account of what the user said is never read as the user's words.
 
 Everything the app inserts is marked one way, a line in square brackets: the send time
 (context.time_line), the intercom headers (intercom/render.py header), its mind block
@@ -16,6 +18,10 @@ from __future__ import annotations
 LINES = (
     "How the app marks what it adds to what you read: a line in square brackets. "
     "None of it was typed by {{username}}.",
+    "Who wrote the rest: {{username}} typed the text right under the time line of a "
+    "message that has no [From ...] line. Your replies, your thinking, the arguments of "
+    "your calls and your notes are your own writing: what they say {{username}} said is "
+    "your account of it, and {{username}}'s own message is the source.",
     "- [Thu 22 Oct 14:05] first in a message: when it was sent, in the app's time zone "
     "like every time you read here.",
     "- [From ...], [Brief from ...], [Report from ...], [Trigger from ...], "
@@ -25,8 +31,9 @@ LINES = (
     "your status and when you set it, how long since you talked, a new model, what is "
     "down, a freeze lifted.",
     "- [your memory] at the end of a message: sections of your notes whose keys came up, "
-    "the best match first, each with its path, heading, similarity and date. Read the "
-    "note for the rest.",
+    "the best match first, each with its path, heading, similarity and date. A note you "
+    "changed in this chat says so and when: what it says about this chat is your own "
+    "account of it. Read the note for the rest.",
     "- [also working now]: your other chats working at the same time.",
     "- [your notes]: notes from your notebook, written by you unless their tag says "
     "otherwise.",

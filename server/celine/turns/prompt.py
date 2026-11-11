@@ -163,19 +163,50 @@ async def _chat_line(store, cid: str) -> str | None:
     return "You are talking with {{username}} in the app right now."
 
 
+def wrote(c, cid: str) -> str | None:
+    """Who wrote the messages on the conversation's active path, counted, as one line of
+    the tail (count_line): its own replies (with text or calls), what the user typed, and
+    what came over the Intercom (briefs, reports, triggers, notices, job ends)."""
+    return count_line(*c.execute(
+        "WITH RECURSIVE up(id, parent_id) AS ("
+        "SELECT m.id, m.parent_id FROM messages m JOIN conversations c "
+        "ON c.active_leaf_id = m.id WHERE c.id = ? "
+        "UNION ALL SELECT m.id, m.parent_id FROM messages m JOIN up ON m.id = up.parent_id) "
+        "SELECT coalesce(sum(m.role = 'assistant'), 0), "
+        "coalesce(sum(m.role = 'user' AND m.author = 'user'), 0), "
+        "coalesce(sum(m.role = 'user' AND m.author != 'user'), 0) "
+        "FROM up JOIN messages m ON m.id = up.id WHERE m.role = 'user' OR (m.role = 'assistant' "
+        "AND (trim(coalesce(m.content, '')) != '' OR EXISTS ("
+        "SELECT 1 FROM tool_calls tc WHERE tc.message_id = m.id)))", (cid,)).fetchone())
+
+
+def count_line(own: int, typed: int, others: int) -> str | None:
+    """"Of the 212 messages in this chat, you wrote 104, {{username}} typed 96 and 12 came
+    over the Intercom." None before its first reply: its own writing is what the line is
+    for."""
+    if not own:
+        return None
+    n = own + typed + others
+    said = [f"you wrote {own}", *([f"{{{{username}}}} typed {typed}"] if typed else []),
+            *([f"{others} came over the Intercom"] if others else [])]
+    return (f"Of the {n} {'message' if n == 1 else 'messages'} in this chat, "
+            + ", ".join(said[:-1]) + (" and " if said[:-1] else "") + said[-1] + ".")
+
+
 async def tail_text(store, cfg, registry, backend, cid: str, carried,
                     tid: str = "") -> str:
     """The tail of turn `tid`: what holds now and changes from turn to turn, stored once
     on the user message the turn answers (turns/message_context.py put_tail) so it never
-    moves: the date and time now, the model it runs on when that is not the first,
-    where else it works, its own jobs still running, its plan, the skills it cannot use
-    now and the ones it keeps
-    notes on, and the core skills' live state (`tail_part`: the intercom's thread and
-    announcements, a mission's status, a sub-agent's report room, the notebook's
-    index)."""
+    moves: the date and time now, the model it runs on when that is not the first, who
+    wrote this chat's messages (wrote), where else it works, its own jobs still running,
+    its plan, the skills it cannot use now and the ones it keeps notes on, and the core
+    skills' live state (`tail_part`: the intercom's thread and announcements, a mission's
+    status, a sub-agent's report room, the notebook's index)."""
     from ..conversations import here
     from ..jobs import store as job_rows
+    count = await store.read(lambda c: wrote(c, cid))
     parts = [clock.today(cfg), clock.now_line(cfg), await fallback_line(store, backend, cid),
+             cfg.substitute(count) if count else None,
              await store.read(lambda c: here.busy(c, cid)),
              await store.read(lambda c: job_rows.running(c, cid, clock.zone(cfg)))]
     plan = plan_flow.block(await plan_flow.current(store, cid))

@@ -117,8 +117,11 @@ async def test_compaction_summarises_and_an_edit_above_the_cut_undoes_it(store, 
     assert not any("question 0" in u for u in users) and users[-1].endswith("and now?")
     assert built.estimate <= 0.5 * 20_000
     assert (await view.snapshot(store, cid))["compactions"], "kept, with the full rows"
+    written = len(b.summaries)            # one request for each piece of the summary's input
+    assert written and all(m[0]["content"].count("Say who said each thing") == 1
+                           for m in b.summaries), "every piece is told whose words are whose"
     await context.build(store, cfg, b, cid, system="PERSONA", tools=[])
-    assert len(b.summaries) == 1, "reused, not written again"
+    assert len(b.summaries) == written, "reused, not written again"
     first = (await compactions.context_view(store, cid))["chain"][0]["id"]
     await turns.request_abort(store, cid)            # the tree is edited once no turn is live
     await tree.edit(store, cid, first, "new start")

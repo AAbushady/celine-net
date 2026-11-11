@@ -514,7 +514,9 @@ message or its last reply, graded by the cosine similarity of their embedding to
 talk's (`kb/semantic.query_embedder`). Only a section at or over `memory_floor` comes
 back, the best first, at most `memory_sections` in `memory_tokens` tokens
 (`var/settings/context.toml`); each entry is `### path#heading (similarity, last
-changed)`. Not for a note it carries in full or with `load: off`, nor a section shown on
+changed)`, and a note this conversation's own call changed last adds `, you changed it in
+this chat, <when>` there (`recall.own_changes`: a call of the notebook or the mind that
+ended well names its note in `display.path`; the file is no newer than the call). Not for a note it carries in full or with `load: off`, nor a section shown on
 this branch since the last compaction unless it changed. An embedding model that does not
 answer gives `[your memory] no notes came with this message: <why>` and nothing else. The report
 (`report.notebook`) keeps the query and every candidate with its score and state.
@@ -536,6 +538,17 @@ outside text inside `<outside>` tags while Bastet is on. The legend under its pe
 (`turns/legend.py`) names each mark; `tests/test_self.py` checks it names the marks the
 code writes. The stored row stays bare. The agent's clock is the newest message's line, and
 today's date ends its system prompt (`clock.today`).
+
+**Who wrote what.** The legend's second line says whose words the unmarked text is: the
+user typed what stands right under a message's time line, and the agent's replies, its
+thinking, its calls' arguments and its notes are its own account. A turn's tail counts
+the messages of the chat by writer (`prompt.wrote`: "Of the 212 messages in this chat,
+you wrote 104, Joe typed 96 and 12 came over the Intercom."), from its first reply on.
+The summary's input (`compact.transcript`) puts the user's name only over what the user
+typed: an Intercom message stands under its own header, and what the app added to the
+end of a message (the mind and memory blocks, the tail) is a block of its own under
+`(added by the app)`, so the agent's notes are never summarised as the user's words
+(`turns/compact.md` tells the summary to quote the user only from the user's blocks).
 
 Decisions use the whole request estimate (system + tool schemas + history) as a share
 of the loaded model's window:

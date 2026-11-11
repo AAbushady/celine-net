@@ -221,3 +221,47 @@ async def test_one_long_note_leaves_room_for_every_other(store, tmp_path):
     assert sum(i.startswith("a/diary.md") for i in ids) == recall.NOTE_SECTIONS
     assert "people/noor.md#Climbing" in ids and "### people/noor.md#Climbing" in text
     assert len(ids) <= recall.CANDIDATES
+
+
+async def test_a_note_this_chats_own_call_changed_last_says_so(store, tmp_path):
+    """Its own account of this chat comes back marked as its own (recall.OWN): a call of
+    the conversation wrote the note and nothing changed it since. Another chat reads the
+    same section without the mark, and so does this one once the note is newer than
+    its call."""
+    cfg = _cfg(tmp_path)
+    cfg.timezone = "UTC"
+    await write_notes(store, cfg, {"people/noor.md": NOOR})
+    cid, other = await conversations.create(store), await conversations.create(store)
+    assert await _say(store, cfg, cid, "hello") is None
+    await _answer(store, cid)
+
+    def wrote(c, at):
+        reply = c.execute("SELECT id FROM messages WHERE conversation_id=? AND "
+                          "role='assistant'", (cid,)).fetchone()[0]
+        c.execute("INSERT OR REPLACE INTO tool_calls(id, message_id, name, arguments, state, "
+                  "display, finished_at, mutating) VALUES('k1', ?, 'notebook__edit', '{}', "
+                  "'ok', ?, ?, 1)", (reply, json.dumps({"path": "people/noor.md"}), at))
+    await store.write(lambda c: wrote(c, "2099-01-01T10:00:00.000+00:00"))
+    text, _ = await _say(store, cfg, cid, "is noor climbing today?")
+    mark = f", {recall.OWN}, Thu 1 Jan 10:00)\n"
+    assert "### people/noor.md#Climbing (1.00, " in text and text.count(mark) == 2, text
+    theirs, _ = await _say(store, cfg, other, "is noor climbing today?")
+    assert "### people/noor.md#Climbing (1.00, " in theirs and recall.OWN not in theirs
+    # the note is newer than the call: someone else changed it last
+    await _answer(store, cid)
+    await store.write(lambda c: wrote(c, "2000-01-01T10:00:00.000+00:00"))
+    later, _ = await _say(store, cfg, cid, "noor climbing again?")
+    assert "### people/noor.md#Climbing (1.00, " in later and recall.OWN not in later
+    # a call that failed, a read and another skill's call changed nothing of the note
+    await store.write(lambda c: c.execute(
+        "UPDATE tool_calls SET finished_at='2099-01-01T10:00:00.000+00:00', state='error'"))
+    assert await store.read(lambda c: recall.own_changes(c, cid)) == {}
+    await store.write(lambda c: c.execute(
+        "UPDATE tool_calls SET state='ok', mutating=0, name='notebook__read'"))
+    assert await store.read(lambda c: recall.own_changes(c, cid)) == {}
+    await store.write(lambda c: c.execute(
+        "UPDATE tool_calls SET mutating=1, name='shell__write'"))
+    assert await store.read(lambda c: recall.own_changes(c, cid)) == {}
+    await store.write(lambda c: c.execute("UPDATE tool_calls SET name='mind__think'"))
+    assert await store.read(lambda c: recall.own_changes(c, cid)) == {
+        "people/noor.md": "2099-01-01T10:00:00.000+00:00"}

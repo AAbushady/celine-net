@@ -195,21 +195,32 @@ def with_dropped_refs(summary: str, items: list[dict], previous: str = "") -> st
 # ---- the summary (the prompt: turns/compact.md) ------------------------
 
 
+ADDED = "(added by the app)"     # in the summary's input, over what the app put after a message
+
+
 def transcript(items: list[dict], user: str, name: str) -> list[str]:
-    """One block of text per message, tool results as stubs: the summary's input."""
+    """One block of text per message, tool results as stubs: the summary's input. Each
+    block says who wrote it: the user's name only over what the user typed, an Intercom
+    message under its own header (it names its sender), and what the app added to the end
+    of a message (its mind and memory blocks, its turn's tail) as a block of its own
+    under ADDED, so the agent's notes are never summarised as the user's words."""
     out: list[str] = []
     for it in items:
         role = it["role"]
-        content = (it.get("content") or "").strip()
-        atts = it.get("attachments") or []
-        if atts:
-            content += ("\n" if content else "") + " ".join(
-                f"[attached {a.get('filename', 'a file')}]" for a in atts)
+        raw = it.get("content") or ""
+        files = " ".join(f"[attached {a.get('filename', 'a file')}]"
+                         for a in it.get("attachments") or [])
         if role == "user":
-            out.append(f"{user}: {content}")
+            cut = len(raw) - (it.get("added") or 0)
+            written = "\n".join(p for p in (raw[:cut].strip(), files) if p)
+            typed = (it.get("author") or "user") == "user"
+            out.append(f"{user}: {written}" if typed else written)
+            if added := raw[cut:].strip():
+                out.append(f"{ADDED}\n{added}")
             continue
         if role != "assistant":
             continue
+        content = "\n".join(p for p in (raw.strip(), files) if p)
         lines = [f"{name}: {content}"] if content else []
         for c in it.get("calls") or []:
             lines.append(f"({name} used {c['name']})\n"

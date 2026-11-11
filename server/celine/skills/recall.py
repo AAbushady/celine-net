@@ -17,7 +17,9 @@ the best first, at most `memory_sections` of them in at most `memory_tokens` tok
 Never: a note it carries in full now (an always note, one it or the user loaded, its
 note on a loaded skill), a note with `load: off`, one left out here or outside a
 sub-agent's folder, nor a section shown on this branch since the last compaction, unless
-it changed since. When the embedding model does not answer, the block says so and
+it changed since. A note this conversation's own calls changed last says so in its
+section's line, with when (OWN): what it says about this conversation is its own account.
+When the embedding model does not answer, the block says so and
 nothing comes back: there is no word-only substitute.
 
 The block is added to the end of the message once (turns/message_context.py: stored, sent
@@ -40,7 +42,11 @@ from collections import OrderedDict
 from datetime import datetime
 from typing import Callable
 
+from ..clock import zone
+from ..core.ids import when
+
 HEAD = "[your memory]"
+OWN = "you changed it in this chat"   # on a section's line, before when
 SECTION_CHARS = 2000     # a longer section is cut there, with where the rest is
 CANDIDATES = 40          # the most sections graded for one message
 NOTE_SECTIONS = 8        # the most of them from one note, so every note gets a chance
@@ -86,8 +92,9 @@ def _hash(text: str) -> str:
 def _facts(c: sqlite3.Connection, cid: str, tid: str, mid: str, limit: int | None,
 ) -> dict | None:
     """What the block needs from the database, in one read: the conversation's switch,
-    folder and left-out notes, the place, its last reply before `mid`, and the sections shown on this branch since the last
-    compaction ({id: hash})."""
+    folder and left-out notes, the place, its last reply before `mid`, the sections shown
+    on this branch since the last compaction ({id: hash}), and the notes its own calls
+    changed (own_changes)."""
     from .places import place_of
     conv = c.execute("SELECT auto_context, notebook_folder, notes_off FROM conversations "
                      "WHERE id=?", (cid,)).fetchone()
@@ -102,8 +109,26 @@ def _facts(c: sqlite3.Connection, cid: str, tid: str, mid: str, limit: int | Non
             shown.setdefault(s["id"], s["hash"])
     return {"auto": bool(conv[0]), "folder": conv[1],
             "off": set(json.loads(conv[2] or "[]")), "place": place_of(c, cid, tid),
-            "reply": reply, "shown": shown,
-}
+            "reply": reply, "shown": shown, "own": own_changes(c, cid)}
+
+
+def own_changes(c: sqlite3.Connection, cid: str) -> dict[str, str]:
+    """{note: when the newest call of conversation `cid` that wrote it ended}. A call of
+    the notebook or the mind that changed a note names it in its row (`display.path`)."""
+    return {r[0]: r[1] for r in c.execute(
+        "SELECT json_extract(tc.display, '$.path'), max(tc.finished_at) "
+        "FROM tool_calls tc JOIN messages m ON m.id = tc.message_id "
+        "WHERE m.conversation_id = ? AND tc.state = 'ok' AND tc.mutating = 1 "
+        "AND (tc.name LIKE 'notebook!_!_%' ESCAPE '!' OR tc.name LIKE 'mind!_!_%' ESCAPE '!') "
+        "GROUP BY 1", (cid,)) if r[0] and r[1]}
+
+
+def _own(changed: str | None, mtime: float, cfg) -> str:
+    """", you changed it in this chat, Tue 10 Nov 17:25" for a note whose last change is
+    this conversation's own call (it ended at `changed`, and the file is no newer)."""
+    if not changed or mtime > datetime.fromisoformat(changed).timestamp() + 2:
+        return ""
+    return f", {OWN}, {when(changed, zone(cfg))}"
 
 
 _kept: OrderedDict[tuple, array] = OrderedDict()     # (model, text hash) -> vector
@@ -179,9 +204,10 @@ async def block(cfg, store, cid: str, tid: str, message: dict
         if text is None or notebook.load_of(rel, text, user) is not None:   # always or off
             continue
         try:
-            date = f"{datetime.fromtimestamp((root / rel).stat().st_mtime):%-d %b %Y}"
+            mtime = (root / rel).stat().st_mtime
         except OSError:
             continue
+        date = f"{datetime.fromtimestamp(mtime):%-d %b %Y}" + _own(f["own"].get(rel), mtime, cfg)
         for i, (heading, part) in enumerate(sections(cfg.substitute(text))[:NOTE_SECTIONS]):
             sid = f"{rel}#{heading}" if heading else rel
             found.append({"id": sid, "key": key, "date": date, "nth": i,

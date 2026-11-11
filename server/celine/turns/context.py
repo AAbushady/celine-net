@@ -246,7 +246,7 @@ class _Item:
     """One message as it goes on the wire: user text, or an assistant reply with its
     calls and their results. Tool rows of the tree are carried by their call."""
     __slots__ = ("idx", "id", "role", "content", "reasoning", "thinking",
-                 "attachments", "calls", "turn", "cid", "_wire", "_cost")
+                 "attachments", "calls", "turn", "cid", "author", "added", "_wire", "_cost")
 
     def __init__(self, idx: int, m: dict, calls: list[dict] | None, tz, user: str = "",
                  bare: bool = False, guarded: bool = False, cid: str = ""):
@@ -255,6 +255,8 @@ class _Item:
         self.role = m["role"]
         self.turn = m.get("turn_id")
         self.cid = cid
+        self.author = m.get("author")     # of a user message: "user" typed it, else the Intercom
+        self.added = 0                    # how much of its end the app added (context, tail)
         self.content = m["content"] or ""
         if self.role == "user" and not bare:
             # an intercom line that carries outside text (a mail's sender and subject, a
@@ -265,10 +267,12 @@ class _Item:
                 self.content = mark.wrap_parts(self.content, label)
             self.content = time_line(m, tz) + header(m.get("intercom"), user, tz) \
                 + self.content
+            written = len(self.content)
             if m.get("context"):                # turns/message_context.py
                 self.content += "\n\n" + m["context"]
             if m.get("tail"):                   # its turn's tail, stored once
                 self.content += "\n\n" + m["tail"]
+            self.added = len(self.content) - written
         self.reasoning = (m.get("reasoning") or None) if self.role == "assistant" else None
         self.thinking = m.get("thinking") if self.role == "assistant" else None
         self.attachments = m.get("attachments") or []
@@ -278,7 +282,8 @@ class _Item:
 
     def as_dict(self) -> dict:
         return {"id": self.id, "role": self.role, "content": self.content,
-                "attachments": self.attachments, "calls": self.calls}
+                "attachments": self.attachments, "calls": self.calls,
+                "author": self.author, "added": self.added}
 
 
 def _kept(call: dict, policy: Policy) -> bool:
