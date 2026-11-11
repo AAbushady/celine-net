@@ -39,7 +39,8 @@ hub marks it mature). A request (`ModelFiles.request`, image_generator__request_
 
 The page (GET /api/model-files, DELETE /api/model-files/{path}: `listing`, `remove`) shows
 every file that came by request, from the helper's own list, with what the app stored of
-its request, and the requests still on their way."""
+its request, and the requests still on their way. Its Civitai key field (GET, PUT, DELETE
+/api/civitai-key: `civitai_key`) hands the key to the helper, which keeps it."""
 from __future__ import annotations
 
 import contextlib
@@ -72,8 +73,12 @@ WHAT = {"lora": "LoRA", "model": "model"}
 FIELD = {"lora": "loras", "model": "model"}      # the generate field that takes its id
 LORA_TYPES = {"lora", "locon", "dora"}           # Civitai's types a LoRA loader takes
 MODEL_TYPES = {"checkpoint"}
-KEY_COMMAND = "comfyd.py"   # the helper's sentence that Civitai wants a key names it
-EDGE = 1024                 # the longest side of an example picture asked for
+KEY_SAID = {                # the helper's refusals about the Civitai key, by their code
+    "civitai_key_missing": "This file needs a Civitai key, which {user} sets in Settings, "
+                           "Images & Music.",
+    "civitai_key_refused": "Civitai refused the key set in Settings, Images & Music for this "
+                           "file."}
+EDGE = 1024                # the longest side of an example picture asked for
 LOOK_MAX = 4                # pictures one look shows at most
 NOBODY = "Nothing was asked: nobody is here to approve it."
 GONE = "The comfy helper no longer knows this download."
@@ -131,11 +136,10 @@ def unreachable(app, pid: str, e: httpx.HTTPError) -> str:
 
 
 def refused(e: HelperRefused, user: str) -> str:
-    """The helper's refusal as the agent reads it: as it is, and when it is the one that
-    Civitai wants a key (it names the helper's command), what the user does first."""
-    if KEY_COMMAND in str(e):
-        return f"This request needs {user} to set a Civitai key in the comfy helper. {e}"
-    return str(e)
+    """The helper's refusal as the agent reads it: its sentence as it is, or for the two
+    about the Civitai key (by their code) the app's own, which says where the key is set."""
+    said = KEY_SAID.get(e.code or "")
+    return said.format(user=user) if said else str(e)
 
 
 # ---- where a file goes ----------------------------------------------------------------
@@ -755,3 +759,16 @@ async def remove(app, path: str) -> None:
     from .. import image_catalog
     image_catalog.forget(app.cfg.settings.providers[pid]["base_url"])
     app.store.emit_global({"type": MODEL_FILES_CHANGED, "path": path})
+
+
+async def civitai_key(app, method: str, key: str | None = None) -> dict:
+    """/api/civitai-key: GET whether the comfy helper keeps a Civitai key, PUT a new one,
+    DELETE it -> {"set"}. The key goes from the page to the helper and the app keeps
+    nothing of it; after a change every page reads the state again
+    (`model_files.changed`). HelperRefused with the helper's sentence (a key it does not
+    take, nothing changed); httpx's error when it did not answer."""
+    async with client(app, helper_provider(app)) as comfy:
+        got = await comfy.civitai_key(method, key)
+    if method != "GET":
+        app.store.emit_global({"type": MODEL_FILES_CHANGED, "what": "civitai_key"})
+    return {"set": got.get("set") is True}

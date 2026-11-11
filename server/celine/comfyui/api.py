@@ -20,7 +20,12 @@ The model files the agent asked for (model_files.py), from the comfy helper of a
 that starts on demand, its key kept here:
 - GET /api/model-files: `ModelFileList`, every file that came by request and every
   request still on its way, and the free space on the models disk;
-- DELETE /api/model-files/{path}: one that came by request, off the disk -> `Removed`.
+- DELETE /api/model-files/{path}: one that came by request, off the disk -> `Removed`;
+- GET, PUT {key}, DELETE /api/civitai-key: the Civitai key the helper keeps for files that
+  need a sign-in -> `CivitaiKey`. A singleton beside them, since DELETE
+  /api/model-files/{path} would take /api/model-files/civitai-key. Guarded as PUT
+  /api/secrets/{pid} is: the session gate (auth/gate.py), so only a logged-in person sets
+  it; the agent's settings skill has no way to it.
 """
 
 from typing import Annotated, Literal
@@ -306,3 +311,35 @@ async def remove_model_file(services: TheServices, path: str) -> Removed:
     except (files_mod.ImageError, httpx.HTTPError) as e:
         raise _helper_error(e) from None
     return Removed(removed=True)
+
+
+class CivitaiKey(Answer):
+    """Whether the comfy helper keeps a Civitai key; the key never comes back."""
+    set: bool
+
+
+class CivitaiKeyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    key: str
+
+
+async def _civitai_key(services, method: str, key: str | None = None) -> CivitaiKey:
+    try:
+        return CivitaiKey.model_validate(await files_mod.civitai_key(services, method, key))
+    except (files_mod.ImageError, httpx.HTTPError) as e:
+        raise _helper_error(e) from None
+
+
+@router.get("/civitai-key")
+async def get_civitai_key(services: TheServices) -> CivitaiKey:
+    return await _civitai_key(services, "GET")
+
+
+@router.put("/civitai-key")
+async def put_civitai_key(services: TheServices, body: CivitaiKeyIn) -> CivitaiKey:
+    return await _civitai_key(services, "PUT", body.key)
+
+
+@router.delete("/civitai-key")
+async def delete_civitai_key(services: TheServices) -> CivitaiKey:
+    return await _civitai_key(services, "DELETE")

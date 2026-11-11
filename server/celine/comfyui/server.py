@@ -16,8 +16,9 @@ API, passed through while ComfyUI is up; while it is down the helper answers
 
 The helper also downloads model files the user approved (comfyui/model_files.py): POST
 /models/look, POST /models, GET /models/jobs/<id>, GET /models and DELETE
-/models/files/<path>, reached with the same key; a refusal is {"error": its sentence}
-(HelperRefused)."""
+/models/files/<path>, reached with the same key, and keeps the Civitai key (GET, PUT
+{"key"} and DELETE /keys/civitai, {"set"}); a refusal is {"error": its sentence}, with a
+`code` for the two about the Civitai key (HelperRefused)."""
 from __future__ import annotations
 
 import contextlib
@@ -191,6 +192,12 @@ class Comfy:
         return self._helper(await self.client.post(f"{self.url}/models/read",
                                                    json={"source": source}))
 
+    async def civitai_key(self, method: str, key: str | None = None) -> dict[str, Any]:
+        """GET, PUT ({"key"}) or DELETE /keys/civitai: the Civitai key the helper keeps,
+        which never comes back. -> {"set"}."""
+        return self._helper(await self.client.request(
+            method, f"{self.url}/keys/civitai", json=None if key is None else {"key": key}))
+
     async def picture(self, hub: str, pid: Any, edge: int) -> tuple[bytes, str]:
         """POST /models/picture: one example picture of a model, its bytes and media
         type; HelperRefused with the helper's sentence when it does not give it."""
@@ -217,7 +224,9 @@ class Comfy:
         if r.is_error:
             if isinstance(data, dict) and isinstance(data.get("error"), str) and \
                     data["error"].strip():
-                raise HelperRefused(" ".join(data["error"].split()), r.status_code)
+                code = data.get("code")
+                raise HelperRefused(" ".join(data["error"].split()), r.status_code,
+                                    code if isinstance(code, str) else None)
             if r.status_code in (404, 405):
                 raise ImageError(f"ComfyUI at {_host(self.url)} takes no model files "
                                  f"({r.status_code}): only the comfy helper of a ComfyUI "
@@ -234,12 +243,14 @@ LEASE_STATES = ("waiting", "starting", "ready", "failed")
 
 
 class HelperRefused(ImageError):
-    """The comfy helper refused a request about a model file: its sentence as it is, and
-    the status of its answer."""
+    """The comfy helper refused a request about a model file: its sentence as it is, the
+    status of its answer, and its `code` when it sent one (civitai_key_missing,
+    civitai_key_refused)."""
 
-    def __init__(self, sentence: str, status: int):
+    def __init__(self, sentence: str, status: int, code: str | None = None):
         super().__init__(sentence)
         self.status = status
+        self.code = code
 
 
 class HelperDown(ImageError):

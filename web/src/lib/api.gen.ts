@@ -127,6 +127,15 @@ export type ChatPatch = {
   trashed?: boolean | null
 }
 
+/** Whether the comfy helper keeps a Civitai key; the key never comes back. */
+export type CivitaiKey = {
+  set: boolean
+}
+
+export type CivitaiKeyIn = {
+  key: string
+}
+
 export type ContinueBody = {
   wait?: boolean
 }

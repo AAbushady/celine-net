@@ -7,12 +7,14 @@ with its pages and its preset check, a listing with no words, a read in parts wi
 the helper does not take, the example pictures to a model that sees and one that does
 not, the outside mark and the class; the preset tools (read, a node looked up while
 ComfyUI is down, a proposal with problems, one approved and made by a batch, its
-replacement, a shipped one and the user's refused); the page's routes. Fake servers
-only, a fixed clock for the batches, waits on conditions."""
+replacement, a shipped one and the user's refused); the page's routes, the Civitai key's
+among them (to the helper, nothing of it kept), and the helper's two refusals about the key
+by their code. Fake servers only, a fixed clock for the batches, waits on conditions."""
 from __future__ import annotations
 
 import itertools
 import json
+import logging
 
 import anyio
 import httpx
@@ -43,8 +45,11 @@ HF = {"hub": "huggingface", "repo": "MicksHF/Anime", "path": "fusal.safetensors"
 REV = "abc123def4567890"
 HF_VALUE = f"hf:MicksHF/Anime@{REV}/fusal.safetensors"
 WHY = "An anime style for the poster sam asked for."
-KEY = ("Civitai gives this file only to a signed-in account: set a key with "
-       "python comfyd.py civitai-key.")
+KEY = ("Civitai gives this file only to a signed-in account, and the helper has no Civitai "
+       "key. The owner sets one with `comfyd.py set-civitai-key`.")
+KEY_REFUSED = ("Civitai refused the helper's key for this file. The owner sets another with "
+               "`comfyd.py set-civitai-key`.")
+CIVITAI_KEY = "civitai-made-up-key-5e1d"
 LOOKS = {
     "hf": {"source": {**HF, "revision": REV}, "name": "fusal.safetensors", "size": 420 * MB,
            "sha256": "a" * 64, "license": "apache-2.0", "about": None},
@@ -106,6 +111,7 @@ class Stand(Helper):
         self.searches: list[dict] = []
         self.comfy_down = False
         self.read = READ
+        self.civitai: str | None = None     # the Civitai key it keeps
         self.refuse = {"p2": "Example 2 is a video, which is not taken."}
         self.unknown = {"Nope"}         # node classes ComfyUI has not
         self.nodes = {"KSampler": {"input": {"required": {
@@ -127,6 +133,17 @@ class Stand(Helper):
                 raise httpx.ConnectError("refused", request=request)
             body = json.loads(request.content) if request.content else {}
             return self._models(path, method, body)
+        if path == "/keys/civitai":
+            self.log.append(f"{method} {path}")
+            if method == "PUT":
+                key = json.loads(request.content)["key"]
+                if " " in key:
+                    return httpx.Response(400, json={"error": "That is not an API key (it has "
+                                                              "spaces); nothing changed."})
+                self.civitai = key
+            elif method == "DELETE":
+                self.civitai = None
+            return httpx.Response(200, json={"set": self.civitai is not None})
         if path == "/object_info":
             return httpx.Response(200, json=self.nodes)
         if path.startswith("/object_info/") and path.rsplit("/", 1)[1] in self.nodes:
@@ -147,7 +164,10 @@ class Stand(Helper):
                     return httpx.Response(200, json=LOOKS["hf"])
                 return httpx.Response(404, json={"error": "There is no such file."})
             if src.get("version") == 666:
-                return httpx.Response(403, json={"error": KEY})
+                return httpx.Response(403, json={"error": KEY, "code": "civitai_key_missing"})
+            if src.get("version") == 667:
+                return httpx.Response(403, json={"error": KEY_REFUSED,
+                                                 "code": "civitai_key_refused"})
             if src.get("version") in LOOKS:
                 return httpx.Response(200, json=LOOKS[src["version"]])
             return httpx.Response(404, json={"error": f"Civitai has no version "
@@ -289,8 +309,10 @@ async def _notice_for(app, cid: str) -> str:
     ({"file": "https://example.com/models/111?modelVersionId=222"},
      "example.com is neither Civitai nor Hugging Face: give a file value, an address on "
      "civitai.red, civitai.com or huggingface.co, or owner/name/path for Hugging Face."),
-    ({"file": "civitai:666"}, f"This request needs sam to set a Civitai key in the comfy "
-                              f"helper. {KEY}"),
+    ({"file": "civitai:666"}, "This file needs a Civitai key, which sam sets in Settings, "
+                              "Images & Music."),
+    ({"file": "civitai:667"}, "Civitai refused the key set in Settings, Images & Music for "
+                              "this file."),
     ({"file": "civitai:555"}, "Civitai lists this file as VAE: only a LoRA or a checkpoint "
                               "is taken."),
     ({"file": "civitai:444"}, "Civitai lists this file as a Checkpoint, so it goes where a "
@@ -697,13 +719,18 @@ async def test_a_denied_proposal_saves_nothing(hub):
 
 # ---- the page ----------------------------------------------------------------------------
 
-async def test_the_page_lists_what_came_and_what_is_on_its_way_and_removes_one(hub):
+def _web(hub):
     from fastapi import FastAPI
     from celine.errors import install_error_handler
     web = FastAPI()
     install_error_handler(web)
     web.include_router(comfy_api.router)
     web.state.services = hub
+    return web
+
+
+async def test_the_page_lists_what_came_and_what_is_on_its_way_and_removes_one(hub):
+    web = _web(hub)
     ctx = await _ctx(hub)
     await _images(hub).request_model(ctx, preset="qwen2.1-smart", kind="lora",
                                      file="civitai:222", why=WHY)
@@ -735,3 +762,34 @@ async def test_the_page_lists_what_came_and_what_is_on_its_way_and_removes_one(h
         assert r.json() == {"removed": True}
         assert [f["path"] for f in (await c.get("/api/model-files")).json()["files"]] == [
             "loras/qwen2.1/fusal.safetensors"]
+
+
+async def test_the_civitai_key_goes_to_the_helper_and_the_app_keeps_nothing_of_it(
+        hub, tmp_path, caplog):
+    caplog.set_level(logging.DEBUG)
+    async with client(_web(hub)) as c:
+        assert (await c.get("/api/civitai-key")).json() == {"set": False}
+        r = await c.put("/api/civitai-key", json={"key": "two words"})
+        assert (r.status_code, r.json()["error"]["message"]) == (
+            400, "That is not an API key (it has spaces); nothing changed.")
+        assert (await c.put("/api/civitai-key", json={"key": 5})).status_code == 400
+        assert hub.helper.civitai is None
+        r = await c.put("/api/civitai-key", json={"key": CIVITAI_KEY})
+        assert r.json() == {"set": True} and hub.helper.civitai == CIVITAI_KEY
+        assert (await c.get("/api/civitai-key")).json() == {"set": True}
+        assert (await c.delete("/api/civitai-key")).json() == {"set": False}
+        assert hub.helper.civitai is None
+        await c.put("/api/civitai-key", json={"key": CIVITAI_KEY})
+
+    events: list[str] = []
+
+    async def changed() -> bool:            # the two puts that went through and the delete
+        events[:] = await hub.store.read(lambda c: [r[0] for r in c.execute(
+            "SELECT data FROM global_events WHERE type='model_files.changed'")])
+        return len(events) == 3
+    await until(changed)
+    assert all(CIVITAI_KEY not in d for d in events)
+    for f in tmp_path.rglob("*"):
+        assert not f.is_file() or CIVITAI_KEY.encode() not in f.read_bytes(), f
+    for rec in caplog.records:
+        assert CIVITAI_KEY not in rec.getMessage() and CIVITAI_KEY not in str(vars(rec))
