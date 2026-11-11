@@ -1,17 +1,20 @@
 """The agent's sub-agents over HTTP: the overview, start one, stop one. The same code its
 tools run (skill.py begin, stop_agent), so the API and it see one thing. Each answer is a
-model here (core/dto.py), and the page's types are written from them."""
+model here (core/dto.py), and the page's types are written from them. A route takes what
+it uses as typed parameters (api/deps.py)."""
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..api.deps import TheConfig, TheServices, TheStore
 from ..core.dto import Answer, ConversationCrumb, Display, FilterOption, Home
 from ..core.statuses import AgentState, MissionStatus
 from ..errors import CelineError, NotFound
 from . import store as sub_agents
+from .skill import SubAgents
 
 router = APIRouter(prefix="/api")
 
@@ -125,12 +128,15 @@ class Stopped(Answer):
     stopped: bool
 
 
-def _skill(request: Request):
-    reg = request.app.state.services.registry
+def _skill(services: TheServices) -> SubAgents:
+    reg = services.registry
     skill = reg.skills.get("sub_agents") if reg is not None else None
     if skill is None:
         raise CelineError("unavailable", "Sub-agents are off.", 409)
     return skill
+
+
+TheSkill = Annotated[SubAgents, Depends(_skill)]     # the tool's own code, for the routes that act
 
 
 # the State options of a sub-agents list: a row at work (queued too) falls under Running
@@ -138,15 +144,14 @@ FILTERS = (AgentState.WORKING, AgentState.FAILED, AgentState.DONE)
 
 
 @router.get("/sub-agents")
-async def list_agents(request: Request, conversation: str | None = None,
+async def list_agents(store: TheStore, cfg: TheConfig, conversation: str | None = None,
                       home: str | None = None) -> SubAgentList:
     """The sub-agents of one conversation, or every one not in the archive, newest
     first; with `home` only those that live there (homes.py: `missions`)."""
-    services = request.app.state.services
-    rows = await services.store.read(
-        lambda c: sub_agents.agents_of(c, conversation, own=services.store.tool_words))
+    rows = await store.read(
+        lambda c: sub_agents.agents_of(c, conversation, own=store.tool_words))
     rows = [{**a, "filter": AgentState.WORKING if a["working"] else a["state"]}
-            for a in sub_agents.labelled(getattr(services.cfg, "settings", None), rows)
+            for a in sub_agents.labelled(cfg.settings, rows)
             if home is None or a["home"] == home]
     return SubAgentList(
         agents=[SubAgent.of(a) for a in rows],
@@ -157,15 +162,13 @@ async def list_agents(request: Request, conversation: str | None = None,
 
 
 @router.get("/conversations/{cid}/sub-agents")
-async def agent_tree(request: Request, cid: str) -> SubAgentTree:
+async def agent_tree(store: TheStore, cfg: TheConfig, cid: str) -> SubAgentTree:
     """The sub-agents under the top of `cid`'s chain, and the missions they started, as
     a tree (store.tree_of)."""
-    services = request.app.state.services
-    out = await services.store.read(
-        lambda c: sub_agents.tree_of(c, cid, services.store.tool_words))
+    out = await store.read(lambda c: sub_agents.tree_of(c, cid, store.tool_words))
     if out is None:
         raise NotFound("chat")
-    settings = getattr(services.cfg, "settings", None)
+    settings = cfg.settings
     return SubAgentTree(
         top=out["top"], origin=out["origin"], total=out["total"],
         agents=[TreeAgent.of(n) for n in sub_agents.labelled(settings, out["agents"])],
@@ -173,26 +176,25 @@ async def agent_tree(request: Request, cid: str) -> SubAgentTree:
 
 
 @router.post("/conversations/{cid}/sub-agents")
-async def start_agent(request: Request, cid: str, body: AgentIn) -> Started:
+async def start_agent(store: TheStore, skill: TheSkill, cid: str, body: AgentIn) -> Started:
     """Start a sub-agent of conversation `cid` with a brief, like its
     sub_agents__start: the name of one that is done gives it the brief (resumed). The
     deepest sub-agent starts none (skill.MAX_DEPTH)."""
-    store = request.app.state.services.store
     if not await store.read(lambda c: sub_agents.is_conversation(c, cid)):
         raise NotFound("chat")
-    sub, refusal, resumed, _ = await _skill(request).begin(
+    sub, refusal, resumed, _ = await skill.begin(
         store, cid, body.brief, body.name, body.access, body.folder, body.model, body.cli,
         body.device)
     if refusal:
         raise CelineError("refused", refusal, 409)
+    assert sub is not None              # begin gives its conversation or a refusal
     return Started(conversation_id=sub, resumed=resumed)
 
 
 @router.post("/sub-agents/{sub}/stop")
-async def stop_agent(request: Request, sub: str) -> Stopped:
+async def stop_agent(store: TheStore, skill: TheSkill, sub: str) -> Stopped:
     """Stop a sub-agent: its turn, its jobs, and what it scheduled."""
-    store = request.app.state.services.store
     if not await store.read(lambda c: sub_agents.is_sub_agent(c, sub)):
         raise NotFound("agent")
-    await _skill(request).stop_agent(sub)
+    await skill.stop_agent(sub)
     return Stopped(stopped=True)

@@ -293,7 +293,7 @@ class SubAgents:
                     model: str | None = None, cli: str | None = None,
                     device: str | None = None, asker: ToolContext | None = None,
                     template: str | None = None
-                    ) -> tuple[str | None, str | None, bool]:
+                    ) -> tuple[str | None, str | None, bool, int | None]:
         """Start a sub-agent of `parent`, in the parent's mode: its conversation,
         settings and brief; the name of one that is done gives that one the brief,
         refused when a given access or folder is not its own. The agent's tool and the API

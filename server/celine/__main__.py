@@ -32,7 +32,9 @@ from .api import skills as skills_api
 from .conversations import api as conversations_api, store as conversations, tree
 from . import attachments, boot, keys, reload
 from .backends import llm as llm_mod
+from .core.parts import Part
 from .core.services import Services
+from .sub_agents.part import part as sub_agents_part
 from .mcp import Supervisor
 from .triggers import Triggers
 from .db.migrate import migrate_all
@@ -135,6 +137,11 @@ def preflight(argv: argparse.Namespace) -> config_mod.Config:
                                                    "file": found.file,
                                                    "problem": found.message})
     return cfg
+
+
+# The features that register themselves (core/parts.py), in the order their steps run. A
+# feature that is not here yet is still wired by hand in build_app below.
+PARTS: tuple[Part, ...] = (sub_agents_part,)
 
 
 def build_app(cfg: config_mod.Config, dev: bool) -> FastAPI:
@@ -315,8 +322,9 @@ def build_app(cfg: config_mod.Config, dev: bool) -> FastAPI:
             dispatcher.intercom = intercom       # a Stop's cascade cancels schedules
             # every on_end before the workers start: a turn resumed at start that ends
             # while the awaits below run still reports
-            from .sub_agents import report       # a sub-agent that is done reports
-            dispatcher.on_end(lambda cid, _turn: report.on_end(services, cid))
+            for part in PARTS:                   # what must hear every turn's end
+                if part.wire is not None:
+                    part.wire(services)
             from . import leftovers              # a done mission's terminals and tabs close
             dispatcher.on_end(lambda cid, _turn: leftovers.on_end(services, cid))
             from .missions import watch as mission_watch    # a mission keeps going
@@ -325,8 +333,9 @@ def build_app(cfg: config_mod.Config, dev: bool) -> FastAPI:
             mind.start(services)
             await dispatcher.start(tg)
             await intercom.run(tg)
-            from .sub_agents.skill import release_all     # queued before a restart
-            await release_all(services)
+            for part in PARTS:                   # what queues or starts turns
+                if part.start is not None:
+                    await part.start(services)
             from .schedules.runs import Scheduler   # the schedules' runs
             scheduler = Scheduler(services)          # made once: its turn-end hook
 
@@ -445,8 +454,9 @@ def build_app(cfg: config_mod.Config, dev: bool) -> FastAPI:
     app.include_router(triggers_api.router)
     from .schedules import api as schedules_api
     app.include_router(schedules_api.router)
-    from .sub_agents import api as sub_agents_api
-    app.include_router(sub_agents_api.router)
+    for part in PARTS:
+        for routes in part.routes:
+            app.include_router(routes)
     from .intercom import api as intercom_api
     app.include_router(intercom_api.router)
     from .terminals import api as terminals_api
