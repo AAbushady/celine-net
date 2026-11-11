@@ -23,7 +23,7 @@ The map of the code and the rules it follows.
 | Module | What |
 |---|---|
 | `__main__.py`, `config.py`, `boot.py`, `reload.py`, `saves.py` | preflight and lifespan; celine.toml into a Config and the readers' helpers; the whole load (every config file, var/settings, its row), which writes nothing; config reloaded in place; the Settings saves, one function each, for the routes and the agent's `settings` skill |
-| `core/` | the single writer and event append, EventBus, ids and times, Services; `statuses.py` every status set the app shows, each an enum with its display (words and tone); `dto.py` the base of a route's answer model and the shapes answers share |
+| `core/` | the single writer and event append, EventBus, ids and times; `services.py` everything the running app holds as one typed object, with an interface per service listing what other packages use of it; `statuses.py` every status set the app shows, each an enum with its display (words and tone); `dto.py` the base of a route's answer model and the shapes answers share |
 | `db/` | `migrations/0001_schema.sql`, the later `NNNN_*.sql` and `NNNN_*.py` (a `.py` one moves stored data), and the chains for `log/` and `notebook/`; `migrate.py` applies them |
 | `conversations/` | conversation rows, the message tree, snapshot and replay, routes |
 | `turns/` | one turn: dispatcher, runner, tool chokepoint, context, compaction, titles; `reply.py` the one place that touches a stored reply (citation tokens only); `warm.py` keeps the newest chat ready on its model server; `sent.py` searches the requests that were sent to a model (what past_conversations__find_sent answers from) |
