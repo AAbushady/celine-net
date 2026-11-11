@@ -18,8 +18,9 @@ reading "OPEN" in the upper left. No tag lists, no quality words. 80 to 200 word
 short prompt comes out generic, and past about 500 tokens the rest is cut off. A known
 character: her name and series, then her look, since Qwen knows only the famous ones.
 
-Variant: raw (the default) is the full model, 40 steps, about a minute at 2K. turbo is the
-8-step checkpoint, about 5x faster, good for drafts and most finals. The negative prompt
+Variant: raw (the default) is the full model, 40 steps, about 25 s at 1024x1024. turbo is
+the 8-step checkpoint, about 5 s there, 5x faster, good for drafts and most finals. The
+first image of a batch also loads the models, about two minutes more. The negative prompt
 has no effect at cfg 1, so leave it empty.
 
 Size: native is 2048x2048 (4 MP); 1024x1024 is four times faster. Presets: 1:1 2048x2048,

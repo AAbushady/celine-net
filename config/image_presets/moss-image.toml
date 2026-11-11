@@ -8,7 +8,7 @@ label = "MOSS-Image"
 family = "MOSS-Image"
 task = "generate"
 workflow = "moss-image.json"
-good_at = "Pictures with readable text in them (signs, posters, notes, Chinese too) and layouts where things must sit in a given place. About a minute per image."
+good_at = "Pictures with readable text in them (signs, posters, notes, Chinese too) and layouts where things must sit in a given place. About 16 s an image at 1024x1024; the first of a batch also loads the models, about 35 s more."
 prompting = """
 English works best; Chinese works. Three ways to write, mixable:
 
