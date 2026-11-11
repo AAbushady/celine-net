@@ -1131,8 +1131,9 @@ them). A delete, its own or the browser's, moves the note or folder to
 `.trash/<time>/<path>` (`trash`); its own also leaves `.deleted-by-agent` in the `<time>`
 folder. What the user deleted is the user's, text included: the user's delete writes its
 `<time>` as `.deleted-by-user` into the `.versions/<path>/` of each note it takes (the
-note, or each note of the folder), the newest delete's time wins, and the line moves
-with the note's `.versions`. `history` and `versions` are a note's History, also of a
+note, or each note of the folder), the newest delete's time wins, the line moves with
+the note's `.versions`, and the user's Restore lifts it from each note it brings back
+(`untrash`, told who restores; its own `restore` never touches a line). `history` and `versions` are a note's History, also of a
 deleted note (the History page, whole); with `agent` they leave out the copies replaced
 before the line (`list_versions`, `read_version`), every other text keeps the id the
 History page gives it, and the first one after the line shows the line's time and its
