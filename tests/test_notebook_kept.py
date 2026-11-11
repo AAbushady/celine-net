@@ -131,15 +131,14 @@ async def test_it_restores_what_it_deleted_and_the_users_stays_in_the_trash(note
                                f"text in the trash, not a note in your notebook now]\n\n"
                                f"Last changed: 2026-09-24 21:52\nNoor climbs.")
         assert not ANCHOR.search(out.content) and noor in [t["id"] for t in trashed(root)]
-        assert (await nb.read_deleted(ctx, sam)).content.endswith("Sam sails.")
-        assert (await nb.read_deleted(ctx, lore)).content == (
-            f'lore is a deleted folder with 2 notes: lore/a.md, lore/b.md. notebook__read_'
-            f'deleted(id="{lore}", path="<one of them>") reads one.')
-        assert (await nb.read_deleted(ctx, lore, "lore/b.md")).content.endswith("\nb")
-        out = await nb.read_deleted(ctx, lore, "lore/../people/x.md")
-        assert out.is_error and out.content == (
-            f'lore/../people/x.md is not in {lore}: notebook__read_deleted(id="{lore}") '
-            f'shows what it holds.')
+        # what the user deleted is listed above, and its text is the user's
+        for out, said in (
+                (await nb.read_deleted(ctx, sam),
+                 f"{user} deleted people/sam.md, so its text is {user}'s and stays in the "
+                 f"trash."),
+                (await nb.read_deleted(ctx, lore),
+                 f"{user} deleted lore, so the notes in it are {user}'s and stay in the trash.")):
+            assert out.is_error and out.content == said
 
         # the user's stay
         for tid, said in ((sam, f"{user} deleted people/sam.md"),
@@ -168,7 +167,7 @@ async def test_it_restores_what_it_deleted_and_the_users_stays_in_the_trash(note
         await nb.move(ctx, "people/noor.md", "people/noor-2.md")
         out = await nb.restore(ctx, noor)
         assert not out.is_error and out.content == "Restored people/noor.md from the trash."
-        assert out.display == {"path": "people/noor.md", "kind": "file"}
+        assert out.display == {"path": "people/noor.md"}
         assert (root / "people/noor.md").read_text().endswith("Noor climbs.")
         assert not (root / ".trash" / noor).exists()
         assert "people/noor.md" in [r["path"] for r in await notebook_index.list(store)]
@@ -182,17 +181,60 @@ async def test_it_restores_what_it_deleted_and_the_users_stays_in_the_trash(note
             {"ok": True, "path": "people/sam.md"}
 
 
+async def test_the_texts_from_before_the_user_deleted_a_note_are_the_users(notebook, store):
+    """A user's delete of a note, or of a folder that held it, draws a line: its tools
+    leave out the texts kept before it, also once a new note is at the path; the
+    History page keeps every one."""
+    app, nb, cfg = notebook
+    ctx, user = _ctx("c", store, cfg), cfg.user
+    for text in ("# sea\nwaves", "# sea\ngulls"):
+        await nb.write(ctx, "lore/sea.md", text, "the sea")
+    for text in ("# reef\nfish", "# reef\ncoral"):
+        await nb.write(ctx, "lore/reef.md", text, "the reef")
+    line = f"{user} deleted lore/sea.md on {WHEN}, so its texts from before then are {user}'s."
+    async with client(app) as c:
+        assert (await c.delete("/api/notebook/entries/lore/sea.md")).status_code == 200
+        assert (await nb.list_versions(ctx, "lore/sea.md")).content == line, \
+            "every text it had is before the line, and its last one is in the trash"
+        out = await nb.read_version(ctx, "lore/sea.md", 1)
+        assert out.is_error and out.content.startswith("lore/sea.md has no version 1: ")
+
+        # a new note at the path: only its own texts, under ids that never change
+        for text in ("storm", "storm\nrain"):
+            await nb.write(ctx, "lore/sea.md", text, "the sea again")
+        rows = (await nb.list_versions(ctx, "lore/sea.md")).content.splitlines()
+        first = "Last changed: 2026-09-24 21:52\nstorm"
+        assert rows[1:] == [f'version 2, from {WHEN}, {len(first)} characters: "storm"', line,
+                            f"Its text now is version 3, from {WHEN}: notebook__read shows it."]
+        assert (await nb.read_version(ctx, "lore/sea.md", 2)).content.endswith(f"\n\n{first}")
+        assert (await nb.read_version(ctx, "lore/sea.md", 1)).is_error
+        page = (await c.get("/api/notebook/versions", params={"path": "lore/sea.md"})).json()
+        assert [v["id"] for v in page["versions"]] == [2, 1] and page["current"]["id"] == 3, \
+            "the user's History keeps every text"
+        old = (await c.get("/api/notebook/versions/1", params={"path": "lore/sea.md"})).json()
+        assert old["text"].endswith("# sea\nwaves")
+
+        # the user deletes the folder: it covers each note that was in it
+        assert (await c.delete("/api/notebook/entries/lore")).status_code == 200
+        for rel in ("lore/sea.md", "lore/reef.md"):
+            assert (await nb.list_versions(ctx, rel)).content == (
+                f"{user} deleted {rel} on {WHEN}, so its texts from before then are {user}'s.")
+            assert (await nb.read_version(ctx, rel, 1)).is_error
+        assert [v["id"] for v in (await c.get("/api/notebook/versions", params={
+            "path": "lore/reef.md"})).json()["versions"]] == [1]
+
+
 async def test_a_restore_is_named_by_the_path_it_went_back_to():
     """The call names a trash id; its row, its Events line and its link name the path its
     display says."""
     from celine.events import _note
     from celine.skills.tool_rows import words
-    args, shown = '{"id": "2026-11-10_140210_123456"}', '{"path": "people/noor.md", "kind": "file"}'
+    args, shown = '{"id": "2026-11-10_140210_123456"}', '{"path": "people/noor.md"}'
     got = _note({"name": "notebook__restore", "state": "ok", "arguments": args,
                  "display": shown}, None)
     assert (got["title"], got["open"]) == ("Restored people/noor.md",
                                            "/notebook?note=people/noor.md")
-    row = words("notebook__restore", args, "ok", {"path": "people/noor.md", "kind": "file"})
+    row = words("notebook__restore", args, "ok", {"path": "people/noor.md"})
     assert row["settled"] == "Restored the note people/noor.md from Trash"
     assert words("notebook__restore", args, "running")["running"] == \
         "Restoring a note from Trash"

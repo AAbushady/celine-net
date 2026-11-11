@@ -304,9 +304,8 @@ NOTEBOOK: dict[str, Sentence] = {
     "read_deleted": lambda a, d, r: f"Read the deleted note {_str(d.get('path')) or _path(a)}"
                                     .strip(),
     # a restore's arguments name its trash entry; its display, at its end, the path
-    "restore": lambda a, d, r: f"Restored the {'folder' if d.get('kind') == 'dir' else 'note'} "
-                               f"{d['path']} from Trash" if _str(d.get("path"))
-                               else "Restored a note from Trash",
+    "restore": lambda a, d, r: f"Restored the note {d['path']} from Trash"
+                               if _str(d.get("path")) else "Restored a note from Trash",
 }
 
 PAST_CONVERSATIONS: dict[str, Sentence] = {

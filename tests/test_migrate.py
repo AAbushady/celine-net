@@ -662,7 +662,9 @@ def test_0031_gives_every_mission_report_its_status_heading_and_note_once(tmp_pa
     c.close()
 
 
-def test_0032_marks_the_trashed_notes_its_own_deletes_moved_there_once(tmp_path, monkeypatch):
+def test_0032_marks_its_own_deletes_and_draws_the_users_lines_once(tmp_path, monkeypatch):
+    """The trash's older entries: a note its notebook__delete moved there is the agent's;
+    every other one is the user's and draws the line in the .versions of its notes."""
     import importlib.util
     d = tmp_path / "migrations"
     d.mkdir()
@@ -672,15 +674,20 @@ def test_0032_marks_the_trashed_notes_its_own_deletes_moved_there_once(tmp_path,
     monkeypatch.setattr(m, "MIGRATIONS_DIR", d)
     db = tmp_path / "celine.db"
     assert migrate_all(db) == 31
-    trash = tmp_path / "notebook" / ".trash"
+    notebook = tmp_path / "notebook"
+    trash, kept = notebook / ".trash", notebook / ".versions"
     held = {"2026-11-10_140210_123456": ["people/noor.md"],         # its delete, ok
             "2026-11-10_150000_000000": ["people/sam.md"],          # the user's: no call
             "2026-11-10_160000_000000": ["lore/sea.md"],            # its delete failed
-            "2026-11-10_170000_000000": ["lore/a.md", "lore/b.md"]}  # a folder
+            "2026-11-10_170000_000000": ["lore/a.md", "lore/b.md"],  # a folder
+            "2026-11-10_180000_000000": ["lore/sea.md"]}            # the user's again
     for tid, notes in held.items():
         for rel in notes:
             (trash / tid / rel).parent.mkdir(parents=True, exist_ok=True)
             (trash / tid / rel).write_text("x")
+    for rel in ("people/noor.md", "people/sam.md", "lore/sea.md", "lore/a.md"):
+        (kept / rel).mkdir(parents=True)
+        (kept / rel / "2026-11-10_120000_000000.md").write_text("before")
     c = sqlite3.connect(db)
     c.execute("INSERT INTO conversations(id, kind, created_at, updated_at) "
               "VALUES('chat', 'chat', 'x', 'x')")
@@ -696,16 +703,25 @@ def test_0032_marks_the_trashed_notes_its_own_deletes_moved_there_once(tmp_path,
                    f"2026-11-10T{start}+00:00", f"2026-11-10T{end}+00:00"))
     c.commit()
     c.close()
-    shutil.copy(MIGRATIONS_DIR / "0032_trash_by_agent.py", d)
+    step_file = MIGRATIONS_DIR / "0032_notebook_deleters.py"
+    shutil.copy(step_file, d)
     assert migrate_all(db) == 32
-    marked = {p.parent.name for p in trash.glob("*/.deleted-by-agent")}
-    assert marked == {"2026-11-10_140210_123456"}
+
+    def marks():
+        return ({p.parent.name for p in trash.glob("*/.deleted-by-agent")},
+                {p.parent.relative_to(kept).as_posix(): p.read_text()
+                 for p in kept.rglob(".deleted-by-user")})
+    agents, lines = marks()
+    assert agents == {"2026-11-10_140210_123456"}
+    assert lines == {"people/sam.md": "2026-11-10_150000_000000",
+                     "lore/sea.md": "2026-11-10_180000_000000",
+                     "lore/a.md": "2026-11-10_170000_000000"}, \
+        "the user's newest delete of each note it held; no line where no text was kept"
     assert (trash / "2026-11-10_140210_123456/people/noor.md").read_text() == "x"
-    spec = importlib.util.spec_from_file_location("trash_by_agent",
-                                                  MIGRATIONS_DIR / "0032_trash_by_agent.py")
+    spec = importlib.util.spec_from_file_location("notebook_deleters", step_file)
     step = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(step)
     c = sqlite3.connect(db, isolation_level=None)
     step.up(c, db)
     c.close()
-    assert {p.parent.name for p in trash.glob("*/.deleted-by-agent")} == marked
+    assert marks() == (agents, lines)
