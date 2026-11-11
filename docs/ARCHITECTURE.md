@@ -1129,15 +1129,22 @@ routes and its tools). Before a note's text changes, the text it had goes to
 `.versions/<path>/<time>.md` (`keep_version`; a move takes them along, a delete leaves
 them). A delete, its own or the browser's, moves the note or folder to
 `.trash/<time>/<path>` (`trash`); its own also leaves `.deleted-by-agent` in the `<time>`
-folder. `history` and `versions` are a note's History, also of a deleted note (the
-History page and `list_versions`, `read_version`); `trashed` lists the trash as `{id,
-path, kind, at, by}` (`GET /notebook/trash` and `list_deleted`, `read_deleted`);
+folder. What the user deleted is the user's, text included: the user's delete writes its
+`<time>` as `.deleted-by-user` into the `.versions/<path>/` of each note it takes (the
+note, or each note of the folder), the newest delete's time wins, and the line moves
+with the note's `.versions`. `history` and `versions` are a note's History, also of a
+deleted note (the History page, whole); with `agent` they leave out the copies replaced
+before the line (`list_versions`, `read_version`), every other text keeps the id the
+History page gives it, and the first one after the line shows the line's time and its
+change against nothing. `trashed` lists the trash as `{id, path, kind, at, by}` (`GET
+/notebook/trash` and `list_deleted`); `read_deleted` reads only a note it deleted.
 `untrash` puts an entry back and indexes each note with `(no summary yet)` (the
 browser's Restore and `restore`). Its `restore` takes back only a note it deleted, in
 its folder, that is not the user's, to a path that is free; the rest stays in the trash
 for the user. Only the user's Delete permanently removes anything; no tool removes a
-version or empties the trash. `db/migrations/0032_trash_by_agent.py` marked the trash's
-older entries by the `notebook__delete` calls that moved them there.
+version or empties the trash. `db/migrations/0032_notebook_deleters.py` gave the trash's
+older entries the same marks: the agent's by the `notebook__delete` calls that moved
+them there, every other one the user's, with its lines.
 
 Every notebook tool speaks to it in the second person and says whose file is whose:
 `list`, `search` and the index suffix your files with `[{{username}}'s, you can read it,
