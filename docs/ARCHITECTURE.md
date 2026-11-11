@@ -1665,6 +1665,15 @@ music). One code path for both (`batches.Batches`).
     helper's `GET /models` with each file's request, and the requests on their way; the
     free space) and removes one (`DELETE /api/model-files/{path}`, the helper's `DELETE
     /models/files/<path>`); the provider's key stays on the server.
+  - The Civitai key, for the files Civitai gives only to a signed-in account, is set
+    there too (`GET`, `PUT {key}`, `DELETE /api/civitai-key` -> `{set}`, a singleton
+    beside the model files' routes, guarded as `PUT /api/secrets/{pid}` is). The app
+    hands it to the helper (`/keys/civitai`), which keeps it and sends it to Civitai's
+    own hosts only; the app keeps nothing of it (no file, row, event payload or log
+    field) and emits `model_files.changed` after a change. The helper's two refusals
+    about the key carry a `code` (`civitai_key_missing`, `civitai_key_refused`;
+    `HelperRefused.code`), and the tools answer them with the app's own sentence, which
+    says where the key is set (`model_files.refused`).
 - **The agent's own presets** (`comfyui/proposals.py`): `read_preset` gives a preset as the
   editor has it (values and the workflow with its placeholders), `look_up_node` what
   ComfyUI's `/object_info` says of a node or which nodes match some words (through the
