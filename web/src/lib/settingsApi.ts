@@ -55,6 +55,8 @@ type KeyState = {
   state: 'set' | 'not set'
   set_at: string | null
   required: boolean
+  /** Settings asks for a key while none is set: its kind requires one, or it is a ComfyUI that starts on demand */
+  asked: boolean
 }
 
 /** what the app knows about the server now (backends/router.py) */

@@ -587,13 +587,18 @@ def provider_headers(s, pid: str) -> dict[str, str]:
 
 
 def key_state(pid: str, p: dict[str, Any], secrets_root) -> dict[str, Any]:
-    """What the API may say about a key: set or not, never the key."""
+    """What the API may say about a key: set or not, never the key. `required`: its kind
+    needs one; `asked`: Settings asks for one while none is set, as when it is required
+    or the provider is a ComfyUI that starts on demand (the comfy helper takes the app's
+    key)."""
     from .secrets import state
     st = state(secrets_root, pid) if secrets_root is not None else {"state": "not set"}
     need = kinds_mod.KINDS[p.get("kind", "openai")]["key"] == "required"
+    asked = need or (p.get("kind") == "comfyui"
+                     and bool((p.get("options") or {}).get("on_demand")))
     if st["state"] == "set":
-        return {"state": "set", "set_at": st.get("set_at"), "required": need}
-    return {"state": "not set", "set_at": None, "required": need}
+        return {"state": "set", "set_at": st.get("set_at"), "required": need, "asked": asked}
+    return {"state": "not set", "set_at": None, "required": need, "asked": asked}
 
 
 def backend_config(s: Settings, ref: str) -> BackendConfig | None:

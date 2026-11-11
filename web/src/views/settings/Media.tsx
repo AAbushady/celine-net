@@ -40,7 +40,7 @@ export function Media() {
       {!providers.data ? <Section><Loaded res={providers} /></Section> : <>
         {(problem || check.error) && <InlineError message={check.error ?? problem} />}
         <Comfy p={comfy} others={list} kinds={providers.data.kinds} onChanged={reload} />
-        {comfy && (kindInfo(providers.data.kinds, 'comfyui')?.key === 'required' || comfy.key.state === 'set') && (
+        {comfy && (comfy.key.asked || comfy.key.state === 'set') && (
           <KeySection p={comfy} required={kindInfo(providers.data.kinds, 'comfyui')?.key === 'required'} onChanged={reload} />
         )}
         {roles.data ? <>

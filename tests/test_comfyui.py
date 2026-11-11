@@ -939,6 +939,13 @@ def test_on_demand_is_a_switch():
         validate_providers({"od": {**OD_PROVIDERS["od"], "options": {"on_demand": "yes"}}})
 
 
+def test_settings_asks_for_the_key_of_a_comfyui_that_starts_on_demand():
+    from celine.settings.registry import key_state
+    assert key_state("od", OD_PROVIDERS["od"], None) == {
+        "state": "not set", "set_at": None, "required": False, "asked": True}
+    assert key_state("comfy", PROVIDERS["comfy"], None)["asked"] is False
+
+
 async def test_a_batch_waits_for_the_gpu_then_runs_under_the_helpers_lease(od):
     helper, store = od.helper, od.store
     helper.states, helper.ahead = ["waiting"], 1
