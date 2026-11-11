@@ -1510,10 +1510,11 @@ An image a tool gives it with its result (`ToolResult.images`) is linked to the 
 Startup GC (`attachments.gc`, its rule in the module docstring): a blob stays while an
 attachment or its portrait points at it; a draft stays until it is sent, removed or 30
 days old (`KEEP`); a blob nothing points at goes once it is 30 days old. Deleting a
-message cascades its attachment rows, so a later GC frees the blob. Beside it, at each
-start and every hour, `comfyui/life.py` clears what batches made past its days (Images
-and music, Life). A blob's file is written once: the same bytes saved again find it in
-place, so the links to it stay links.
+message cascades its attachment rows, so a later GC frees the blob. GC runs at each start
+and every hour after, each time followed by `comfyui/life.py` (Images and music, Life),
+which clears what batches made past its days and sweeps the files no row holds any more.
+A blob's file is written once: the same bytes saved again find it in place, so the links
+to it stay links.
 
 Web: paperclip, drop anywhere on the transcript, or paste. Each file uploads at once
 and shows as a chip; a failed chip carries the error and can be removed; send waits
@@ -1565,9 +1566,15 @@ music). One code path for both (`batches.Batches`).
   `generated_keep_days` (Settings, Advanced, Images and tracks kept; 14, 0 for no limit)
   after its life began, when it was made or let go; `life.clear` runs at each start and
   every hour, and a look that finds nothing writes nothing. Cleared, its row and its item
-  stay, marked with the time, and its batch is published again; its entry in the dated
-  folder goes, and its blob with the blob's smaller copies unless an attachment that is
-  not cleared holds the same bytes. Never cleared: a kept one, and one whose bytes the
+  stay, marked with the time and committed, and its batch is published again; then
+  `life.sweep` removes its entry in the dated folder, and its blob with the blob's
+  smaller copies unless an attachment that is not cleared holds the same bytes. The sweep
+  also removes, once an hour old, a file the app wrote under `images/` or `music/` that no
+  row holds (a dated `HH-MM-SS_<name>` in a `YYYY-MM-DD` folder, a kept `<short id>_<name>`,
+  a half-placed `.part`), so a purged conversation's entries go too, and an empty dated
+  folder two days past its date; any other file stays, and a file that could not be removed
+  is tried again at the next look. Rows go without a word to it (`purge_sync`'s `_drop`
+  and the database's cascades), so it reads the files, not the deletes. Never cleared: a kept one, and one whose bytes the
   agent's portrait or a file an Intercom message carries shows. Pages are sandboxed and
   read no attachment, and shares serve the box's own files, so neither holds one. Wherever
   a cleared one appears the server says so: the item's `attachment.life`, the file route
