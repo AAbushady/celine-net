@@ -357,13 +357,20 @@ async def test_put_provider_fills_the_empty_roles_from_caps_and_presets(tmp_path
         assert roles["reranker"]["chain"] == ["main/rr"]
         assert roles["vision"]["chain"] == ["main/eyes"]
         assert not roles.get("image_generation", {}).get("chain")
+        import httpx
+        from celine.backends.router import app_router
+
+        def refused(request):
+            raise httpx.ConnectError("refused", request=request)
+        app_router(cfg).transport = httpx.MockTransport(refused)
         r = await c.put("/api/providers/comfyui", json={
             "kind": "comfyui", "label": "ComfyUI", "base_url": "http://127.0.0.1:8188"})
         assert r.status_code == 200, r.text
         roles = (await c.get("/api/roles")).json()["roles"]
         from celine.comfyui import presets
         images = [f"comfyui/{p}" for p in presets.of("images")]
-        assert roles["image_generation"]["chain"] == images[:6] and len(images) >= 2
+        assert roles["image_generation"]["chain"] == images and len(images) >= 2, \
+            "a server that does not answer: every preset, in the shipped order"
         assert roles["music_generation"]["chain"] == [f"comfyui/{p}" for p in presets.of("music")]
         # a second provider with the same caps changes nothing: the roles are set
         r = await c.put("/api/providers/lan", json=PROVIDERS["lan"])

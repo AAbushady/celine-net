@@ -278,6 +278,20 @@ def test_a_role_model_its_provider_no_longer_has_says_so():
     assert [m["problem"] for m in views.roles(s)["chat"]["models"]] == [None, views.GONE]
 
 
+def test_a_preset_role_takes_every_preset_and_a_fallback_order_six_models():
+    from celine.settings.files import Invalid
+    from celine.settings.registry import validate_role
+    providers = {"comfy": {"kind": "comfyui", "models": {f"p{i}": {} for i in range(7)}},
+                 "main": {"kind": "llama-swap", "models": {f"m{i}": {} for i in range(7)}}}
+    seven = [f"comfy/p{i}" for i in range(7)]
+    assert validate_role("image_generation", {"chain": seven}, providers) == {"chain": seven}
+    assert validate_role("music_generation", {"chain": seven}, providers) == {"chain": seven}
+    with pytest.raises(Invalid, match="^This list takes at most 6 models.$"):
+        validate_role("chat", {"chain": [f"main/m{i}" for i in range(7)]}, providers)
+    six = [f"main/m{i}" for i in range(6)]
+    assert validate_role("tasks", {"chain": six}, providers) == {"chain": six}
+
+
 def test_a_role_model_shows_the_routers_sentence_for_that_role():
     from types import SimpleNamespace
     from celine.settings import views
@@ -327,6 +341,12 @@ async def test_a_cloud_provider_fills_no_empty_role_until_its_switch_is_off(api)
 
 
 async def test_a_comfyui_at_a_public_address_still_fills_its_preset_roles(api):
+    import httpx
+    from celine.backends.router import app_router
+
+    def refused(request):
+        raise httpx.ConnectError("refused", request=request)
+    app_router(api.cfg).transport = httpx.MockTransport(refused)
     assert api.cfg.settings.chain("image_generation") == []
     r = await api.put("/api/providers/comfy", json={
         "kind": "comfyui", "label": "ComfyUI", "base_url": "https://comfy.example.com"})

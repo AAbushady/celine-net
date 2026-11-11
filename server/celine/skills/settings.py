@@ -335,9 +335,12 @@ def _cloud_row(old: dict | None, new: dict) -> list[dict]:
     return [] if was == now else [row("Cloud", word.get(was), word[now])]
 
 
-def _filled_roles(s, pid: str, new: dict) -> list[dict]:
-    """A row per empty role saving provider `pid` as `new` fills (saves.provider)."""
-    filled = views.fill_roles(s, pid, saves.provider_clean(pid, new)) or {}
+async def _filled_roles(app, pid: str, new: dict) -> list[dict]:
+    """A row per empty role saving provider `pid` as `new` fills (saves.provider), a new
+    ComfyUI provider's server asked as the save asks it."""
+    s = app.cfg.settings
+    clean = saves.provider_clean(pid, new)
+    filled = views.fill_roles(s, pid, clean, await views.ready_presets(app, pid, clean)) or {}
     rows = []
     for r, spec in ROLES.items():
         was = (s.roles.get(r) or {}).get("chain") or []
@@ -472,7 +475,7 @@ class Settings:
             if values and t.id.startswith("providers."):
                 pid = t.id.removeprefix("providers.")
                 rows += _cloud_row(self.cfg.settings.providers.get(pid), new)
-                rows += _filled_roles(self.cfg.settings, pid, new)
+                rows += await _filled_roles(self.app, pid, new)
         except Invalid as e:
             return ToolResult(content=f"{e.field}: {e.message}", is_error=True)
         if not rows:

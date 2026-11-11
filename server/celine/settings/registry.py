@@ -76,6 +76,11 @@ ROLES: dict[str, dict[str, Any]] = {
     "speech": {"label": "Read aloud", "caps": ["speech"],
                "help": "Reads replies out loud."},
 }
+# the roles whose list is the set of presets in use, the first of each task its default
+# (comfyui/batches.py): they take every preset. Every other role's list is a fallback
+# order of at most MAX_CHAIN models.
+PRESET_ROLES = ("image_generation", "music_generation")
+MAX_CHAIN = 6
 
 # the "?" of Settings, Models, Providers (GET /providers `help`)
 PROVIDERS_HELP = "The servers your models run on. Any provider can serve any role."
@@ -505,8 +510,8 @@ def validate_role(role: str, r: Any, providers: dict[str, Any],
         raise Invalid(f"{base}.chain", "This must be a list of models.")
     if len(set(chain)) != len(chain):
         raise Invalid(f"{base}.chain", "A model is in the list twice.")
-    if len(chain) > 6:
-        raise Invalid(f"{base}.chain", "At most 6 models per role.")
+    if role not in PRESET_ROLES and len(chain) > MAX_CHAIN:
+        raise Invalid(f"{base}.chain", f"This list takes at most {MAX_CHAIN} models.")
     for i, ref in enumerate(chain):
         where = f"{base}.chain[{i}]"
         prov, _, model = ref.partition("/")

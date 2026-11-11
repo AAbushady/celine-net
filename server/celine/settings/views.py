@@ -6,11 +6,13 @@ import copy
 import logging
 from typing import Any
 
+import httpx
+
 from . import features as features_mod, agent_models, kinds, mail as mail_mod
 from . import secrets as secrets_mod
 from . import services as services_mod, tools_meta, vault as vault_mod
 from .files import version
-from .registry import ROLES, key_state
+from .registry import PRESET_ROLES, ROLES, key_state, provider_key
 
 log = logging.getLogger("celine.settings")
 
@@ -81,17 +83,20 @@ def kinds_view() -> list[dict[str, Any]]:
 
 
 # the roles an empty one of fills itself from a new provider's models: the first model
-# with the role's caps, every preset for the ComfyUI roles. Settings shows it, change it there.
-# A cloud model provider fills none: the user picks its models in the role's list. ComfyUI
-# (Images & Music, no Cloud switch) fills its preset roles wherever it runs.
+# with the role's caps, every preset that fits for the preset roles. Settings shows it,
+# change it there. A cloud model provider fills none: the user picks its models in the
+# role's list. ComfyUI (Images & Music, no Cloud switch) fills its preset roles wherever
+# it runs.
 AUTO_ROLES = ("chat", "small", "embeddings", "reranker", "vision",
               "image_generation", "music_generation", "transcription", "speech")
-_ALL = ("image_generation", "music_generation")
 
 
-def fill_roles(s, pid: str, provider: dict[str, Any]) -> dict[str, Any] | None:
+def fill_roles(s, pid: str, provider: dict[str, Any],
+               ready: set[str] | None = None) -> dict[str, Any] | None:
     """The roles with the empty ones filled from `provider`'s models, or None when no
-    role changes or it is a cloud model provider (agent_models.provider_cloud)."""
+    role changes or it is a cloud model provider (agent_models.provider_cloud). `ready`:
+    the models its server can run (ready_presets), the only ones a role takes; None
+    when it was not asked or did not answer, then every model that fits."""
     if provider.get("kind") != "comfyui" and agent_models.provider_cloud(provider):
         return None
     roles = copy.deepcopy(s.roles)
@@ -101,11 +106,32 @@ def fill_roles(s, pid: str, provider: dict[str, Any]) -> dict[str, Any] | None:
             continue
         need = set(ROLES[role]["caps"])
         fits = [f"{pid}/{n}" for n, m in (provider.get("models") or {}).items()
-                if need <= set(m.get("caps") or [])]
+                if need <= set(m.get("caps") or []) and (ready is None or n in ready)]
         if fits:
-            roles[role] = {**roles.get(role, {}), "chain": fits[:6] if role in _ALL else fits[:1]}
+            roles[role] = {**roles.get(role, {}),
+                           "chain": fits if role in PRESET_ROLES else fits[:1]}
             changed = True
     return roles if changed else None
+
+
+async def ready_presets(services, pid: str, provider: dict[str, Any]) -> set[str] | None:
+    """The presets the server of a ComfyUI provider about to be created can run, for
+    fill_roles: the ones that miss no node or file (comfyui/server.py discover), in a
+    set. None when it is no new ComfyUI provider, when every preset role has its list,
+    or when the server cannot be asked."""
+    s = services.cfg.settings
+    if provider.get("kind") != "comfyui" or pid in s.providers or \
+            all(s.chain(r) for r in PRESET_ROLES):
+        return None
+    try:
+        found = await kinds.discover("comfyui", provider["base_url"],
+                                     provider_key(pid, s.secrets_root), refresh=True,
+                                     transport=model_router(services).transport)
+    except (httpx.HTTPError, ValueError) as e:
+        log.info("presets not checked", extra={"event": "settings.presets_not_checked",
+                                               "provider": pid, "error": type(e).__name__})
+        return None
+    return {m["id"] for m in found if not m.get("missing")}
 
 
 def merge_discovered(s, pid: str, found: list[dict]) -> dict[str, Any] | None:

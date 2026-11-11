@@ -173,16 +173,20 @@ def provider_clean(pid: str, body: Any) -> dict:
 
 async def provider(app, pid: str, body: Any, if_match: str | None = None) -> dict:
     """Create or replace one provider, models included; a role left empty that one of
-    its models fits gets it (views.fill_roles). A new provider is asked once (`_ask`)."""
+    its models fits gets it (views.fill_roles). A new ComfyUI provider's server is asked
+    first which presets it can run (views.ready_presets), so the provider and the roles
+    it fills are saved in one commit. A new provider is asked once after it is saved
+    (`_ask`)."""
+    clean = provider_clean(pid, body)
+    ready = await views.ready_presets(app, pid, clean)
     async with write.lock():
         s = app.cfg.settings
         new = pid not in s.providers
         files.check_version("provider", s.providers.get(pid), if_match)
-        clean = provider_clean(pid, body)
         providers = copy.deepcopy(s.providers)
         providers[pid] = clean
         changes: dict[str, Any] = {"providers": providers}
-        if filled := views.fill_roles(s, pid, clean):
+        if filled := views.fill_roles(s, pid, clean, ready):
             changes["roles"] = filled
         out = await reload.commit(app, changes)
     if new:

@@ -792,6 +792,32 @@ async def test_the_note_says_only_a_wait_in_the_queue_never_what_the_block_shows
     assert notes == ["Waiting in the queue, 2 ahead", "Waiting in the queue", ""]
 
 
+# ---- a new ComfyUI provider ------------------------------------------------------------
+
+async def test_a_new_comfyui_fills_its_preset_roles_with_what_its_server_can_run(
+        tmp_path, monkeypatch, store):
+    from celine import saves
+    scratch(tmp_path, monkeypatch, providers={"swap": PROVIDERS["swap"]},
+            roles={"chat": {"chain": ["swap/big"]}})
+    cfg = load()
+    fake = Fake()
+    services = Services(cfg=cfg, store=store, bus=EventBus(),
+                        llm=LLM(cfg, router=Router(cfg, transport=httpx.MockTransport(fake))))
+    services.registry = build_registry(services)
+    images = presets.of("images")
+    # the server has every UNET file but the one of anima-turbo
+    unets = sorted({n["inputs"]["unet_name"] for p in images.values() if p.id != "anima-turbo"
+                    for n in p.workflow.values() if n["class_type"] == "UNETLoader"})
+    fake.answer["/object_info/UNETLoader"] = httpx.Response(
+        200, json={"UNETLoader": {"input": {"required": {"unet_name": [unets]}}}})
+    await saves.provider(services, "comfy", {"kind": "comfyui", "label": "ComfyUI",
+                                             "base_url": "http://comfy:8188"})
+    s = cfg.settings
+    assert set(s.providers["comfy"]["models"]) == set(images) | set(presets.of("music"))
+    assert s.chain("image_generation") == [f"comfy/{p}" for p in images if p != "anima-turbo"]
+    assert s.chain("music_generation") == [f"comfy/{p}" for p in presets.of("music")]
+
+
 # ---- a ComfyUI that starts on demand, behind the comfy helper ------------------------
 
 OD_PROVIDERS = {
