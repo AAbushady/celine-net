@@ -51,7 +51,7 @@ import anyio
 from PIL import ExifTags, Image, ImageOps
 
 from .conversations import store as conversations
-from .core.ids import iso, new_id, now
+from .core.ids import iso, new_id, now, when
 from .errors import TooLarge
 from . import shellbox
 from .core.event_types import ATTACHMENT_DESCRIBED, MESSAGE_ATTACHMENTS
@@ -692,9 +692,20 @@ async def agent_image(store, ref: str, cid: str | None, cfg) -> dict | str:
         return (f"There is no image {wanted} that you may use: only an image you made, or "
                 f"one {cfg.user} attached to this conversation.")
     if row["life"] == "cleared":
-        from .comfyui.life import cleared_line
         return cleared_line(cfg, "images", row["id"], row["life_at"], "")
     return row
+
+
+def cleared_line(cfg, kind: str, aid: str, at: str, what: str) -> str:
+    """The sentence of a refusal for a file a batch of `kind` (images, music) made that was
+    cleared at `at` (comfyui/life.py): `what` it cannot be, and how the agent makes it
+    again."""
+    from .clock import zone
+    unit, tool, again = (
+        ("Image", "image_generator", "the prompt, preset, size and seed list_images shows")
+        if kind == "images" else ("Track", "music_generator", "the same style, lyrics and seed"))
+    return (f"{unit} {aid[:SHORT]} was cleared on {when(at, zone(cfg))}{what}: make it "
+            f"again with {tool}__generate from {again}.")
 
 
 async def agent_file(store, ref: str, cid: str, cfg) -> dict | str:
@@ -719,7 +730,6 @@ async def agent_file(store, ref: str, cid: str, cfg) -> dict | str:
         return (f"There is no file {ref} that you may send: only a file on your own "
                 f"message, or one {cfg.user} attached to this conversation.")
     if row["life"] == "cleared":
-        from .comfyui.life import cleared_line
         kind = "images" if row["kind"] == "image" else "music"
         return cleared_line(cfg, kind, row["id"], row["life_at"], " and cannot be sent")
     return row

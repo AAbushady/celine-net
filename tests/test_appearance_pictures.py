@@ -32,7 +32,7 @@ async def test_retry_makes_one_failed_item_again_and_refuses_the_rest(app):  # n
     b = await batches_mod.get(app.store, b["id"])
     assert b["state"] == "done" and b["items"][0]["state"] == "done"
     assert "error" not in b["items"][0] and b["items"][0]["attachment"]["width"] == 832
-    with pytest.raises(ImageError, match="Only a failed or stopped item"):
+    with pytest.raises(ImageError, match="Only a failed, stopped or cleared item"):
         await app.batches.retry(b["id"], 0)
 
 

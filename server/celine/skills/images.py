@@ -224,7 +224,7 @@ async def batch_keep(cfg, ctx: ToolContext, role: str, refs: list[str],
         r = rows[got["id"]]
         s = short(r["id"])
         if r["life"] == MadeLife.CLEARED:
-            lines.append(life.cleared_line(cfg, role, r["id"], r["life_at"],
+            lines.append(attachments.cleared_line(cfg, role, r["id"], r["life_at"],
                                            "" if let_go else " and cannot be kept"))
             continue
         done += 1

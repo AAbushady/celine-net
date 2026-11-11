@@ -235,13 +235,13 @@ async def test_a_cleared_one_is_made_again_with_a_new_life_and_an_edit_from_it_r
 
     other, _ = await _call(store, await conversations.create(store), "c2")
     out = await skill.generate(other, items=[{"prompt": "at night", "source": old["id"][:8]}])
-    said = life.cleared_line(cfg, "images", old["id"], iso(T0 + DAYS), "")
+    said = attachments.cleared_line(cfg, "images", old["id"], iso(T0 + DAYS), "")
     assert out.is_error and said in out.content
     assert said == (f"Image {old['id'][:8]} was cleared on {_at(cfg, T0 + DAYS)}: make it "
                     f"again with image_generator__generate from the prompt, preset, size "
                     f"and seed list_images shows.")
     refused = await skill.keep(ctx, images=[old["id"][:8]])
-    assert refused.is_error and refused.content == life.cleared_line(
+    assert refused.is_error and refused.content == attachments.cleared_line(
         cfg, "images", old["id"], iso(T0 + DAYS), " and cannot be kept")
 
     async with client(_web(app)) as c:

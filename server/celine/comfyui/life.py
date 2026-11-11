@@ -120,18 +120,6 @@ def words(cfg, life: dict | None) -> str:
     return f"Cleared on {when(iso(due), zone(cfg))} unless kept." if due else ""
 
 
-def cleared_line(cfg, kind: str, aid: str, at: str, what: str) -> str:
-    """The sentence of a refusal for one that was cleared: `what` it cannot be, and how
-    the agent gets it again."""
-    from ..clock import zone
-    tool = "image_generator" if kind == "images" else "music_generator"
-    again = "the prompt, preset, size and seed list_images shows" if kind == "images" \
-        else "the same style, lyrics and seed"
-    return (f"{UNIT[kind].capitalize()} {aid[:SHORT]} was cleared on "
-            f"{when(at, zone(cfg))}{what}: make it again with {tool}__generate from "
-            f"{again}.")
-
-
 # ---- clear -----------------------------------------------------------------------------
 
 async def clear(cfg, store, at: datetime | None = None) -> int:
