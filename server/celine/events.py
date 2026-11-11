@@ -34,7 +34,7 @@ from urllib.parse import quote
 from fastapi import APIRouter
 
 from . import homes
-from .core.ids import iso
+from .core.ids import iso, span
 from .core.store import json_object
 from .api.cursor import page_cursor
 from .clock import day_label, zone
@@ -78,12 +78,7 @@ def _took(start: str | None, end: str | None) -> str:
     """How long from `start` to `end`: "12 s", "3 min", "1 h 5 min"; "" without both."""
     if not start or not end:
         return ""
-    s = max(0, int((datetime.fromisoformat(end) - datetime.fromisoformat(start)).total_seconds()))
-    if s < 60:
-        return f"{s} s"
-    if s < 3600:
-        return f"{s // 60} min"
-    return f"{s // 3600} h" + (f" {s % 3600 // 60} min" if s % 3600 >= 60 else "")
+    return span((datetime.fromisoformat(end) - datetime.fromisoformat(start)).total_seconds())
 
 
 def _label(tool: str) -> str:
