@@ -2,7 +2,9 @@
 # is the reference image (TextEncodeQwenImage21 image_1) and the output takes its shape at
 # about 1 megapixel (width and height are read only for text to image). `mode` picks raw
 # (40 steps) or turbo (8 steps, saved schedule); cfg 1.0. An anime LoRA is a catalog
-# LoRA (qwen2.1/...), chained after node "lora", for reference-to-image in anime style.
+# LoRA (qwen2.1/...), chained after node "lora", for reference-to-image in anime style:
+# qwen2.1/anime-style is MicksHF/Qwen-Image-2.1-Anime-Fusal v2 r80, made for the full
+# model, trigger phrase "fusal style.".
 label = "Qwen 2.1 edit"
 family = "Qwen Image"
 task = "edit"
@@ -33,10 +35,15 @@ night." Not a description of the finished image.
 
 Variant: raw (the default, 40 steps) or turbo (8 steps, about 5x faster).
 
-Anime (variant raw, LoRA "qwen2.1/anime-style" at 1.0): start with
-"anime style. [TASK: REFERENCE_TO_IMAGE] [Reference guidance] Preserve the recognizable
-identity and defining visual features of the character in <image1>." then the scene as
-[Subject] [Pose] [Composition] [Environment] [Lighting] [Style] blocks.
+Anime (variant raw, LoRA "qwen2.1/anime-style" at 0.7 to 1.0): start with its trigger
+phrase, "fusal style. [TASK: REFERENCE_TO_IMAGE] [Reference guidance] Preserve the
+recognizable identity and defining visual features of the character in <image1>." then
+the scene as [Pose and anatomy] [Expression and gaze] [Composition and camera] [Objects
+and interactions] [Environment] [Lighting and mood] [Rendering style] blocks. This
+redraws the whole frame. For a change in place, the LoRA at 0.65 to 0.70 and an
+instruction with no task line: "fusal style. Edit <image1> in place: dress her in a red
+raincoat, while keeping her exact head, face, hair, eyes, pose, and background
+completely unchanged."
 """
 example = "Change the background to a rainy neon-lit Tokyo alley at night. Keep the woman's face, hair, pose and clothes unchanged. Keep everything else unchanged."
 size = { step = 32, max_pixels = 4300000 }

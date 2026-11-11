@@ -1,7 +1,9 @@
 # Qwen-Image 2.1, text to image, on the Smart API graph (the Qwen 2.1 Smart workflow).
 # `mode` picks the model: raw (qwen_image_2.1_bf16, 40 steps, euler, simple) or turbo
 # (qwen_image_2.1_turbo_bf16, 8 steps on the checkpoint's saved schedule). cfg 1.0 either
-# way. An anime LoRA is a catalog LoRA (qwen2.1/...), chained after node "lora".
+# way. An anime LoRA is a catalog LoRA (qwen2.1/...), chained after node "lora":
+# qwen2.1/anime-style is MicksHF/Qwen-Image-2.1-Anime-Fusal v2 r80, made for the full
+# model, trigger phrase "fusal style.".
 label = "Qwen 2.1"
 family = "Qwen Image"
 task = "generate"
@@ -23,11 +25,12 @@ has no effect at cfg 1, so leave it empty.
 Size: native is 2048x2048 (4 MP); 1024x1024 is four times faster. Presets: 1:1 2048x2048,
 4:3 2400x1792, 3:4 1792x2400, 3:2 2528x1696, 2:3 1696x2528, 16:9 2752x1536, 9:16 1536x2752.
 
-Anime: variant raw, the LoRA "qwen2.1/anime-style" at 1.0, and
-start the prompt with "anime style." followed by structured blocks: [TASK: TEXT_TO_IMAGE]
+Anime: variant raw, the LoRA "qwen2.1/anime-style" at 0.7 to 1.0, and start the prompt
+with its trigger phrase "fusal style." followed by structured blocks: [TASK: TEXT_TO_IMAGE]
 [Subject] ... [Appearance] ... [Pose] ... [Expression] ... [Composition] ...
 [Environment] ... [Lighting] ... [Style] Anime-style illustration ... Blocks may be left
-out. The LoRA does not work on turbo.
+out. With the LoRA, describe a character's look and leave out her name and series. The
+LoRA does not work on turbo.
 """
 example = "A 35mm film photograph of a woman in her late twenties reading on a train by the window, a worn paperback in both hands, dark hair tucked behind one ear, a mustard wool coat. Outside the window a blurred winter field passes by. Soft grey daylight from the left, shallow depth of field, gentle grain."
 size = { step = 32, max_pixels = 4300000 }
