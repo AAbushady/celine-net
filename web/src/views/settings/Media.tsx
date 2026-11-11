@@ -2,20 +2,22 @@
    the ComfyUI server (its Address, saved when the field is left; its key; its options,
    each saved on change; Check provider; Remove this provider), then the presets of each
    kind that is on (Presets.tsx), and while Images is on and the ComfyUI starts on demand,
-   the model files the agent asked for (ModelFiles.tsx). The one place ComfyUI is set up in Settings: the Models
+   the model files the agent asked for (ModelFiles.tsx). While it starts on demand, the
+   Civitai key follows its key. The one place ComfyUI is set up in Settings: the Models
    page leaves it out. Every state comes from the server (the provider's, each feature's
    probe). API: lib/settingsApi.ts, lib/media.ts. */
 import { useEffect, useMemo, useState } from 'react'
 import { RefreshCw, Trash2 } from 'lucide-react'
 import { errorText } from '../../lib/format'
 import { useFeatureOn } from '../../lib/features'
+import { MODEL_FILE_EVENTS, mediaApi } from '../../lib/media'
 import { useOnline } from '../../lib/socket'
 import { SETTINGS_EVENTS, settingsApi, type ProviderView } from '../../lib/settingsApi'
 import { useAction } from '../../lib/useAction'
 import { useResource } from '../../lib/useResource'
 import { kindInfo } from '../../components/ProviderFields'
 import { Button, ConfirmDialog, Field, Form, InlineError, Input, Loaded, Section } from '../../ui'
-import { KeySection, ReachWord, optionSchema } from './Models'
+import { KeySection, ReachWord, optionSchema, providerKey } from './Models'
 import { Page } from './parts'
 import { ModelFiles } from './ModelFiles'
 import { Presets } from './Presets'
@@ -43,8 +45,9 @@ export function Media() {
         {(problem || check.error) && <InlineError message={check.error ?? problem} />}
         <Comfy p={comfy} others={list} kinds={providers.data.kinds} onChanged={reload} />
         {comfy && (comfy.key.asked || comfy.key.state === 'set') && (
-          <KeySection p={comfy} required={kindInfo(providers.data.kinds, 'comfyui')?.key === 'required'} onChanged={reload} />
+          <KeySection {...providerKey(comfy, kindInfo(providers.data.kinds, 'comfyui')?.key === 'required', reload)} />
         )}
+        {comfy?.provider.options?.on_demand === true && <CivitaiKey />}
         {roles.data ? <>
           {imagesOn && <Presets kind="images" providers={list} roles={roles.data} onChanged={reload} />}
           {imagesOn && comfy?.provider.options?.on_demand === true && <ModelFiles />}
@@ -62,6 +65,16 @@ export function Media() {
       )}
     </Page>
   )
+}
+
+/* ── the Civitai key the comfy helper keeps for files that need a sign-in: handed to it
+   (GET, PUT, DELETE /api/civitai-key), the app keeps nothing of it ── */
+function CivitaiKey() {
+  const civitai = useResource(() => mediaApi.civitaiKey(), [], { events: MODEL_FILE_EVENTS })
+  return civitai.data
+    ? <KeySection title="Civitai key" set={civitai.data.set} save={k => mediaApi.setCivitaiKey(k).then(civitai.set)}
+                  remove={() => mediaApi.removeCivitaiKey().then(civitai.set)} />
+    : <Section title="Civitai key"><Loaded res={civitai} compact /></Section>
 }
 
 /* ── the ComfyUI server: its Address (saved when the field is left or on Enter: the saved

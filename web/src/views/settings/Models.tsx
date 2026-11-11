@@ -232,7 +232,7 @@ function ProviderPage({ p, providers, kinds, cloudHelp, onChanged, onSaved }: {
                    title: p.used_by.length ? `Used for ${p.used_by.join(', ')}` : undefined, onSelect: () => setRemove(true) }]}>
       {(p.state.error || check.error) && <InlineError message={check.error ?? p.state.error} />}
 
-      {keyed && <KeySection p={p} required={kind?.key === 'required'} onChanged={onChanged} />}
+      {keyed && <KeySection {...providerKey(p, kind?.key === 'required', onChanged)} />}
 
       <Section title="Models" count={p.models.length || undefined} action={p.models.length > 0 &&
         <Button icon={Plus} disabled={!online} onClick={() => setAdding(true)}>Add models</Button>}>
@@ -443,7 +443,6 @@ function ModelDialog({ p, m, onClose, onChanged }: { p: ProviderView; m: Provide
   )
 }
 
-/* A key is write-only: typed once, stored on the server, never shown again. */
 /** a provider's type, address, Cloud and name: Save checks the address (Auto-detect asks the
     server what answers there), saves what it found and asks the provider's probe (its key:
     KeySection). Cloud is saved only once the user sets it; left alone, or after Use the
@@ -480,23 +479,36 @@ function ProviderDialog({ p, kinds, cloudHelp, onClose, onChanged }: {
   )
 }
 
-export function KeySection({ p, required, onChanged }: { p: ProviderView; required: boolean; onChanged: () => void }) {
+/* ── a key, write-only: typed once, kept on the server (a provider's) or by the comfy helper
+   (the Civitai key, Media.tsx), never shown again. Set or Not set, the field, Save key, and
+   Remove key while one is set; `save` and `remove` bring the new state. ── */
+export function KeySection({ title, set, save, remove }: {
+  title: string; set: boolean; save: (key: string) => Promise<unknown>; remove: () => Promise<unknown>
+}) {
   const online = useOnline()
   const [key, setKey] = useState('')
-  const save = useAction(async () => { await settingsApi.setKey(p.id, key.trim()); setKey(''); onChanged() })
-  const drop = useAction(async () => { await settingsApi.deleteKey(p.id); onChanged() })
+  const put = useAction(async () => { await save(key.trim()); setKey('') })
+  const drop = useAction(remove)
   return (
-    <Section title={required ? 'API key' : 'API key (optional)'}>
-      <form className="row-actions" onSubmit={e => { e.preventDefault(); if (key.trim()) void save.run() }}>
+    <Section title={title}>
+      <form className="row-actions" onSubmit={e => { e.preventDefault(); if (key.trim()) void put.run() }}>
+        <StateWord>{set ? 'Set' : 'Not set'}</StateWord>
         <Input type="password" autoComplete="off" spellCheck={false} value={key} onChange={e => setKey(e.target.value)}
-               placeholder={p.key.state === 'set' ? 'New key' : 'Paste the key'} aria-label="API key" className="key-input" />
-        <Button type="submit" variant="primary" icon={KeyRound} loading={save.busy} disabled={!key.trim() || !online}>Save key</Button>
-        {p.key.state === 'set' && <Button variant="ghost" loading={drop.busy} disabled={!online} onClick={() => void drop.run()}>Remove key</Button>}
+               placeholder={set ? 'New key' : 'Paste the key'} aria-label={title} className="key-input" />
+        <Button type="submit" variant="primary" icon={KeyRound} loading={put.busy} disabled={!key.trim() || !online}>Save key</Button>
+        {set && <Button variant="ghost" loading={drop.busy} disabled={!online} onClick={() => void drop.run()}>Remove key</Button>}
       </form>
-      {(save.error || drop.error) && <InlineError compact message={save.error ?? drop.error} />}
+      {(put.error || drop.error) && <InlineError compact message={put.error ?? drop.error} />}
     </Section>
   )
 }
+
+/** KeySection's props for a provider's key */
+export const providerKey = (p: ProviderView, required: boolean, onChanged: () => void) => ({
+  title: required ? 'API key' : 'API key (optional)', set: p.key.state === 'set',
+  save: (key: string) => settingsApi.setKey(p.id, key).then(onChanged),
+  remove: () => settingsApi.deleteKey(p.id).then(onChanged),
+})
 
 function AddModels({ p, onClose, onAdded }: { p: ProviderView; onClose: () => void; onAdded: () => void }) {
   const list = useResource(() => settingsApi.available(p.id), [p.id])

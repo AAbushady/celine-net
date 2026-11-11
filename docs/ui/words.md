@@ -216,6 +216,8 @@ block at the end of this file lists the words no UI string uses.
 | proposed by {name} | a preset's card on Images & Music when the agent proposed it and you approved it: one of its facts | GitHub "suggested by"; plain |
 | Model files, {size} free, No model files, Loading model files, For {preset}, from {site}, Remove {file}?, The file is deleted from the models disk. | Images & Music while Images is on and its ComfyUI starts on demand: the files the agent asked for and you approved, the free space on the models disk, a row's preset and where the file came from, Remove behind its confirm | Civitai, Hugging Face "Files"; macOS "free" |
 | Waiting for you, Denied, No answer, Downloading, Waiting for ComfyUI, Ready, Failed | where a model file the agent asked for stands, on its row in the chat and on Images & Music | Chrome downloads "Downloading"; Android permissions "Denied" |
+| Civitai key | Images & Music while its ComfyUI starts on demand: the key the comfy helper sends Civitai for the files that need a sign-in, set and removed as a provider's API key is | Civitai "API Key" |
+| Set, Not set, Paste the key, New key | a key's section (a provider's API key, the Civitai key): whether one is kept, and the field's placeholder without one and with one | Bitwarden "Not set"; plain |
 | Reset codes | new recovery codes, the old ones stop working | Google "Get new codes" said plainly |
 | API tokens, Create token | named tokens for scripts that call the API, and the button that makes one | GitHub "Personal access tokens" |
 | You | the section of your name, time zone and about you (General, the onboarding) | Apple "You" in Contacts and Health |

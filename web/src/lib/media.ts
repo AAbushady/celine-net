@@ -5,7 +5,7 @@
    item made has its life (temporary, kept, cleared), the server's; Keep and Unkeep ask
    for a change and the batch's event brings it. */
 import { del, json, post, request } from './api'
-import type { Batch, BatchList, MadeFile, ModelFileList, Removed } from './api.gen'
+import type { Batch, BatchList, CivitaiKey, MadeFile, ModelFileList, Removed } from './api.gen'
 import type { ServerEvent } from './bus'
 import type { FormField } from '../ui'
 
@@ -115,9 +115,13 @@ export const mediaApi = {
   modelFiles: () => request<ModelFileList>('/model-files'),
   removeModelFile: (path: string) =>
     del<Removed>(`/model-files/${path.split('/').map(encodeURIComponent).join('/')}`),
+  /** the Civitai key the comfy helper keeps, set or not; it never comes back */
+  civitaiKey: () => request<CivitaiKey>('/civitai-key'),
+  setCivitaiKey: (key: string) => request<CivitaiKey>('/civitai-key', json('PUT', { key })),
+  removeCivitaiKey: () => del<CivitaiKey>('/civitai-key'),
 }
 
-/** the global events that change the list of model files */
+/** the global events that change the list of model files, and the Civitai key */
 export const MODEL_FILE_EVENTS = (ev: ServerEvent) => ev.type === 'model_files.changed'
 
 /** a preset's workflow with its placeholders, as a file */
