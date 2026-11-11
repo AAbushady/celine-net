@@ -69,6 +69,7 @@ block at the end of this file lists the words no UI string uses.
 | Unsaved, Unsaved changes | an edit not saved yet, in an editor with Save (a note, a document); Settings save themselves | Google Docs, VS Code "Unsaved changes" |
 | Rename, Edit, Duplicate, Copy | | ChatGPT, Claude, Finder |
 | Pin, Unpin | keep at the top | Slack, Discord, ChatGPT |
+| Keep, Unkeep | an image or track that was created stays until you unkeep it; one not kept is cleared after Images and tracks kept (a toggle, the bookmark: under a picture and in its "..." menu, beside a track) | WhatsApp "Keep", "Unkeep" (a message in a disappearing chat); Apple Messages "Keep" (an audio message) |
 | Export, Download, Upload | | everyone |
 | Favourites, Add to Favourites, Remove from Favourites | images and tracks kept as favourites (a Toolbar toggle, the heart) | Google Photos, Apple Photos "Favourites" |
 | Unread | a notification or message you have not seen (a count) | Gmail, Slack |
@@ -100,7 +101,7 @@ block at the end of this file lists the words no UI string uses.
 |---|---|---|
 | Regenerate | a new reply or draft in place of this one | ChatGPT, Claude |
 | Continue | a reply: write on from where it stopped | ChatGPT "Continue generating" |
-| Retry | do again what failed or was stopped: a reply, a run, a task, an image, a draft; the one button word for it | Claude "Retry", GitHub Actions "Re-run" |
+| Retry | do again what failed or was stopped: a reply, a run, a task, an image, a draft; an image or track that was cleared, made again as it was asked; the one button word for it | Claude "Retry", GitHub Actions "Re-run" |
 | Branch from here | the chat goes on from this message as a branch | ChatGPT "Branch in new chat" |
 | More like this | keep the reply as a voice sample, so more replies sound like it | |
 | Switch provider | a reply that failed because its provider is busy: the model chooser, then Regenerate on the model you pick | OpenRouter "Switch provider"; plain |
@@ -134,6 +135,7 @@ block at the end of this file lists the words no UI string uses.
 | Load automatically, Notes that match each message | the Context tab's switch and its tooltip: each new message brings up the sections of its notes it matches | |
 | Waiting for the GPU., Waiting for the GPU, {n} ahead. {why} | an image or music batch waits for its GPU (the lease); behind a ComfyUI that starts on demand, the leases ahead of it and the helper's sentence why follow | ComfyUI, Stable Diffusion WebUI "Waiting" |
 | Stopped., Stopped at the tool round limit., The reply reached the length limit., Interrupted., The reply failed. | how a reply ended, where the next line appears: you stopped it, it reached Tool rounds per turn, it reached its length, the server restarted, it failed; a stopped image says Stopped. too | |
+| Cleared {time}, Temporary, Kept | how long an image or track that was created stays, the server's words: Cleared and when, in the place of one past its days, with what made it and Retry; Temporary and Kept are its other states | Chrome, iOS "Clear" (history, caches) |
 
 ### The agent
 
@@ -157,7 +159,7 @@ block at the end of this file lists the words no UI string uses.
 |---|---|---|
 | General, its name, Features, Guard, Appearance, Notifications, People, Search index, Models, Images & Music, Tools, Email, Vault, Security, Advanced; Sources, App | Settings pages in the list's order, then the list's two headings (Images & Music: ComfyUI and the image and music presets) | Claude "Appearance"; macOS; Bitwarden "Vault"; Firefox, Chrome "Advanced" |
 | No limit | a number field that holds 0 where 0 means no limit (Requests per hour, Routine time limit): the field shows the words, emptied it saves 0 | LM Studio, OpenAI "No limit" |
-| Turns at once, Tool rounds per turn, Turn time limit, Last answer time, Tool time limit, Job time limit, Messages per request, Log entries per chat, Backups kept, Attachments per message, Largest attachment, Largest text read inline, Largest message, Check citations, Search embedding time limit, Busy model wait, Longest busy model wait, Routine time limit, Routines wait for missions, Mission time limit, Sub-agents per mission, Continue missions after Unfreeze, Largest upload, Largest part in a document, Largest web page document, PDF pages read, PDF read time limit, Model requests kept; seconds, minutes, hours, messages, entries, days, bytes, MB, pages | the Advanced page: one number each, its unit beside it, saved on change | plain; LM Studio "Max concurrent", ChatGPT "attachments per message" |
+| Turns at once, Tool rounds per turn, Turn time limit, Last answer time, Tool time limit, Job time limit, Messages per request, Log entries per chat, Backups kept, Attachments per message, Largest attachment, Largest text read inline, Largest message, Check citations, Search embedding time limit, Busy model wait, Longest busy model wait, Routine time limit, Routines wait for missions, Mission time limit, Sub-agents per mission, Continue missions after Unfreeze, Largest upload, Largest part in a document, Largest web page document, PDF pages read, PDF read time limit, Model requests kept, Images and tracks kept; seconds, minutes, hours, messages, entries, days, bytes, MB, pages | the Advanced page: one number each, its unit beside it, saved on change | plain; LM Studio "Max concurrent", ChatGPT "attachments per message" |
 | Prompts, App, Skill guides, Edited | Settings, Advanced, Prompts: every text a model reads, grouped (its name, App, Skill guides, Guard); a row opens the text in the large editor with History and Use the default in its "..."; Edited marks a text you changed | OpenAI Playground "Prompts"; Google Docs "Edited" |
 | 3 problems | a source's row in the Settings list while something there needs fixing, in the warn tone; otherwise its state word (Waiting for you, Not connected), Running while it works, nothing while all is well | VS Code "3 problems" |
 | Turns, Models, Routines and missions, Files, Storage | the Advanced page's sections in the server's order, each in the index beside them, then one per skill under its label | Firefox, Chrome settings sections; plain |

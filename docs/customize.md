@@ -42,6 +42,13 @@ request, what is kept, attachment sizes) are Settings, Advanced, saved in
 `var/settings/general.toml` and applied at once. `config/celine.toml` holds only how the
 app is served (host, port, login, the data folder) and is read at start.
 
+Images and tracks kept (`generated_keep_days`, default 14) is how many days an image or
+track a batch made stays unless it is kept; 0 means no limit. Keep is the bookmark under
+a picture or beside a track; the agent has `image_generator__keep` and
+`music_generator__keep`. Everything made is also in `var/images/<date>/` or
+`var/music/<date>/`, and a kept one in `var/images/kept/` or `var/music/kept/`, each a
+hard link to the stored file, so its bytes are on disk once.
+
 Below the app's own, each skill's numbers have a section under the skill's name: Web
 (search results, time limits, the largest page and PDF in MB), Messages (result lengths,
 reranking), Notebook (the index in every prompt), Past chats, Code, Sub-agents.

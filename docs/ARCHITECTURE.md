@@ -130,6 +130,7 @@ a save applies at once. They are listed here in the page's sections (`general.GR
 | `events_keep` | Log entries per chat | 500 | log entries kept per conversation once it is idle |
 | `backup_keep_days` | Backups kept | 7 | nights of backups kept |
 | `requests_keep` | Model requests kept | 0 | days a model request body is kept in log.db; 0 keeps it forever |
+| `generated_keep_days` | Images and tracks kept | 14 | days after which an image or track a batch made is cleared unless it is kept (`comfyui/life.py`); 0 means no limit |
 
 FIELDS also holds the settings shown on other pages: `user_name` (Your name, default
 "User"), `timezone` (Time zone, UTC) and `user_bio` (About you) in General's You section
@@ -1509,7 +1510,10 @@ An image a tool gives it with its result (`ToolResult.images`) is linked to the 
 Startup GC (`attachments.gc`, its rule in the module docstring): a blob stays while an
 attachment or its portrait points at it; a draft stays until it is sent, removed or 30
 days old (`KEEP`); a blob nothing points at goes once it is 30 days old. Deleting a
-message cascades its attachment rows, so a later GC frees the blob.
+message cascades its attachment rows, so a later GC frees the blob. Beside it, at each
+start and every hour, `comfyui/life.py` clears what batches made past its days (Images
+and music, Life). A blob's file is written once: the same bytes saved again find it in
+place, so the links to it stay links.
 
 Web: paperclip, drop anywhere on the transcript, or paste. Each file uploads at once
 and shows as a chip; a failed chip carries the error and can be removed; send waits
@@ -1538,9 +1542,11 @@ music). One code path for both (`batches.Batches`).
   `music_generation` by its folder.
 - **A batch** (`comfyui/batches.py`, table `media_batches`): `{id, kind, conversation_id,
   tool_call_id, state, created_at, finished_at, items}`, one shape for the routes, the
-  event and the display of its call. `state` is running, done or stopped. An item is the
-  request and its slot (`index`, `state`, `seed`, `preset`, `provider`, the request,
-  `attachment?`, `seconds?`, `error?`, `note?`). `count` repeats each item with the next
+  event and the display of its call; the routes answer it as `comfyui/api.py` `Batch`.
+  `state` is running, done or stopped. An item is the request and its slot (`index`,
+  `state`, `seed`, `preset`, `provider`, the request, `attachment?`, `seconds?`, `error?`,
+  `note?`); a made item's `attachment.life` is `{state, display, at}` from the
+  attachment's row, never stored in the items. `count` repeats each item with the next
   seed; a batch holds at most 16 slots.
 - **Create** checks every item first: the preset, the size (`Preset.fit`), the mode, and
   an edit's source (an image it made, or one the user attached to this conversation). An
@@ -1548,10 +1554,30 @@ music). One code path for both (`batches.Batches`).
 - **Run**: before the first item of a provider, its GPU lease (`backends/llm.py
   gpu_lease`), held to the end of the batch. Each item is queued, followed and fetched
   (`server.run`); a failed item fails its slot only. What an item made is an attachment of
-  the batch (`attachments.batch_id`), kept as a file in `images/<date>/` or
-  `music/<date>/`. At the end every server used frees its models (`POST /free`) and the
-  leases are released. A restart stops the batches it cut (`batches.sweep`) and frees the
-  shared servers (`server.free_shared`).
+  the batch (`attachments.batch_id`), with an entry in `images/<date>/` or
+  `music/<date>/` (`attachments.folder_path`), a hard link to its blob, so the bytes are
+  on disk once (a copy where the folder and the blobs are on different filesystems). At
+  the end every server used frees its models (`POST /free`) and the leases are released.
+  A restart stops the batches it cut (`batches.sweep`) and frees the shared servers
+  (`server.free_shared`).
+- **Life** (`comfyui/life.py`, `attachments.life` and `life_at`, `core/statuses.py`
+  `MadeLife`): what a batch made is temporary, kept or cleared. A temporary one is cleared
+  `generated_keep_days` (Settings, Advanced, Images and tracks kept; 14, 0 for no limit)
+  after its life began, when it was made or let go; `life.clear` runs at each start and
+  every hour, and a look that finds nothing writes nothing. Cleared, its row and its item
+  stay, marked with the time, and its batch is published again; its entry in the dated
+  folder goes, and its blob with the blob's smaller copies unless an attachment that is
+  not cleared holds the same bytes. Never cleared: a kept one, and one whose bytes the
+  agent's portrait or a file an Intercom message carries shows. Pages are sandboxed and
+  read no attachment, and shares serve the box's own files, so neither holds one. Wherever
+  a cleared one appears the server says so: the item's `attachment.life`, the file route
+  (404, "The image was cleared on ..."), the agent's `read` line and `list_images`. Retry
+  makes a cleared item again as it was asked (its row goes, the new file has a new life);
+  an edit whose source was cleared fails with the sentence how to make it again. Kept
+  (the agent's `image_generator__keep` and `music_generator__keep`, `let_go` to let go;
+  the user's Keep, `PATCH /api/batches/{id}/items/{index}` `{kept}`), it also has an entry
+  in `images/kept/` or `music/kept/` (its short id and file name), a link like the dated
+  one, until it is let go.
 - **On demand**: a ComfyUI provider with Starts on demand (`on_demand`) has the comfy
   helper as its address, a host process that starts ComfyUI in a container for a batch,
   books the GPU in the machine's heavy-job queue while it is up, and stops it some
