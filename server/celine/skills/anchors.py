@@ -82,7 +82,7 @@ def _anchor(ref, lines: list[str], bad: list[str]) -> int:
         where = f"the note has {len(lines)} lines"
         around = _near(lines, len(lines)) if lines else "(the note is empty)"
     else:
-        where = "that line is different now"
+        where = f"line {n} has the anchor {n}:{line_hash(lines[n - 1])}"
         around = _near(lines, n)
     moved = [i for i, ln in enumerate(lines, 1) if line_hash(ln) == h and i != n]
     if moved:
@@ -98,6 +98,47 @@ def _number(ref) -> int | None:
     return int(m[1]) if m else None
 
 
+# the fields each op takes (Edit), the ones it cannot do without, and what a missing one
+# holds when its name alone does not say
+TAKES = {"replace": ("start", "end", "text"), "insert": ("after", "text"),
+         "delete": ("start", "end")}
+NEEDS = {"replace": ("start", "text"), "insert": ("after", "text"), "delete": ("start",)}
+HOLDS = {"after": "the anchor of the line the text goes under, or \"start\" for the top"}
+
+
+def _listed(names: list[str]) -> str:
+    """"a, b and c"."""
+    return ", ".join(names[:-1]) + " and " + names[-1] if len(names) > 1 else names[0]
+
+
+def _op(i: int, e) -> str:
+    """The op of edit `i`, once it is an object with an op and every field that op needs;
+    else EditRefused, which names as well any field it has that the op does not take."""
+    if not isinstance(e, dict):
+        what = "text" if isinstance(e, str) else "a list" if isinstance(e, list) else \
+            json.dumps(e, default=str)
+        raise EditRefused(f"edit {i} is {what}, and an edit is an object with `op` and "
+                          f"its fields.")
+    op = e.get("op")
+    if not isinstance(op, str) or op not in TAKES:
+        said = "has no `op`" if op is None else f"has the `op` {json.dumps(op, default=str)}"
+        raise EditRefused(
+            f"edit {i} {said}: `op` is \"replace\", \"insert\" or \"delete\". To add at "
+            f"the end, insert with `after` set to the last line's anchor.")
+    missing = [k for k in NEEDS[op]
+               if (not isinstance(e.get(k), str) if k == "text" else e.get(k) is None)]
+    if missing:
+        said = f"edit {i} ({op}) needs " + _listed(
+            [f"`{k}` ({HOLDS[k]})" if k in HOLDS else f"`{k}`" for k in missing])
+        other = [f"`{k}`" for k in e if k != "op" and k not in TAKES[op]]
+        if other:
+            said += (f", and {_listed(other)} "
+                     f"{'is not a field' if len(other) == 1 else 'are not fields'} of {op}, "
+                     f"which takes {_listed([f'`{k}`' for k in TAKES[op]])}")
+        raise EditRefused(said + ".")
+    return op
+
+
 def plan(edits, lines: list[str], has_stamp: bool) -> list[tuple[int, int, list[str]]]:
     """Check every edit against the file as it is. Returns (first, last, new lines) per
     edit, sorted from the top: lines first..last are replaced; an insert is (a+1, a).
@@ -108,33 +149,21 @@ def plan(edits, lines: list[str], has_stamp: bool) -> list[tuple[int, int, list[
     bad: list[str] = []
     planned = []
     for i, e in enumerate(edits, 1):
-        if not isinstance(e, dict):
-            raise EditRefused(f"edit {i} is not an object.")
-        op = e.get("op")
-        text = e.get("text")
-        if op in ("replace", "insert") and not isinstance(text, str):
-            raise EditRefused(f"edit {i} ({op}) needs `text`.")
+        op = _op(i, e)
+        text = e.get("text") if op != "delete" else None
         new = text.replace("\r\n", "\n").split("\n") if text else []
         if new and new[-1] == "" and len(new) > 1:
             new.pop()
         if op == "insert":
-            after = e.get("after")
-            if after is None:
-                raise EditRefused(
-                    f"edit {i} (insert) needs `after`: the anchor of the line the text goes "
-                    f"under, or \"start\" for the top. `start` and `end` are for replace "
-                    f"and delete.")
-            if str(after) in ("start", "0") or (has_stamp
-                                                                and _number(after) == 1):
+            after = e["after"]
+            if str(after) in ("start", "0") or (has_stamp and _number(after) == 1):
                 a = 1 if has_stamp else 0
             else:
                 a = _anchor(after, lines, bad)
                 if not a:
                     continue
             planned.append((a + 1, a, new))
-        elif op in ("replace", "delete"):
-            if e.get("start") is None:
-                raise EditRefused(f"edit {i} ({op}) needs `start`.")
+        else:
             if has_stamp and 1 in (_number(e["start"]), _number(e.get("end"))):
                 raise EditRefused(STAMP_KEPT)
             s = _anchor(e["start"], lines, bad)
@@ -144,11 +173,6 @@ def plan(edits, lines: list[str], has_stamp: bool) -> list[tuple[int, int, list[
             if end < s:
                 raise EditRefused(f"edit {i}: `end` ({end}) is above `start` ({s}).")
             planned.append((s, end, [] if op == "delete" else new))
-        else:
-            said = "has no `op`" if op is None else f"has the `op` {json.dumps(op)}"
-            raise EditRefused(
-                f"edit {i} {said}: `op` is \"replace\", \"insert\" or \"delete\". To add at "
-                f"the end, insert with `after` set to the last line's anchor.")
     if bad:
         raise EditRefused("\n\n".join(bad) + "\n\nUse these anchors and send all the "
                           "edits again.")

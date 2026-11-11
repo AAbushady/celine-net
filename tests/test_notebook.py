@@ -134,6 +134,35 @@ async def test_a_stale_anchor_is_refused_and_fresh_ones_apply(store, cfg):
                              "- pineapple: fine\n- olives: fine\n\n## drinks\n- coffee: yes\n")
 
 
+async def test_an_anchor_that_does_not_match_names_the_line_as_it_is(store, cfg):
+    """The agent sent hashes it made up ("12:xx"): the answer names the anchor the line
+    has, the nearest line with that hash when there is one, and the line count past the
+    end."""
+    nb = Notebook(cfg)
+    ctx = _ctx("c", store, cfg)
+    a = await _note(nb, ctx)
+    nothing = "Nothing changed in opinions/food.md. "
+
+    async def refused(edit: dict) -> str:
+        out = await nb.edit(ctx, "opinions/food.md", [edit])
+        assert out.is_error and out.content.startswith(nothing), out.content
+        return out.content.removeprefix(nothing)
+
+    # "i" is no hash character: a hash no line has
+    out = await refused({"op": "replace", "start": "3:ii", "text": "- pizza: fine"})
+    assert out.startswith(f"3:ii does not match (line 3 has the anchor {a[3]}). The lines "
+                          f"there now:\n"), out
+    assert f"{a[3]}| - pizza: love it" in out
+    four = a[4].partition(":")[2]
+    out = await refused({"op": "delete", "start": f"3:{four}"})
+    assert out.startswith(f"3:{four} does not match (line 3 has the anchor {a[3]}; the line "
+                          f"with hash {four} nearest to it is 4). The lines there now:\n"), out
+    out = await refused({"op": "replace", "start": "20:ii", "text": "x"})
+    assert out.startswith("20:ii does not match (the note has 7 lines). The lines there "
+                          "now:\n"), out
+    assert (cfg.agent.notebook / "opinions/food.md").read_text() == f"{STAMP}\n{NOTE}"
+
+
 async def test_the_appearance_is_seeded_only_with_images_on(store, cfg):
     nb = Notebook(cfg)
     cfg.settings.features = {**cfg.settings.features, "images": False}
@@ -276,14 +305,29 @@ async def test_the_stamp_has_no_anchor_and_text_as_a_list_is_joined(store, cfg):
 
 async def test_an_edit_of_the_wrong_shape_is_told_the_right_one(store, cfg):
     """A third of the failed edits in two days: an insert with `start` was told "None is
-    not an anchor", and an edit with no `op` or with "append" only the three names."""
+    not an anchor", and an edit with no `op` or with "append" only the three names. Later
+    ones: fields no edit has (`new_text`, `old_text`), which the answer names beside the
+    fields of the op, and an edit sent as text holding JSON."""
     nb = Notebook(cfg)
     ctx = _ctx("c", store, cfg)
     a = await _note(nb, ctx)
     before = (cfg.agent.notebook / "opinions/food.md").read_text()
+    nothing = "Nothing changed in opinions/food.md. "
     out = await nb.edit(ctx, "opinions/food.md", [{"op": "insert", "start": a[2], "text": "x"}])
-    assert out.is_error and "edit 1 (insert) needs `after`" in out.content
-    assert "None" not in out.content
+    assert out.is_error and out.content == nothing + (
+        "edit 1 (insert) needs `after` (the anchor of the line the text goes under, or "
+        "\"start\" for the top), and `start` is not a field of insert, which takes `after` "
+        "and `text`.")
+    out = await nb.edit(ctx, "opinions/food.md", [{"op": "replace", "start": a[2], "end": a[3],
+                                                   "new_text": "x", "old_text": "y"}])
+    assert out.is_error and out.content == nothing + (
+        "edit 1 (replace) needs `text`, and `new_text` and `old_text` are not fields of "
+        "replace, which takes `start`, `end` and `text`.")
+    out = await nb.edit(ctx, "opinions/food.md", [{"op": "replace", "start": a[2]}])
+    assert out.is_error and out.content == nothing + "edit 1 (replace) needs `text`."
+    out = await nb.edit(ctx, "opinions/food.md", ['{"op": "delete", "start": "3:ab"}'])
+    assert out.is_error and out.content == nothing + (
+        "edit 1 is text, and an edit is an object with `op` and its fields.")
     out = await nb.edit(ctx, "opinions/food.md", [{"after": a[2], "text": "x"}])
     assert out.is_error and "edit 1 has no `op`" in out.content
     out = await nb.edit(ctx, "opinions/food.md", [{"op": "append", "text": "x"}])
