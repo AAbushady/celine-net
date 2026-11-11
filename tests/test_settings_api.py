@@ -384,3 +384,24 @@ async def test_use_the_default_forgets_a_saved_address(api, monkeypatch):
     searxng = (await api.put("/api/services/searxng", json={"url": ""})).json()
     assert searxng["services"]["searxng"]["default"] == "http://127.0.0.1:8888", \
         "a cleared address hides the field's default"
+
+
+def test_a_models_sampling_is_checked_and_an_unknown_request_field_passes():
+    """Temperature, Top P and Top K of a model's params (Settings, Models): a value out
+    of its range is refused with its field, a field left out is the server's default."""
+    from celine.settings.files import Invalid
+    from celine.settings.registry import validate_model
+    check = lambda params: validate_model(   # noqa: E731
+        "openai", "qwen", {"params": params}, "model", "http://10.0.0.5:8000/v1")
+    kept = {"temperature": 1.0, "top_p": 0.95, "top_k": 20, "min_p": 0.05}
+    assert check(kept)["params"] == kept, "a request field it does not know goes as it is"
+    assert "params" not in check({})
+    for params, field, said in (
+            ({"temperature": 2.5}, "temperature", "Temperature is a number from 0 to 2."),
+            ({"top_p": 0}, "top_p", "Top P is a number above 0, 1 at most."),
+            ({"top_k": 0}, "top_k", "Top K is a whole number, 1 at least."),
+            ({"top_k": 20.5}, "top_k", "Top K is a whole number, 1 at least."),
+            ({"temperature": "hot"}, "temperature", "This must be a number.")):
+        with pytest.raises(Invalid) as e:
+            check(params)
+        assert (e.value.field, e.value.message) == (f"model.params.{field}", said)

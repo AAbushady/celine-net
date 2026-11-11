@@ -300,7 +300,9 @@ function ProviderPage({ p, providers, kinds, cloudHelp, onChanged, onSaved }: {
    (empty is 8192), and the parameters the app sends with every request to it:
    llama-swap and llama-server thinking (chat_template_kwargs.enable_thinking), Ollama the
    reasoning effort (params.reasoning_effort; "none" is no thinking). A conversation's own
-   thinking choice replaces these for its requests (settings/thinking.py). */
+   thinking choice replaces these for its requests (settings/thinking.py). Its sampling
+   (params.temperature, top_p, top_k) goes with every request too; an empty field leaves
+   that one to the server's default. */
 const LLAMA = new Set(['llama-swap', 'tabby', 'llama-server'])
 const SLOTS = 1, MAX_TOKENS = 8192
 
@@ -328,8 +330,18 @@ function withParams(cfg: ModelConfig, key: string, value: unknown): ModelConfig 
 }
 
 const whole = (t: string) => !t.trim() || /^[1-9]\d*$/.test(t.trim())
+/** a sampling field: empty (the server's default) or a number in its range; `above`: the low end itself is out */
+const within = (t: string, lo: number, hi: number, above = false) => {
+  if (!t.trim()) return true
+  const n = Number(t)
+  return Number.isFinite(n) && (above ? n > lo : n >= lo) && n <= hi
+}
+const asText = (v: unknown) => (typeof v === 'number' ? String(v) : '')
 
-type ModelDraft = { label: string; context: string; slots: string; maxTokens: string; slug: string; caps: Cap[]; thinking: string; effort: string }
+type ModelDraft = {
+  label: string; context: string; slots: string; maxTokens: string; slug: string; caps: Cap[]; thinking: string; effort: string
+  temperature: string; topP: string; topK: string
+}
 
 /** a switch or a choice saves at once, a name or a number when you leave its field (a
     number only while it is whole); Close keeps what was saved */
@@ -345,9 +357,12 @@ function ModelDialog({ p, m, onClose, onChanged }: { p: ProviderView; m: Provide
     maxTokens: String(stored.max_tokens ?? MAX_TOKENS), slug: stored.provider ?? '', caps: stored.caps ?? m.caps ?? ['chat'],
     thinking: kw === true ? 'on' : kw === false ? 'off' : '',
     effort: typeof stored.params?.reasoning_effort === 'string' ? stored.params.reasoning_effort : '',
+    temperature: asText(stored.params?.temperature), topP: asText(stored.params?.top_p), topK: asText(stored.params?.top_k),
   }))
   const invalid = (t: string) => !whole(t)
-  const ok = ![d.context, d.slots, d.maxTokens].some(invalid)
+  const wholes = (x: ModelDraft) => ![x.context, x.slots, x.maxTokens, x.topK].some(invalid)
+  const ranged = (x: ModelDraft) => within(x.temperature, 0, 2) && within(x.topP, 0, 1, true)
+  const ok = wholes(d)
   const auto = useAutosave<ModelConfig>(async c => { await settingsApi.putModel(p.id, m.name, c.model!); onChanged() })
   const build = (x: ModelDraft): ModelConfig => {
     const num = (t: string, dflt?: number) => (t.trim() && Number(t) !== dflt ? Number(t) : undefined)
@@ -363,14 +378,19 @@ function ModelDialog({ p, m, onClose, onChanged }: { p: ProviderView; m: Provide
         return { ...l, chat_template_kwargs: k }
       })
     } else if (params) next = withParams(next, 'reasoning_effort', x.effort || undefined)
+    if (params) {
+      for (const [key, t] of [['temperature', x.temperature], ['top_p', x.topP], ['top_k', x.topK]] as const) {
+        next = withParams(next, key, t.trim() ? Number(t) : undefined)
+      }
+    }
     return Object.fromEntries(Object.entries(next).filter(([, v]) => v !== undefined)) as ModelConfig
   }
   const change = (patch: Partial<ModelDraft>, when: 'now' | 'blur' = 'now') => {
     const x = { ...d, ...patch }
     setD(x)
-    if (![x.context, x.slots, x.maxTokens].some(invalid)) auto.set('model', build(x), when)
+    if (wholes(x) && ranged(x)) auto.set('model', build(x), when)
   }
-  const text = (k: 'label' | 'context' | 'slots' | 'maxTokens' | 'slug') => ({
+  const text = (k: 'label' | 'context' | 'slots' | 'maxTokens' | 'slug' | 'temperature' | 'topP' | 'topK') => ({
     value: d[k], disabled: !online, onChange: (v: string) => change({ [k]: v }, 'blur'), onBlur: auto.flush,
   })
   const words = m.thinking_offered ?? []
@@ -400,6 +420,11 @@ function ModelDialog({ p, m, onClose, onChanged }: { p: ProviderView; m: Provide
             ))}
           </div>
         </Field>
+        {params && <>
+          <NumberField label="Temperature" min={0} max={2} step={0.05} placeholder="Default" {...text('temperature')} invalid={!within(d.temperature, 0, 2)} />
+          <NumberField label="Top P" min={0} max={1} step={0.05} placeholder="Default" {...text('topP')} invalid={!within(d.topP, 0, 1, true)} />
+          <NumberField label="Top K" min={1} placeholder="Default" {...text('topK')} invalid={invalid(d.topK)} />
+        </>}
         {params && (llama && !m.thinking_offered?.length ? (
           <Field label="Thinking" group>
             <Choice label={`Thinking of ${modelName(m)}`} value={d.thinking} disabled={!online} onChange={v => change({ thinking: v })}
@@ -411,7 +436,8 @@ function ModelDialog({ p, m, onClose, onChanged }: { p: ProviderView; m: Provide
           </Field>
         ))}
         {!ok ? <InlineError compact message="Enter a whole number." />
-          : auto.error && <InlineError compact message={auto.error} onRetry={auto.flush} />}
+          : !ranged(d) ? <InlineError compact message="Temperature is 0 to 2. Top P is above 0, 1 at most." />
+            : auto.error && <InlineError compact message={auto.error} onRetry={auto.flush} />}
       </form>
     </Dialog>
   )

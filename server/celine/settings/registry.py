@@ -331,6 +331,28 @@ def validate_provider(pid: str, p: Any, path: str = "") -> dict[str, Any]:
     return out
 
 
+def _sampling(path: str, params: dict) -> None:
+    """The sampling a model's `params` send with every request to it (Settings, Models:
+    Temperature, Top P, Top K), checked. A field left out is the server's default; a
+    request field this does not know passes as it is."""
+    def number(key: str) -> float | None:
+        v = params.get(key)
+        if v is None:
+            return None
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            raise Invalid(f"{path}.{key}", "This must be a number.")
+        return v
+    t = number("temperature")
+    if t is not None and not 0 <= t <= 2:
+        raise Invalid(f"{path}.temperature", "Temperature is a number from 0 to 2.")
+    p = number("top_p")
+    if p is not None and not 0 < p <= 1:
+        raise Invalid(f"{path}.top_p", "Top P is a number above 0, 1 at most.")
+    k = number("top_k")
+    if k is not None and (isinstance(k, float) or k < 1):
+        raise Invalid(f"{path}.top_k", "Top K is a whole number, 1 at least.")
+
+
 def validate_model(kind: str, name: str, m: Any, path: str,
                    base_url: str) -> dict[str, Any]:
     if not MODEL.match(str(name)):
@@ -375,6 +397,8 @@ def validate_model(kind: str, name: str, m: Any, path: str,
         if k == "llama" and kind not in kinds_mod.LLAMA:
             raise Invalid(f"{path}.{k}", "llama options only apply to llama-swap, tabbyAPI "
                                          "and llama-server.")
+        if k == "params":
+            _sampling(f"{path}.params", v)
         out[k] = v
     eff = m.get("reasoning_effort")
     if eff not in (None, ""):
