@@ -23,9 +23,22 @@
   model. Every use waits for the user; a model in a role's list (unless general
   `ask_listed_cloud` is on), the conversation's own or one the user set on a step of its
   plan never asks.
+- `model_file`, a model file or LoRA the comfy helper downloads (image_generator__request_model,
+  comfyui/model_files.py): every one waits for the user, guard or no guard. Its facts are
+  the helper's look at the file (its name, source, size, licence; for Civitai its site,
+  title, type, base model, trigger words, whether it is marked mature and its page, which
+  opens) and the call's own data (where it is saved, the preset, the free space left after
+  it); none of the model's own description. The tool answers at once: the card is asked
+  from the app's own background (`opened` says when it is placed) and waits a day
+  (model_files.ASK_FOR) or until a restart.
+- `preset`, a preset the agent proposes or replaces (`propose_preset` of the image and music
+  generators, comfyui/proposals.py): every one waits for the user, guard or no guard. Its
+  facts are the preset's name, task, nodes and parameters and what the server finds it
+  misses on this ComfyUI; its workflow is under Details.
 
 Every request is one card (`Ask.card`): a title "{who} asks to {action}.", facts as
-(label, value) pairs from the call's own data, its whole long text apart (`detail`,
+(label, value) pairs from the call's own data (a third item: an https address the fact
+opens), its whole long text apart (`detail`,
 opened under Details, never cut), why the kind is asked (HELP, the server fills the agent's
 name), where its work lives (`where`, the root's name) and the link that opens
 it. Every request but a gate (Bastet's banner is its ask there) shows in the chat that
@@ -44,9 +57,11 @@ Inside any turn (turns/waiting.py) the tool call waits for the user's answer or 
 and the turn's wall clock and the tool's time do not run meanwhile: a chat or a mission
 waits until they answer (a mission's time limit counts the wait off,
 missions/watch.py); a routine's run ends at its own time limit (schedules/runs.py), its
-reason ASK_LAPSED. Outside a turn it waits ASK_FOR seconds. The user answers from a
+reason ASK_LAPSED. Outside a turn it waits ASK_FOR seconds, or the `wait` its caller
+gives. The user answers from a
 logged-in session (a named token is refused). One request waits at a time in a
-conversation. A request is in memory: a restart forgets it, and the vault is locked
+conversation; a model file (APART) waits beside any other, since no turn waits for it.
+A request is in memory: a restart forgets it, and the vault is locked
 after a restart anyway. Every change is the global event `approvals.changed`; a new
 request is a `notice` (events.py), and its close one more with the same tag, closed,
 that says how it ended (push.py sends that one even to a focused page, silent).
@@ -58,17 +73,19 @@ import json
 import logging
 import secrets
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import anyio
 
 from .core.event_types import APPROVAL_ASKED, APPROVAL_CLOSED, APPROVALS_CHANGED
-from .guard.sources import OUTSIDE   # skills whose results others wrote: one list
+from .guard.sources import from_outside   # tools whose results others wrote: one list
 
 log = logging.getLogger("celine.approvals")
 
 ASK_FOR = 120       # seconds a request outside a turn waits for the user
-KINDS = ("vault", "gate", "agent", "share", "settings", "model")
+KINDS = ("vault", "gate", "agent", "share", "settings", "model", "model_file", "preset")
+APART = ("model_file",)     # asked from the app's background: beside any other request
 APPROVED_KEPT = 64  # tool calls approved on Bastet's ask, kept so the tool asks no more
 
 # why each kind is asked and where that changes; {{name}}: the agent's name
@@ -87,6 +104,10 @@ HELP = {
     "model": ("This model runs on a server outside your network. A model from your role "
               "lists asks only while Ask before cloud models from your lists is on; turn "
               "Cloud off for a provider you run yourself."),
+    "model_file": ("A model file comes from outside your network onto the models disk, so "
+                   "each one waits for you. You remove it in Settings, Images & Music."),
+    "preset": ("A preset {{name}} proposes runs on your ComfyUI, so it is saved only once you "
+               "approve it. You edit or remove it in Settings, Images & Music."),
 }
 
 SHELL = "put the password of {entry} into a file in the shellbox"
@@ -101,9 +122,15 @@ CLOSED = {True: "Approved.", False: "Denied.", None: "No answer."}
 STOPPED = object()   # the turn that waited ended before they answered
 
 
-def _minutes() -> str:
-    n = max(1, round(ASK_FOR / 60))
-    return f"{n} minute" + ("s" if n != 1 else "")
+def _minutes(seconds: float = ASK_FOR) -> str:
+    """A request's wait in words: "2 minutes", "24 hours"."""
+    n, unit = (round(seconds / 3600), "hour") if seconds >= 3600 else \
+        (max(1, round(seconds / 60)), "minute")
+    return f"{n} {unit}" + ("s" if n != 1 else "")
+
+
+# a fact: (label, value), or (label, value, the https address it opens)
+Fact = tuple[str, str] | tuple[str, str, str]
 
 
 @dataclass
@@ -111,7 +138,7 @@ class Ask:
     id: str
     kind: str               # one of KINDS
     title: str              # "{who} asks to {action}."
-    facts: list[tuple[str, str]]   # (label, value): the call's own data, whole
+    facts: list[Fact]       # the call's own data, whole
     detail: tuple[str, str] | None  # (title, text): its long text, whole
     help: str               # HELP[kind], filled
     conversation: str
@@ -128,7 +155,8 @@ class Ask:
         """What every place draws of it: the chat after the message `message_id`, the
         Vault page, Waiting for you."""
         return {"id": self.id, "kind": self.kind, "title": self.title,
-                "facts": [{"label": k, "value": v} for k, v in self.facts],
+                "facts": [{"label": f[0], "value": f[1],
+                           **({"href": f[2]} if len(f) > 2 else {})} for f in self.facts],
                 "detail": {"title": self.detail[0], "text": self.detail[1]}
                 if self.detail else None,
                 "help": self.help, "where": self.where, "home": self.home,
@@ -221,7 +249,7 @@ class Approvals:
 
     def seen(self, conversation: str, tool: str) -> None:
         """A tool's result landed: remember it when it read from outside."""
-        if tool.split("__")[0] in OUTSIDE:
+        if from_outside(tool):
             self.read[conversation] = tool
 
     def forget(self, kind: str = "vault") -> None:
@@ -239,17 +267,22 @@ class Approvals:
         return sub(HELP[kind]) if sub is not None else HELP[kind]
 
     async def ask(self, kind: str, conversation: str, action: str, *,
-                  facts: list[tuple[str, str]] | tuple = (),
+                  facts: list[Fact] | tuple = (),
                   detail: tuple[str, str] | None = None, why: str = "",
-                  ref: int | None = None, call: str | None = None) -> str | None:
+                  ref: int | None = None, call: str | None = None,
+                  wait: float | None = None,
+                  opened: Callable[[], None] | None = None) -> str | None:
         """Wait for the user's answer to "{who} asks to {action}.". `facts`: (label,
-        value) pairs of the call's own data, whole; `detail`: (title, text), its long
-        text; `why`: the agent's reason, its Reason fact (the vault needs one). -> None when
-        approved, else one sentence for its tool result: denied, no answer (it starts
-        with `{user} did not answer`), no reason given (vault), or another one waits.
-        `call`: the tool call it is for; one the user approved on Bastet's ask (a gate)
-        is not asked again by its tool, but a change of settings is: its request shows
-        each field before and after."""
+        value) pairs of the call's own data, whole (a third item: the https address the
+        fact opens); `detail`: (title, text), its long text; `why`: the agent's reason,
+        its Reason fact (the vault needs one). -> None when approved, else one sentence
+        for its tool result: denied, no answer (it starts with `{user} did not answer`),
+        no reason given (vault), or another one waits. `call`: the tool call it is for;
+        one the user approved on Bastet's ask (a gate) is not asked again by its tool,
+        but a change of settings is: its request shows each field before and after.
+        `wait`: the seconds it waits outside a turn (None: ASK_FOR); `opened()`: called
+        once its card is placed (a request that is refused at once never calls it)."""
+        wait = ASK_FOR if wait is None else wait
         if call and kind not in ("gate", "settings") and call in self.approved:
             del self.approved[call]
             return None
@@ -261,7 +294,8 @@ class Approvals:
         where = await self.store.read(lambda c: _where(c, conversation)) \
             if self.store is not None else {}
         # no await from this check to the insert: two calls at once cannot both pass
-        if any(a.conversation == conversation for a in self.waiting.values()):
+        if kind not in APART and any(a.conversation == conversation and a.kind not in APART
+                                     for a in self.waiting.values()):
             return f"Another request waits for {user}; ask again once it is answered."
         from .turns.waiting import TURN
         turn = TURN.get()
@@ -274,7 +308,7 @@ class Approvals:
                   action[:1].upper() + action[1:] + ".",
                   facts=rows, detail=detail, help=self._help(kind),
                   conversation=conversation,
-                  expires=None if turn is not None else time.time() + ASK_FOR,
+                  expires=None if turn is not None else time.time() + wait,
                   answer=asyncio.get_running_loop().create_future(), ref=ref, call=call,
                   home=where.get("home"), link=where.get("link"), root=where.get("root"),
                   where=where.get("where"))
@@ -286,7 +320,9 @@ class Approvals:
         try:
             await self._landed(ask)
             await self._notice(ask)
-            ok = await self._answer(ask, turn)
+            if opened is not None:
+                opened()
+            ok = await self._answer(ask, turn, wait)
         finally:
             self.waiting.pop(ask.id, None)
             self._changed()
@@ -301,21 +337,21 @@ class Approvals:
                     del self.approved[next(iter(self.approved))]
             return None
         if ok is None:
-            return f"{user} did not answer in {_minutes()}; nothing was done."
+            return f"{user} did not answer in {_minutes(wait)}; nothing was done."
         return f"{user} denied it; nothing was done."
 
     # ---- what the user answers ----------------------------------------------------------
 
     @staticmethod
-    async def _answer(ask: Ask, turn) -> object:
-        """True or False: the user's answer; None: no answer in ASK_FOR seconds (outside
+    async def _answer(ask: Ask, turn, wait: float = ASK_FOR) -> object:
+        """True or False: the user's answer; None: no answer in `wait` seconds (outside
         a turn); STOPPED: its turn ended (a Stop, a time limit, a shutdown) before they
         answered. Inside a turn (`turn`) it waits for them, and the turn's clock and the
         tool's time are held (backends/llm.paused); a Stop cancels the wait
         (core/cancel.until_stop)."""
         if turn is None:
             try:
-                return await asyncio.wait_for(asyncio.shield(ask.answer), ASK_FOR)
+                return await asyncio.wait_for(asyncio.shield(ask.answer), wait)
             except asyncio.TimeoutError:
                 return None
         from .backends.llm import paused
