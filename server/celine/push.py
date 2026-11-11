@@ -41,9 +41,11 @@ from .core.event_types import NOTICE, PUSH_SUBSCRIPTIONS
 from .core.ids import now
 from .errors import CelineError, NotFound
 from .settings import address, secrets
+from .core.parts import Part
 
 log = logging.getLogger("celine.push")
 router = APIRouter(prefix="/api")
+part = Part(name="push", routes=(router,))     # core/parts.py
 
 SECRET = "push.vapid"          # var/secrets/push.vapid.key
 TTL = 24 * 3600                # seconds a push service keeps a push for an offline device

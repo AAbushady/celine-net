@@ -19,22 +19,28 @@ from fastapi.staticfiles import StaticFiles
 
 from . import config as config_mod
 from .api import origin as origin_mod
-from .api import kb as kb_api
-from .api import connectors as connectors_api
-from .api import identity as identity_api
-from .api import llm as llm_api
-from .api import forms as forms_api, settings as settings_api
-from .api import agent as agent_api
-from .api import commands as commands_api
-from .api import attachments as attachments_api, ws
-from .api import notebook as notebook_api
-from .api import skills as skills_api
 from .conversations import api as conversations_api, store as conversations, tree
 from . import attachments, boot, keys, reload
 from .backends import llm as llm_mod
 from .core.parts import Part
 from .core.services import Services
+from .api.part import part as api_part
+from .jobs.part import part as jobs_part
+from .conversations.part import part as conversations_part
+from .missions.part import part as missions_part
+from .triggers.part import part as triggers_part
+from .schedules.part import part as schedules_part
 from .sub_agents.part import part as sub_agents_part
+from .intercom.part import part as intercom_part
+from .terminals.part import part as terminals_part
+from .browser.part import part as browser_part
+from .artifacts.part import part as artifacts_part
+from .shares import part as shares_part
+from .push import part as push_part
+from .comfyui.part import part as comfyui_part
+from .guard.part import part as guard_part
+from .bugreports.part import part as bugreports_part
+from .events import part as events_part
 from .mcp import Supervisor
 from .triggers import Triggers
 from .db.migrate import migrate_all
@@ -139,9 +145,12 @@ def preflight(argv: argparse.Namespace) -> config_mod.Config:
     return cfg
 
 
-# The features that register themselves (core/parts.py), in the order their steps run. A
-# feature that is not here yet is still wired by hand in build_app below.
-PARTS: tuple[Part, ...] = (sub_agents_part,)
+# Every feature's part (core/parts.py), in the order their steps run.
+PARTS: tuple[Part, ...] = (
+    api_part, jobs_part, conversations_part, missions_part, triggers_part, schedules_part,
+    sub_agents_part, intercom_part, terminals_part, browser_part, artifacts_part, shares_part,
+    push_part, comfyui_part, guard_part, bugreports_part, events_part,
+)
 
 
 def build_app(cfg: config_mod.Config, dev: bool) -> FastAPI:
@@ -424,73 +433,9 @@ def build_app(cfg: config_mod.Config, dev: bool) -> FastAPI:
     install_login(app, cfg, dev)             # the session gate
     from .api.headers import SecurityHeaders
     app.add_middleware(SecurityHeaders)      # outermost: covers the gate's answers too
-    app.include_router(attachments_api.router)
-    app.include_router(notebook_api.router)
-    app.include_router(skills_api.router)
-    from .api import context as context_api
-    app.include_router(context_api.router)
-    from .jobs import api as jobs_api
-    app.include_router(jobs_api.router)
-    app.include_router(conversations_api.router)
-    app.include_router(kb_api.router)
-    app.include_router(connectors_api.router)
-    app.include_router(identity_api.router)
-    app.include_router(llm_api.router)
-    from .api import llm_proxy
-    app.include_router(llm_proxy.router)
-    app.include_router(settings_api.router)
-    app.include_router(forms_api.router)
-    from .api import speech as speech_api
-    app.include_router(speech_api.router)
-    app.include_router(agent_api.router)
-    app.include_router(commands_api.router)
-    from .api import documents as documents_api
-    app.include_router(documents_api.router)
-    from .api import bulk as bulk_api
-    app.include_router(bulk_api.router)
-    from .missions import api as missions_api
-    app.include_router(missions_api.router)
-    from .triggers import api as triggers_api
-    app.include_router(triggers_api.router)
-    from .schedules import api as schedules_api
-    app.include_router(schedules_api.router)
     for part in PARTS:
         for routes in part.routes:
             app.include_router(routes)
-    from .intercom import api as intercom_api
-    app.include_router(intercom_api.router)
-    from .terminals import api as terminals_api
-    app.include_router(terminals_api.router)
-    app.include_router(terminals_api.ws_router)
-    from .browser import api as browser_api
-    app.include_router(browser_api.router)
-    app.include_router(browser_api.ws_router)
-    from .artifacts import api as artifacts_api
-    app.include_router(artifacts_api.router)
-    from . import shares as shares_api
-    app.include_router(shares_api.router)
-    from . import push as push_api
-    app.include_router(push_api.router)
-    from .comfyui import api as comfyui_api
-    app.include_router(comfyui_api.router)
-    from .api import presets as presets_api
-    app.include_router(presets_api.router)
-    from .api import appearance as appearance_api, texts as texts_api
-    app.include_router(appearance_api.router)
-    app.include_router(texts_api.router)
-    from .api import prompts as prompts_api
-    app.include_router(prompts_api.router)
-    from .guard import api as guard_api
-    app.include_router(guard_api.router)
-    from .api import approvals as approvals_api
-    app.include_router(approvals_api.router)
-    from .api import waits as waits_api
-    app.include_router(waits_api.router)
-    from .bugreports import api as bugreports_api
-    app.include_router(bugreports_api.router)
-    from . import events as events_api
-    app.include_router(events_api.router)
-    app.include_router(ws.router)
 
     # the plugins' routes, appended and removed by their runners (api/plugins.py)
     from .api import plugins as plugins_api

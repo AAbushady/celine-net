@@ -57,8 +57,10 @@ from .core.ids import iso
 from .errors import NotFound, said
 from .core.event_types import SHARE_UPDATED
 from .settings import address, features
+from .core.parts import Part
 
 router = APIRouter()
+part = Part(name="shares", routes=(router,))     # core/parts.py
 
 PREFIX = "/share/"
 TOKEN_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789"

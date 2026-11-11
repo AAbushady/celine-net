@@ -42,8 +42,10 @@ from .core.bus import NOTEBOOK_TOOLS
 from .errors import CelineError
 from .core.event_types import EVENTS_ADDED, NOTICE
 from .core.route_params import TheServices
+from .core.parts import Part
 
 router = APIRouter(prefix="/api")
+part = Part(name="events", routes=(router,))     # core/parts.py
 
 _NB = "(" + ",".join(f"'{t}'" for t in NOTEBOOK_TOOLS) + ")"
 DAYS = 14                 # the days the Date filter offers
