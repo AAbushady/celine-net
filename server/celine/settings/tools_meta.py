@@ -118,6 +118,18 @@ TOOLS: dict[str, dict[str, str]] = {
                          "summary": "Deletes one note; you keep a copy."},
     "notebook__move": {"label": "Notebook: move a note",
                        "summary": "Changes the path of a note or folder."},
+    "notebook__list_versions": {"label": "Notebook: list a note's versions",
+                                "summary": "Lists the earlier texts of one note, also of a "
+                                           "deleted one."},
+    "notebook__read_version": {"label": "Notebook: read an earlier version",
+                               "summary": "Reads one earlier text of a note."},
+    "notebook__list_deleted": {"label": "Notebook: list the Trash",
+                               "summary": "Lists the notes and folders in the Trash."},
+    "notebook__read_deleted": {"label": "Notebook: read a deleted note",
+                               "summary": "Reads a note in the Trash without restoring it."},
+    "notebook__restore": {"label": "Notebook: restore a deleted note",
+                          "summary": "Restores a note {{name}} deleted from the Trash; what "
+                                     "you deleted stays for you."},
     "sub_agents__start": {"label": "Sub-agents: start",
                           "summary": "Gives instructions to a new sub-agent; its result comes "
                                      "back later."},

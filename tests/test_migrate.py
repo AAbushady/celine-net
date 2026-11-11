@@ -24,7 +24,7 @@ EXPECTED_TABLES = {
 }
 LOG_TABLES = {"events", "global_events", "raw_responses", "requests", "terminal_commands"}
 NOTEBOOK_TABLES = {"notebook_index", "notebook_fts"}
-LATEST = 31
+LATEST = 32
 
 
 def _version(db) -> int:
@@ -660,3 +660,52 @@ def test_0031_gives_every_mission_report_its_status_heading_and_note_once(tmp_pa
     step.up(c, db)
     assert json.loads(c.execute("SELECT data FROM intercom WHERE id = 2").fetchone()[0])["heading"] == "kept"
     c.close()
+
+
+def test_0032_marks_the_trashed_notes_its_own_deletes_moved_there_once(tmp_path, monkeypatch):
+    import importlib.util
+    d = tmp_path / "migrations"
+    d.mkdir()
+    for f in sorted(MIGRATIONS_DIR.iterdir()):
+        if f.suffix in (".sql", ".py") and f.name < "0032":
+            shutil.copy(f, d)
+    monkeypatch.setattr(m, "MIGRATIONS_DIR", d)
+    db = tmp_path / "celine.db"
+    assert migrate_all(db) == 31
+    trash = tmp_path / "notebook" / ".trash"
+    held = {"2026-11-10_140210_123456": ["people/noor.md"],         # its delete, ok
+            "2026-11-10_150000_000000": ["people/sam.md"],          # the user's: no call
+            "2026-11-10_160000_000000": ["lore/sea.md"],            # its delete failed
+            "2026-11-10_170000_000000": ["lore/a.md", "lore/b.md"]}  # a folder
+    for tid, notes in held.items():
+        for rel in notes:
+            (trash / tid / rel).parent.mkdir(parents=True, exist_ok=True)
+            (trash / tid / rel).write_text("x")
+    c = sqlite3.connect(db)
+    c.execute("INSERT INTO conversations(id, kind, created_at, updated_at) "
+              "VALUES('chat', 'chat', 'x', 'x')")
+    c.execute("INSERT INTO messages(id, conversation_id, role, created_at) "
+              "VALUES('m', 'chat', 'assistant', 'x')")
+    for n, (path, state, start, end) in enumerate((
+            ("people/noor.md", "ok", "14:02:10.000", "14:02:10.123"),
+            ("lore/sea.md", "error", "15:59:59.900", "16:00:00.100"),
+            ("lore", "ok", "16:59:59.900", "17:00:00.100"))):
+        c.execute("INSERT INTO tool_calls(id, message_id, name, arguments, state, display, "
+                  "started_at, finished_at) VALUES(?, 'm', 'notebook__delete', ?, ?, ?, ?, ?)",
+                  (f"t{n}", f'{{"path": "./{path}"}}', state, f'{{"path": "{path}"}}',
+                   f"2026-11-10T{start}+00:00", f"2026-11-10T{end}+00:00"))
+    c.commit()
+    c.close()
+    shutil.copy(MIGRATIONS_DIR / "0032_trash_by_agent.py", d)
+    assert migrate_all(db) == 32
+    marked = {p.parent.name for p in trash.glob("*/.deleted-by-agent")}
+    assert marked == {"2026-11-10_140210_123456"}
+    assert (trash / "2026-11-10_140210_123456/people/noor.md").read_text() == "x"
+    spec = importlib.util.spec_from_file_location("trash_by_agent",
+                                                  MIGRATIONS_DIR / "0032_trash_by_agent.py")
+    step = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(step)
+    c = sqlite3.connect(db, isolation_level=None)
+    step.up(c, db)
+    c.close()
+    assert {p.parent.name for p in trash.glob("*/.deleted-by-agent")} == marked

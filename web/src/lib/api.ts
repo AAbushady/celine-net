@@ -1,4 +1,4 @@
-import type { Display } from './api.gen'
+import type { Display, NotebookTrash } from './api.gen'
 import type { GuardBanner } from './guard'
 import type { Agent } from './agent'
 import { reportApi } from './health'
@@ -637,8 +637,8 @@ export const notebookApi = (() => {
     /** into .trash, never deleted; `restoreTrashed` brings it back */
     remove: (path: string) =>
       del<{ ok: boolean }>(entry(path)),
-    /** what was deleted, newest first: where each was */
-    trash: () => request<{ trash: { id: string; path: string; kind: 'file' | 'dir' }[] }>(`/notebook/trash`),
+    /** what was deleted, newest first: where each was, when and by whom */
+    trash: () => request<NotebookTrash>(`/notebook/trash`),
     restoreTrashed: (id: string) =>
       post<{ ok: boolean; path: string }>(`/notebook/trash/${e(id)}/restore`),
     protect: (path: string, protected_: boolean) =>

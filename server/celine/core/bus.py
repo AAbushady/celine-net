@@ -84,7 +84,8 @@ def for_pages(ev: dict, place: str | None = None) -> bool:
 # The conversation events that mean a row of Events (server/celine/events.py) landed or
 # settled: a turn or a job ended, a tool call finished. Store.event sends `events.added`
 # for each in the same write; the other sources call events.added themselves.
-NOTEBOOK_TOOLS = ("notebook__write", "notebook__edit", "notebook__delete", "notebook__move")
+NOTEBOOK_TOOLS = ("notebook__write", "notebook__edit", "notebook__delete", "notebook__move",
+                  "notebook__restore")
 
 
 def lands(ev: dict) -> str | None:

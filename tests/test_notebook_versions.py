@@ -68,6 +68,7 @@ async def test_a_move_takes_the_history_along_a_delete_keeps_a_copy_and_a_purge_
         trash = (await c.get("/api/notebook/trash")).json()["trash"]
         assert [(t["path"], t["kind"]) for t in trash] == [("world/sea.md", "file")], \
             "a folder with one note lists as the note: it restores to the same place"
+        assert trash[0]["by"] == "user" and trash[0]["at"].endswith("+00:00")
         r = await c.post(f"/api/notebook/trash/{trash[0]['id']}/restore")
         assert r.json() == {"ok": True, "path": "world/sea.md"}
         assert (root / "world/sea.md").read_text().endswith("second")

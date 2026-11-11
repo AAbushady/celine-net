@@ -344,6 +344,10 @@ export type NotebookPath = {
   path: string
 }
 
+export type NotebookTrash = {
+  trash: TrashedNote[]
+}
+
 export type NotebookWrite = {
   content: string
 }
@@ -556,6 +560,15 @@ export type Tone = "running" | "warn" | "error" | "success" | "muted"
 export type Trash = {
   folders: Folder[]
   items: Item[]
+}
+
+/** A deleted note or folder in the trash (skills/notebook.py trashed), as its notebook__list_deleted shows it too. */
+export type TrashedNote = {
+  id: string
+  path: string
+  kind: "file" | "dir"
+  at: string
+  by: "agent" | "user"
 }
 
 /** One sub-agent in the tree under a top conversation (store.tree_of). */

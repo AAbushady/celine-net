@@ -2,17 +2,18 @@
 the one notebook (agent.notebook)."""
 from __future__ import annotations
 
-import difflib
 import shutil
-from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from ..core.dto import Answer
 from ..errors import CelineError, NotFound, TooLarge
 from ..skills import notebook_index
-from ..skills.notebook import NO_SUMMARY, is_stamp, move_note, trash, unstamped, write_note
+from ..skills.notebook import (NO_SUMMARY, history, move_note, mtime, trash, trashed,
+                               unstamped, untrash, versions, write_note)
 from ..core.route_params import TheConfig, TheServices, TheStore
 
 router = APIRouter(prefix="/api")
@@ -48,10 +49,6 @@ def _owner(services, rel: str) -> str | None:
     return nb.owner(rel) if nb is not None else None
 
 
-def _mtime(p: Path) -> str:
-    return datetime.fromtimestamp(p.stat().st_mtime, timezone.utc).isoformat(timespec="seconds")
-
-
 @router.get("/notebook/tree")
 async def notebook_tree(cfg: TheConfig, services: TheServices, store: TheStore) -> dict:
     """Every folder and note; a note with `updated_at` (ISO, UTC) and `line`, the summary
@@ -77,7 +74,7 @@ async def notebook_tree(cfg: TheConfig, services: TheServices, store: TheStore) 
                 owner = _owner(services, r)
                 out.append({"name": p.name, "path": r, "kind": "file",
                             "bytes": p.stat().st_size, "protected": owner is not None,
-                            "owner": owner, "updated_at": _mtime(p),
+                            "owner": owner, "updated_at": mtime(p),
                             "line": lines.get(r)})
         return out
 
@@ -131,83 +128,22 @@ async def notebook_write(store: TheStore, cfg: TheConfig, path: str, body: Noteb
     return {"ok": True, "bytes": len(content), "content": content, "shown": shown}
 
 
-def _versions_dir(ch, rel: str) -> Path:
-    return ch.notebook.resolve() / ".versions" / rel
-
-
-def _version_time(stem: str) -> str | None:
-    """The time in a version's name (`2026-01-09_141502_123456`) as ISO, UTC."""
-    try:
-        return datetime.strptime(stem, "%Y-%m-%d_%H%M%S_%f").replace(
-            tzinfo=timezone.utc).isoformat()
-    except ValueError:
-        return None
-
-
-PAGE = 50
-
-
-def _change(old: str, new: str) -> str:
-    """What changed from `old` to `new`, in one line: the first line added or changed,
-    else the first line taken out; the Last changed line never counts."""
-    a = [x for x in old.splitlines() if x.strip() and not is_stamp(x)]
-    b = [x for x in new.splitlines() if x.strip() and not is_stamp(x)]
-    added = removed = ""
-    for op, i1, _, j1, _ in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
-        if op in ("replace", "insert") and not added:
-            added = b[j1]
-        if op == "delete" and not removed:
-            removed = a[i1]
-    return (added or removed).strip().lstrip("#").strip()[:200]
-
-
-def _history(ch, rel: str) -> list[dict]:
-    """Every text the note had, oldest first, its text now last: {id (1, 2, ...), at
-    (when it became the note's text), by, change, size, text}. The copies in
-    .versions/<path>/ are named by when each was replaced."""
-    p = _notebook_path(ch, rel)
-    d = _versions_dir(ch, rel)
-    kept = sorted((f for f in d.glob("*.md") if _version_time(f.stem)), key=lambda f: f.stem) \
-        if d.is_dir() else []
-    texts = [f.read_text(errors="replace") for f in kept]
-    times = [_version_time(f.stem) for f in kept]
-    if p.is_file():
-        texts.append(p.read_text(errors="replace"))
-        times.append(_mtime(p))
-    out, before = [], ""
-    for i, text in enumerate(texts):
-        # a copy is named by when it was replaced: it became the text when the one
-        # before it was replaced (the first: its own time, the best known)
-        out.append({"id": i + 1, "at": times[i - 1] if i else times[0], "by": "",
-                    "change": _change(before, text), "size": len(text), "text": text})
-        before = text
-    return out
-
-
 @router.get("/notebook/versions")
 async def notebook_versions(cfg: TheConfig, path: str, q: str = "",
                             before: int | None = None) -> dict:
-    """A note's History, as every long text's (web/src/lib/texts.ts): {versions: [{id, at,
-    by, change, size}], current, total, next}. `versions` are the texts it had before,
-    newest first, 50 a page, the next page `before` the last id; `current` is the text it
-    has now, the newest of all (null when `q`, which looks in the changes, misses it or a
-    page after the first is asked); `total` counts both."""
-    # note: reads every copy on each page; an index once a note has thousands
-    every = [{k: v for k, v in r.items() if k != "text"} for r in _history(cfg.agent, path)]
-    now = every.pop() if every else None
-    rows = [r for r in reversed(every)
-            if (before is None or r["id"] < before) and q.lower() in r["change"].lower()]
-    page = rows[:PAGE]
-    show_now = now is not None and before is None and q.lower() in now["change"].lower()
-    return {"versions": page, "current": now if show_now else None, "total": len(every) + (now is not None),
-            "next": page[-1]["id"] if len(rows) > PAGE else None}
+    """A note's History, as every long text's (web/src/lib/texts.ts): skills/notebook.py
+    versions, the listing its notebook__list_versions shows too."""
+    _notebook_path(cfg.agent, path)
+    return versions(cfg.agent.notebook.resolve(), path, q, before)
 
 
 @router.get("/notebook/versions/{vid}")
 async def notebook_version(cfg: TheConfig, vid: int, path: str) -> dict:
     """One text the note had: {id, at, by, change, size, text}, as stored; Restore this
     version puts it into the editor and Save writes it."""
-    found = next((r for r in _history(cfg.agent, path) if r["id"] == vid), None)
+    _notebook_path(cfg.agent, path)
+    found = next((r for r in history(cfg.agent.notebook.resolve(), path) if r["id"] == vid),
+                 None)
     if found is None:
         raise NotFound("version")
     return found
@@ -289,57 +225,43 @@ async def notebook_delete(store: TheStore, cfg: TheConfig, path: str) -> dict:
     p = _notebook_path(ch, path)
     if not p.exists():
         raise NotFound("path")
-    trash(ch.notebook.resolve(), p, path)
+    trash(ch.notebook.resolve(), p, path, "user")
     removed = await notebook_index.delete_prefix(store, path)
     return {"ok": True, "index_rows": removed}
 
 
-def _trashed(root: Path) -> list[dict]:
-    """What .trash holds, newest first: {id (its .trash folder), path (where it was),
-    kind}. A delete moved one note or folder to .trash/<time>/<path>."""
-    t = root / ".trash"
-    out = []
-    for d in sorted(t.iterdir(), reverse=True) if t.is_dir() else []:
-        p, parts = d, []
-        while p.is_dir() and len(kids := list(p.iterdir())) == 1:
-            p = kids[0]
-            parts.append(p.name)
-        if d.is_dir() and parts:
-            out.append({"id": d.name, "path": "/".join(parts),
-                        "kind": "dir" if p.is_dir() else "file"})
-    return out
+class TrashedNote(Answer):
+    """A deleted note or folder in the trash (skills/notebook.py trashed), as its
+    notebook__list_deleted shows it too."""
+    id: str
+    path: str
+    kind: Literal["file", "dir"]
+    at: str
+    by: Literal["agent", "user"]
+
+
+class NotebookTrash(Answer):
+    trash: list[TrashedNote]
 
 
 @router.get("/notebook/trash")
-async def notebook_trash(cfg: TheConfig) -> dict:
-    return {"trash": _trashed(cfg.agent.notebook.resolve())}
+async def notebook_trash(cfg: TheConfig) -> NotebookTrash:
+    """What the trash holds, newest first."""
+    return NotebookTrash(trash=[TrashedNote.of(e)
+                                for e in trashed(cfg.agent.notebook.resolve())])
 
 
 @router.post("/notebook/trash/{tid}/restore")
 async def notebook_untrash(store: TheStore, cfg: TheConfig, tid: str) -> dict:
-    """A deleted note or folder back where it was, indexed again."""
-    ch = cfg.agent
-    root = ch.notebook.resolve()
-    entry = next((e for e in _trashed(root) if e["id"] == tid), None)
-    if entry is None:
-        raise NotFound("deleted note")
-    dst = _notebook_path(ch, entry["path"])
-    if dst.exists():
-        raise CelineError("bad_request", f"{entry['path']} exists again. Move it away first.",
-                          400)
-    src = root / ".trash" / tid / entry["path"]
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    src.rename(dst)
-    # the folders it was in, empty now
-    for d in [*src.parents][:len(Path(entry["path"]).parts)]:
-        d.rmdir()
-    for f in [dst] if dst.is_file() else sorted(x for x in dst.rglob("*") if x.is_file()):
-        try:
-            text = f.read_text()
-        except UnicodeDecodeError:
-            continue
-        await notebook_index.upsert(store, f.relative_to(root).as_posix(),
-                                    NO_SUMMARY, len(text), text)
+    """A deleted note or folder back where it was, indexed again (skills/notebook.py
+    untrash, as its notebook__restore does)."""
+    try:
+        entry = await untrash(store, cfg.agent.notebook.resolve(), tid)
+    except LookupError:
+        raise NotFound("deleted note") from None
+    except FileExistsError as e:
+        raise CelineError("bad_request", f"{e.args[0]} exists again. Move it away first.",
+                          400) from None
     return {"ok": True, "path": entry["path"]}
 
 
@@ -348,7 +270,7 @@ async def notebook_purge(cfg: TheConfig, tid: str) -> dict:
     """One deleted note or folder gone for good, for you: its .trash folder goes. The agent's
     own delete only ever moves a note to the trash."""
     root = cfg.agent.notebook.resolve()
-    entry = next((e for e in _trashed(root) if e["id"] == tid), None)
+    entry = next((e for e in trashed(root) if e["id"] == tid), None)
     if entry is None:
         raise NotFound("deleted note")
     shutil.rmtree(root / ".trash" / tid)

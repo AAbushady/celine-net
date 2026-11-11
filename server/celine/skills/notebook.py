@@ -5,6 +5,7 @@ set by sub_agents/skill.py). The limit is enforced here, in every tool and in th
 never left to the prompt."""
 from __future__ import annotations
 
+import difflib
 import json
 import re
 from datetime import datetime, timezone
@@ -19,6 +20,7 @@ from . import ToolContext, ToolResult, guide, knob, tool, described
 from . import notebook_index
 from .anchors import Edit, EditRefused, apply, is_stamp, lines_of, numbered, plan
 from ..clock import zone
+from ..core.ids import when
 from ..errors import ToolRefused
 
 # Settings, Advanced, read at use (cfg.r): the index in every system prompt, capped both
@@ -221,8 +223,8 @@ class Notebook:
         p = (self.root / path).resolve()
         if not p.is_relative_to(self.root.resolve()):
             raise ToolRefused(f"{path} is outside your notebook.")
-        # the app's own files (.index.db, .versions, .trash: deleted notes are the
-        # user's to bring back) are not notes
+        # the app's own files (.index.db, .versions, .trash: the tools over what the
+        # notebook keeps read those) are not notes
         if any(part.startswith(".") for part in p.relative_to(self.root.resolve()).parts):
             raise ToolRefused(f"{path} is not in your notebook: notebook__list shows your "
                               f"notes.")
@@ -461,7 +463,8 @@ class Notebook:
         ctx: ToolContext,
         path: Annotated[str, "The path of the note."],
     ) -> ToolResult:
-        """Delete one of your notes. {{username}}'s notes cannot be deleted."""
+        """Delete one of your notes: it moves to the trash, and notebook__restore brings it
+        back. {{username}}'s notes cannot be deleted."""
         try:
             p, path = self._place(path, await folder_of(ctx))
         except ToolRefused as e:
@@ -476,9 +479,11 @@ class Notebook:
         if not p.exists():
             return ToolResult(content=f"{path} does not exist. notebook__list shows your "
                                       f"notes.", is_error=True)
-        trash(self.root, p, path)
+        tid = trash(self.root, p, path, "agent")
         await notebook_index.delete(ctx.store, path)
-        return ToolResult(content=f"Deleted {path}.", display={"path": path})
+        return ToolResult(content=f"Moved {path} to the trash as {tid}: "
+                                  f"notebook__restore(id=\"{tid}\") brings it back.",
+                          display={"path": path})
 
     @tool(read_only=False, destructive=True)
     async def move(
@@ -518,6 +523,186 @@ class Notebook:
         return ToolResult(content=f"Moved {src} to {dst} ({n} index "
                                   f"{'entry' if n == 1 else 'entries'} followed)",
                           display={"src": src, "dst": dst, "entries": n})
+
+    @tool()
+    async def list_versions(
+        self,
+        ctx: ToolContext,
+        path: Annotated[str, "The note's path, also of a deleted note."],
+        before: Annotated[int | None, "Only versions older than this one: the next "
+                                      "page."] = None,
+    ) -> ToolResult:
+        """List the earlier texts of one note, newest first: each change keeps the text the
+        note had, also after the note is deleted. Each as `version 3, from Tue 10 Nov
+        14:02, 1,204 characters: "<the line that changed>"`; notebook__read_version reads
+        one. Example: notebook__list_versions(path="people/noor.md")."""
+        try:
+            p, path = self._place(path, await folder_of(ctx))
+        except ToolRefused as e:
+            return ToolResult(content=str(e), is_error=True)
+        if p.is_dir():
+            return _folder(path)
+        root, tz = self.root.resolve(), zone(self.cfg)
+        page = versions(root, path, before=before)
+        lines = [f"version {v['id']}, from {when(v['at'], tz)}, {v['size']:,} characters: "
+                 f"\"{v['change']}\"" for v in page["versions"]]
+        if lines:
+            lines.insert(0, f"The earlier texts of {path}, newest first. notebook__read_"
+                            f"version(path=\"{path}\", version=<n>) reads one:")
+        else:
+            lines.append(f"The notebook keeps no earlier text of {path}.")
+        if page["next"]:
+            lines.append(f"Older ones: notebook__list_versions(path=\"{path}\", "
+                         f"before={page['next']}).")
+        gone = [e for e in trashed(root) if _inside(path, e["path"])]
+        if (now := page["current"]) is not None:
+            lines.append(f"Its text now is version {now['id']}, from "
+                         f"{when(now['at'], tz)}: notebook__read shows it.")
+        elif before is None and gone and not p.exists():
+            lines.append(f"{path} itself is in the trash: {_read_deleted(gone[0], path)} "
+                         f"reads the text it had when it was deleted.")
+        return ToolResult(content="\n".join(lines),
+                          display={"path": path, "count": len(page["versions"])})
+
+    @tool()
+    async def read_version(
+        self,
+        ctx: ToolContext,
+        path: Annotated[str, "The note's path."],
+        version: Annotated[int, "The version's number, from notebook__list_versions."],
+        from_line: Annotated[int, "Start at this line, for the next part."] = 1,
+    ) -> ToolResult:
+        """Read one earlier text of a note as it was then, in plain lines without anchors:
+        it is not the note as it is now. notebook__write saves it as a note again.
+        Example: notebook__read_version(path="people/noor.md", version=3)."""
+        try:
+            p, path = self._place(path, await folder_of(ctx))
+        except ToolRefused as e:
+            return ToolResult(content=str(e), is_error=True)
+        every = history(self.root.resolve(), path)
+        found = next((v for v in every if v["id"] == version), None)
+        if found is None:
+            return ToolResult(content=f"{path} has no version {version}: notebook__list_"
+                                      f"versions(path=\"{path}\") lists its versions.",
+                              is_error=True)
+        if p.is_file() and found is every[-1]:
+            return ToolResult(content=f"Version {version} is the text {path} has now: "
+                                      f"notebook__read shows it.", is_error=True)
+        text = found["text"]
+        if self._owned_by_user(path):
+            text = self.cfg.substitute(text)  # a seeded note names it as it is now
+        head = (f"[version {version} of {path}, the note's text from "
+                f"{when(found['at'], zone(self.cfg))}: an earlier text, not the note now]")
+        return _earlier(head, text, from_line, ctx,
+                        f"notebook__read_version(path=\"{path}\", version={version}",
+                        {"path": path, "version": version, "class": class_line(text)})
+
+    @tool()
+    async def list_deleted(
+        self,
+        ctx: ToolContext,
+        folder: Annotated[str | None, "Only what was deleted under this folder, such as "
+                                      "people."] = None,
+    ) -> ToolResult:
+        """List what the trash holds, newest first: each deleted note or folder with its
+        id, the path it was at, who deleted it and when, as `2026-11-10_140210_123456:
+        people/noor.md, deleted by you Tue 10 Nov 14:02`. notebook__read_deleted reads a
+        deleted note, notebook__restore brings back one you deleted. Example:
+        notebook__list_deleted(folder="people")."""
+        limit = await folder_of(ctx)
+        try:
+            where = self._place(folder, limit)[1] if folder else limit
+        except ToolRefused as e:
+            return ToolResult(content=str(e), is_error=True)
+        tz = zone(self.cfg)
+        rows = [e for e in trashed(self.root.resolve())
+                if not where or _inside(e["path"], where)]
+        if not rows:
+            return ToolResult(content=f"The trash holds nothing from {where}." if where
+                              else "The trash is empty.")
+        lines = [f"{e['id']}: {e['path']}{' (a folder)' if e['kind'] == 'dir' else ''}, "
+                 f"deleted by {self._who(e)} {when(e['at'], tz)}" for e in rows]
+        return ToolResult(content="\n".join(lines), display={"count": len(lines)})
+
+    @tool()
+    async def read_deleted(
+        self,
+        ctx: ToolContext,
+        id: Annotated[str, "Its id, from notebook__list_deleted."],
+        path: Annotated[str | None, "For a deleted folder: the path of one note in it, "
+                                    "such as projects/plan.md."] = None,
+        from_line: Annotated[int, "Start at this line, for the next part."] = 1,
+    ) -> ToolResult:
+        """Read a note in the trash as it was when it was deleted, in plain lines without
+        anchors, and leave it there. Example:
+        notebook__read_deleted(id="2026-11-10_140210_123456")."""
+        try:
+            entry = await self._deleted(ctx, id)
+        except ToolRefused as e:
+            return ToolResult(content=str(e), is_error=True)
+        base = self.root.resolve() / ".trash" / id
+        notes = sorted(f.relative_to(base).as_posix() for f in base.rglob("*")
+                       if f.is_file() and not f.name.startswith("."))
+        if entry["kind"] == "dir" and not path:
+            return ToolResult(content=f"{entry['path']} is a deleted folder with "
+                                      f"{len(notes)} notes: {', '.join(notes)}. "
+                                      f"{_read_deleted(entry, '<one of them>')} reads one.")
+        rel = (path or entry["path"]).strip("/")
+        if rel not in notes:
+            return ToolResult(content=f"{rel} is not in {id}: {_read_deleted(entry)} "
+                                      f"shows what it holds.", is_error=True)
+        text = (base / rel).read_text(errors="replace")
+        if self._owned_by_user(rel):
+            text = self.cfg.substitute(text)
+        head = (f"[{rel} as it was when {self._who(entry)} deleted it, "
+                f"{when(entry['at'], zone(self.cfg))}: a text in the trash, not a note in "
+                f"your notebook now]")
+        return _earlier(head, text, from_line, ctx, _read_deleted(entry, rel)[:-1],
+                        {"path": rel, "class": class_line(text)})
+
+    @tool(read_only=False, destructive=False)
+    async def restore(
+        self,
+        ctx: ToolContext,
+        id: Annotated[str, "Its id, from notebook__list_deleted."],
+    ) -> ToolResult:
+        """Bring a note you deleted back from the trash to its path, into your index
+        again. What {{username}} deleted, and {{username}}'s notes, stay in the trash for
+        {{username}}. Example: notebook__restore(id="2026-11-10_140210_123456")."""
+        try:
+            entry = await self._deleted(ctx, id)
+        except ToolRefused as e:
+            return ToolResult(content=str(e), is_error=True)
+        path = entry["path"]
+        if entry["by"] != "agent" or self._owned_by_user(path):
+            why = (f"{{{{username}}}} deleted {path}" if entry["by"] != "agent"
+                   else f"{path} is {{{{username}}}}'s")
+            return ToolResult(content=self.cfg.substitute(
+                f"{why}, so it stays in the trash for {{{{username}}}} to bring back."),
+                is_error=True)
+        try:
+            await untrash(ctx.store, self.root.resolve(), id)
+        except FileExistsError:
+            return ToolResult(content=f"A note is at {path} now, so nothing changed: "
+                                      f"{_read_deleted(entry)} shows the deleted text, and "
+                                      f"notebook__write saves it under another path.",
+                              is_error=True)
+        return ToolResult(content=f"Restored {path} from the trash.",
+                          display={"path": path, "kind": entry["kind"]})
+
+    async def _deleted(self, ctx: ToolContext, tid: str) -> dict:
+        """The trash's entry `tid` (trashed); ToolRefused, the tool's answer, when there is
+        none or it lies outside the conversation's folder."""
+        entry = next((e for e in trashed(self.root.resolve()) if e["id"] == tid), None)
+        if entry is None:
+            raise ToolRefused(f"The trash has no {tid}: notebook__list_deleted shows what "
+                              f"it holds.")
+        self._place(entry["path"], await folder_of(ctx))
+        return entry
+
+    def _who(self, entry: dict) -> str:
+        """Who deleted a trash entry, as its tools say it."""
+        return "you" if entry["by"] == "agent" else self.cfg.substitute("{{username}}")
 
     def _found(self, rel: str, terms: list[str]) -> list[str]:
         """The sections of a note where search terms stand, as the search shows them:
@@ -642,6 +827,33 @@ def _folder(path: str) -> ToolResult:
                               f"shows its notes.", is_error=True)
 
 
+def _read_deleted(entry: dict, path: str | None = None) -> str:
+    """The call that reads trash entry `entry` (trashed): its note, or note `path` of a
+    deleted folder."""
+    note = f", path=\"{path}\"" if path and entry["kind"] == "dir" else ""
+    return f"notebook__read_deleted(id=\"{entry['id']}\"{note})"
+
+
+def _earlier(head: str, text: str, from_line: int, ctx: ToolContext, call: str,
+             display: dict) -> ToolResult:
+    """An earlier text of a note as its readers show it: `head`, then its lines from
+    `from_line` as they are, without anchors; a long one in parts, each ending with
+    `call` (without its closing parenthesis) for the next."""
+    lines = text.splitlines()
+    first = max(1, from_line)
+    if lines and first > len(lines):
+        return ToolResult(content=f"The text has {len(lines)} lines.", is_error=True)
+    body = "\n".join(lines[first - 1:]) or "(empty)"
+    if ctx.max_output_tokens:
+        from ..backends import tokens
+        cut, shown, total = tokens.cut_to(body, max(500, int(ctx.max_output_tokens) - 200))
+        if shown < total:
+            last = first + cut.count("\n")
+            body = (cut + f"\n\n[lines {first} to {last} of {len(lines)}. Next part: "
+                    f"{call}, from_line={last + 1})]")
+    return ToolResult(content=f"{head}\n\n{body}", display=display)
+
+
 def _inside(path: str, folder: str) -> bool:
     folder = folder.rstrip("/")
     return path == folder or path.startswith(folder + "/")
@@ -659,10 +871,19 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+# What the notebook keeps: a note's earlier texts in .versions/<path>/<time>.md and what
+# was deleted in .trash/<time>/<path>, each named by when it was kept (KEPT_AT, UTC). The
+# notebook browser's routes (api/notebook.py) and its tools read and restore them through
+# the functions here.
+KEPT_AT = "%Y-%m-%d_%H%M%S_%f"
+BY_AGENT = ".deleted-by-agent"      # in .trash/<time>/: the agent's notebook__delete
+VERSIONS_PAGE = 50
+
+
 def keep_version(root: Path, p: Path, rel: str) -> None:
     """Copy the current text to .versions/<path>/<time>.md before it changes."""
     if p.is_file():
-        dest = root / ".versions" / rel / f"{_now():%Y-%m-%d_%H%M%S_%f}.md"
+        dest = root / ".versions" / rel / f"{_now():{KEPT_AT}}.md"
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(p.read_bytes())
 
@@ -678,11 +899,134 @@ def move_note(root: Path, a: Path, b: Path, src: str, dst: str) -> None:
         old.rename(new)
 
 
-def trash(root: Path, p: Path, rel: str) -> None:
-    """A note or folder into .trash/<time>/<path>, never deleted."""
-    dest = root / ".trash" / f"{_now():%Y-%m-%d_%H%M%S_%f}" / rel
+def trash(root: Path, p: Path, rel: str, by: Literal["agent", "user"]) -> str:
+    """A note or folder into .trash/<time>/<path>, never deleted; the agent's own delete
+    marks the <time> folder with BY_AGENT. -> its id, the <time>."""
+    tid = f"{_now():{KEPT_AT}}"
+    dest = root / ".trash" / tid / rel
     dest.parent.mkdir(parents=True, exist_ok=True)
     p.rename(dest)
+    if by == "agent":
+        (root / ".trash" / tid / BY_AGENT).touch()
+    return tid
+
+
+def _kept_at(name: str) -> str | None:
+    """The time a version or a trash folder is named by (`2026-01-09_141502_123456`) as
+    ISO, UTC; None for any other name."""
+    try:
+        return datetime.strptime(name, KEPT_AT).replace(tzinfo=timezone.utc).isoformat()
+    except ValueError:
+        return None
+
+
+def mtime(p: Path) -> str:
+    """When the file last changed, ISO, UTC."""
+    return datetime.fromtimestamp(p.stat().st_mtime, timezone.utc).isoformat(timespec="seconds")
+
+
+def _change(old: str, new: str) -> str:
+    """What changed from `old` to `new`, in one line: the first line added or changed,
+    else the first line taken out; the Last changed line never counts."""
+    a = [x for x in old.splitlines() if x.strip() and not is_stamp(x)]
+    b = [x for x in new.splitlines() if x.strip() and not is_stamp(x)]
+    added = removed = ""
+    for op, i1, _, j1, _ in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
+        if op in ("replace", "insert") and not added:
+            added = b[j1]
+        if op == "delete" and not removed:
+            removed = a[i1]
+    return (added or removed).strip().lstrip("#").strip()[:200]
+
+
+def history(root: Path, rel: str) -> list[dict]:
+    """Every text note `rel` had, oldest first, its text now last while the note exists:
+    {id (1, 2, ...), at (when it became the note's text), by, change, size, text}. The
+    copies in .versions/<path>/ are named by when each was replaced, and stay when the
+    note is deleted. `root` is resolved and `rel` checked by the caller."""
+    p, d = root / rel, root / ".versions" / rel
+    kept = sorted((f for f in d.glob("*.md") if _kept_at(f.stem)), key=lambda f: f.stem) \
+        if d.is_dir() else []
+    texts = [f.read_text(errors="replace") for f in kept]
+    times = [_kept_at(f.stem) for f in kept]
+    if p.is_file():
+        texts.append(p.read_text(errors="replace"))
+        times.append(mtime(p))
+    out, before = [], ""
+    for i, text in enumerate(texts):
+        # a copy is named by when it was replaced: it became the text when the one
+        # before it was replaced (the first: its own time, the best known)
+        out.append({"id": i + 1, "at": times[i - 1] if i else times[0], "by": "",
+                    "change": _change(before, text), "size": len(text), "text": text})
+        before = text
+    return out
+
+
+def versions(root: Path, rel: str, q: str = "", before: int | None = None) -> dict:
+    """A note's History, as every long text's (web/src/lib/texts.ts): {versions: [{id, at,
+    by, change, size}], current, total, next}. `versions` are the texts it had before,
+    newest first, VERSIONS_PAGE a page, the next page `before` the last id; `current` is
+    the text it has now, the newest of all (null for a deleted note, when `q`, which looks
+    in the changes, misses it, or for a page after the first); `total` counts both."""
+    # note: reads every copy on each page; an index once a note has thousands
+    every = [{k: v for k, v in r.items() if k != "text"} for r in history(root, rel)]
+    now = every.pop() if every and (root / rel).is_file() else None
+    rows = [r for r in reversed(every)
+            if (before is None or r["id"] < before) and q.lower() in r["change"].lower()]
+    page = rows[:VERSIONS_PAGE]
+    show_now = now is not None and before is None and q.lower() in now["change"].lower()
+    return {"versions": page, "current": now if show_now else None,
+            "total": len(every) + (now is not None),
+            "next": page[-1]["id"] if len(rows) > VERSIONS_PAGE else None}
+
+
+def trashed(root: Path) -> list[dict]:
+    """What .trash holds, newest first: {id (its <time> folder), path (where it was),
+    kind, at (when it was deleted, ISO, UTC), by ("agent" when its notebook__delete moved
+    it there, else "user")}. A delete moved one note or folder to .trash/<time>/<path>."""
+    t = root / ".trash"
+    out = []
+    for d in sorted(t.iterdir(), reverse=True) if t.is_dir() else []:
+        p, parts = d, []
+        while p.is_dir() and len(kids := [k for k in p.iterdir()
+                                          if k.name != BY_AGENT]) == 1:
+            p = kids[0]
+            parts.append(p.name)
+        if d.is_dir() and parts and (at := _kept_at(d.name)):
+            out.append({"id": d.name, "path": "/".join(parts),
+                        "kind": "dir" if p.is_dir() else "file", "at": at,
+                        "by": "agent" if (d / BY_AGENT).exists() else "user"})
+    return out
+
+
+async def untrash(store, root: Path, tid: str) -> dict:
+    """The note or folder deleted as `tid` back where it was, each note indexed again with
+    NO_SUMMARY. -> its entry (trashed). LookupError when the trash has no `tid`,
+    FileExistsError (the path) when something is at its path now."""
+    entry = next((e for e in trashed(root) if e["id"] == tid), None)
+    if entry is None:
+        raise LookupError(tid)
+    dst = root / entry["path"]
+    try:
+        if dst.exists():
+            raise FileExistsError
+        dst.parent.mkdir(parents=True, exist_ok=True)   # a note where a folder goes: taken
+    except (FileExistsError, NotADirectoryError):
+        raise FileExistsError(entry["path"]) from None
+    src = root / ".trash" / tid / entry["path"]
+    src.rename(dst)
+    (root / ".trash" / tid / BY_AGENT).unlink(missing_ok=True)
+    # the folders it was in, empty now
+    for d in [*src.parents][:len(Path(entry["path"]).parts)]:
+        d.rmdir()
+    for f in [dst] if dst.is_file() else sorted(x for x in dst.rglob("*") if x.is_file()):
+        try:
+            text = f.read_text()
+        except UnicodeDecodeError:
+            continue
+        await notebook_index.upsert(store, f.relative_to(root).as_posix(), NO_SUMMARY,
+                                    len(text), text)
+    return entry
 
 
 def stamp_line(cfg) -> str:

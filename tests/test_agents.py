@@ -184,7 +184,9 @@ async def test_a_read_sub_agent_has_only_read_tools_and_writes_nothing(store, cf
         "WHERE a.conversation_id = ?", (sub["id"],)).fetchone())
     assert refused["state"] == "gated" and refused["content"] == READ_ONLY_REFUSAL.format(
         skill="notebook",
-        reads="notebook__list, notebook__read, notebook__search")
+        reads="notebook__list, notebook__list_deleted, notebook__list_versions, "
+              "notebook__read, notebook__read_deleted, notebook__read_version, "
+              "notebook__search")
 
 
 async def test_a_stop_sticks_a_stopped_sub_agent_reports_quietly_and_its_schedule_is_cancelled(
@@ -377,7 +379,9 @@ async def test_a_read_sub_agent_starts_only_read_children_inside_its_folder(stor
                                        access="read", notebook_folder="agents/scout")
     here = await offered(reg, store, scout)
     assert [s.wire_name for s in here["notebook"]] == [
-        "notebook__list", "notebook__read", "notebook__search"], "what it may call"
+        "notebook__list", "notebook__list_deleted", "notebook__list_versions",
+        "notebook__read", "notebook__read_deleted", "notebook__read_version",
+        "notebook__search"], "what it may call"
     assert "sub_agents__start" in {s.wire_name for s in here["sub_agents"]}
 
     async def emit(note, **data):

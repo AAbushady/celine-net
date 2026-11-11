@@ -158,13 +158,15 @@ def _call(r, cfg) -> dict:
     return {"title": _label(r["name"]), "outcome": word, "tone": tone, "detail": _first(what)}
 
 
-_NOTE_VERB = {"write": "Wrote", "edit": "Edited", "delete": "Deleted"}
+_NOTE_VERB = {"write": "Wrote", "edit": "Edited", "delete": "Deleted", "restore": "Restored"}
 
 
 def _note(r, cfg) -> dict:
     word, tone = _CALL.get(r["state"], ("Running", RUNNING))
     args, tool = json_object(r["arguments"]), r["name"].removeprefix("notebook__")
-    path = str(args.get("path") or args.get("src") or "")
+    # a restore's arguments name its trash entry, its display the path it went back to
+    path = str(args.get("path") or args.get("src") or json_object(r["display"]).get("path")
+               or "")
     title = f"Moved {path} to {args.get('dst') or ''}" if tool == "move" \
         else f"{_NOTE_VERB.get(tool, tool.title())} {path}"
     return {"title": title.strip(), "outcome": word, "tone": tone,
@@ -252,7 +254,8 @@ def _bug(r, cfg) -> dict:
 _TAB = "CASE cv.kind WHEN 'chat' THEN 'agent' ELSE 'background' END AS tab"
 _TOOL_SQL = ("SELECT '{k}:' || t.id AS id, coalesce(t.started_at, m.created_at) AS at, "
              "t.state IN ('error','gated','interrupted') AS failed, m.conversation_id AS cid, "
-             "t.message_id AS mid, m.turn_id AS tid, " + _TAB + ", t.name, t.arguments, t.state "
+             "t.message_id AS mid, m.turn_id AS tid, " + _TAB + ", t.name, t.arguments, t.state, "
+             "t.display "
              "FROM tool_calls t JOIN messages m ON m.id = t.message_id "
              "JOIN conversations cv ON cv.id = m.conversation_id "
              "WHERE t.name {op} " + _NB)

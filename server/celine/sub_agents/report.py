@@ -30,7 +30,8 @@ from ..backends import tokens
 REPORT_SHARE = 0.03     # of the parent's window, about 2k tokens of a 65k one
 REASON_TOKENS = 300     # a failure's reason in a report: a provider's error body can be long
 CUT = "[cut: the rest is in its conversation]"
-CHANGES = ("notebook__write", "notebook__edit", "notebook__delete", "notebook__move")
+CHANGES = ("notebook__write", "notebook__edit", "notebook__delete", "notebook__move",
+           "notebook__restore")
 FILES_SHOWN = 10        # notes named in a report's head, the rest a count
 
 
@@ -81,7 +82,8 @@ def work(c: sqlite3.Connection, cid: str, whole: bool = False) -> dict:
     marks = ",".join("?" * len(CHANGES))
     files = [r[0] for r in c.execute(
         f"SELECT coalesce(json_extract(tc.arguments, '$.dst'), "
-        f"json_extract(tc.arguments, '$.path')) AS f, min(tc.started_at) AS at FROM "
+        f"json_extract(tc.arguments, '$.path'), json_extract(tc.display, '$.path')) AS f, "
+        f"min(tc.started_at) AS at FROM "
         f"tool_calls tc JOIN messages m ON m.id = tc.message_id WHERE "
         f"m.conversation_id=? AND tc.state='ok' AND tc.name IN ({marks}) AND "
         f"tc.started_at > ? GROUP BY f ORDER BY at", (cid, *CHANGES, last)) if r[0]]

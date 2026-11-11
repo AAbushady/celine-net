@@ -296,6 +296,17 @@ NOTEBOOK: dict[str, Sentence] = {
     "list": lambda a, d, r: "Listed the notebook",
     "delete": lambda a, d, r: f"Moved the note {_path(a)} to Trash",
     "move": lambda a, d, r: f"Moved the note {_path(a, 'src')} to {_path(a, 'dst')}",
+    "list_versions": lambda a, d, r: f"Listed the versions of the note {_path(a)}".strip(),
+    "read_version": lambda a, d, r: f"Read version {_js(a['version'])} of the note "
+                                    f"{_path(a)}".strip() if _num(a.get("version"))
+                                    else f"Read a version of the note {_path(a)}".strip(),
+    "list_deleted": lambda a, d, r: "Listed the notebook's Trash",
+    "read_deleted": lambda a, d, r: f"Read the deleted note {_str(d.get('path')) or _path(a)}"
+                                    .strip(),
+    # a restore's arguments name its trash entry; its display, at its end, the path
+    "restore": lambda a, d, r: f"Restored the {'folder' if d.get('kind') == 'dir' else 'note'} "
+                               f"{d['path']} from Trash" if _str(d.get("path"))
+                               else "Restored a note from Trash",
 }
 
 PAST_CONVERSATIONS: dict[str, Sentence] = {
@@ -748,6 +759,7 @@ VERBS = {
     "Pasted": ("Pasting", "paste"), "Dropped": ("Dropping", "drop"),
     "Selected": ("Selecting", "select"), "Switched": ("Switching", "switch"),
     "Hovered": ("Hovering", "hover"), "Created": ("Creating", "create"),
+    "Restored": ("Restoring", "restore"),
 }
 
 
