@@ -635,7 +635,8 @@ class ImageGenerator(Generator):
         Example: image_generator__request_model(preset="qwen2.1-smart", kind="lora",
         file="civitai:1234567", why="An ink wash style for the poster {{username}} asked
         for."). Example: image_generator__request_model(preset="krea2-turbo",
-        kind="model", file="hf:Comfy-Org/Krea-2/diffusion_models/krea2_raw.safetensors",
+        kind="model",
+        file="hf:Comfy-Org/Krea-2/diffusion_models/krea2_raw_fp8_scaled.safetensors",
         why="The full Krea 2 model for a slower, finer picture.").
         Returns: what was asked for, or why nothing was."""
         files = getattr(self.app, "model_files", None)

@@ -244,8 +244,13 @@ def search_text(answer: dict, hub: str, kind: str, args: dict[str, Any]) -> str:
             (f", {args['sort'].replace('_', ' ')} first" if args.get("sort") else "") +
             (f", the last {args['period']}" if args.get("period") not in (None, "", "all")
              else "") + ":")
+    more = [f"More: {search_call(args, answer['next'])}"] \
+        if isinstance(answer.get("next"), str) and answer["next"] else []
     if not results:
-        return f"{head} nothing found."
+        # a page can come back empty while the hub has more: the helper leaves out the
+        # files it would not take
+        return "\n".join([f"{head} nothing on this page." if more else
+                          f"{head} nothing found.", *more])
     lines = [head]
     for n, r in enumerate(results, 1):
         bits = [x for x in (_cut(r.get("type"), 30), _cut(r.get("base"), 40),
@@ -261,9 +266,7 @@ def search_text(answer: dict, hub: str, kind: str, args: dict[str, Any]) -> str:
         v = value(r.get("source"))
         line += f". {FILE}: {v}" if v else ". Not a file the app can ask for."
         lines.append(line)
-    if isinstance(answer.get("next"), str) and answer["next"]:
-        lines.append(f"More: {search_call(args, answer['next'])}")
-    return "\n".join(lines)
+    return "\n".join(lines + more)
 
 
 # ---- a read ------------------------------------------------------------------------------

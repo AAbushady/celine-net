@@ -491,6 +491,17 @@ async def test_a_search_on_each_hub_pages_and_its_value_goes_to_the_request_unch
     assert not got.is_error and hub.helper.looks[-1] == HF_RESULT["source"]
 
 
+def test_an_empty_search_page_still_gives_the_call_for_the_next_one():
+    args = {"hub": "civitai", "kind": "lora", "query": "", "sort": "newest"}
+    assert hubs.search_text({"results": [], "next": "p2"}, "civitai", "lora",
+                            args).splitlines() == [
+        "Civitai, LoRAs, newest first: nothing on this page.",
+        "More: image_generator__search_models(hub=\"civitai\", kind=\"lora\", "
+        "sort=\"newest\", after=\"p2\")"]
+    assert hubs.search_text({"results": []}, "civitai", "lora", args) == \
+        "Civitai, LoRAs, newest first: nothing found."
+
+
 async def test_a_listing_with_no_words_and_a_preset_that_takes_no_such_file(hub):
     skill, ctx = _images(hub), await _ctx(hub, "image_generator__search_models")
     r = await skill.search_models(ctx, hub="civitai", kind="lora", sort="most_downloaded",
