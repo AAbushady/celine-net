@@ -132,7 +132,7 @@ block at the end of this file lists the words no UI string uses.
 | Model | which model answers | everyone |
 | load: | a note's head line, as the note writes it, in the Context tab's why ("load: off") | Obsidian properties |
 | Load automatically, Notes that match each message | the Context tab's switch and its tooltip: each new message brings up the sections of its notes it matches | |
-| Waiting for the GPU. | an image batch waits for its GPU (the lease) | ComfyUI, Stable Diffusion WebUI "Waiting" |
+| Waiting for the GPU., Waiting for the GPU, {n} ahead. {why} | an image or music batch waits for its GPU (the lease); behind a ComfyUI that starts on demand, the leases ahead of it and the helper's sentence why follow | ComfyUI, Stable Diffusion WebUI "Waiting" |
 | Stopped., Stopped at the tool round limit., The reply reached the length limit., Interrupted., The reply failed. | how a reply ended, where the next line appears: you stopped it, it reached Tool rounds per turn, it reached its length, the server restarted, it failed; a stopped image says Stopped. too | |
 
 ### The agent
@@ -237,6 +237,7 @@ block at the end of this file lists the words no UI string uses.
 | Unload after | how long an idle model stays loaded | plain; Ollama says `keep_alive`, Open WebUI "Keep Alive" |
 | Cloud | a provider's switch under Address (its dialog, Add provider): on, its models run on a server outside your network and a model of it the agent picks itself asks you first; preset from the address (LAN and Tailscale addresses are local), neither on nor off until the server has said | OpenRouter, Anthropic: cloud providers; plain |
 | Requests per hour, {provider} reached its {n} requests this hour. | a provider's option: the most requests it gets in one hour, counted since the app started (0, no limit); past it a reply fails with the sentence and other work moves to the next model in its list, or waits, as Next model at the hourly limit says | OpenAI, OpenRouter "rate limits", "requests per minute" |
+| Starts on demand | a ComfyUI provider's switch: its address is the comfy helper, which starts ComfyUI for a batch once the GPU is free and stops it when no batch needs it | Kubernetes, cloud GPUs "on demand"; plain |
 | Next model at the hourly limit | a provider's option beside Requests per hour: on (the default), work past Requests per hour moves to the next model in its list; off, it waits for this provider | LiteLLM "fallbacks" on rate limits |
 | Ask before cloud models from your lists | on the agent's page, Behaviour: on, a cloud model from your role lists asks you too before a sub-agent, mission or coding task runs on it (off by default) | Cursor "Ask before running" |
 | Searches per hour, Web search reached its {n} searches this hour. | Advanced, Web: the most web searches in one hour, counted since the app started (0, no limit), and the refusal past it | plain; SearXNG "limiter" |

@@ -728,7 +728,8 @@ through the same Router (below) but do not queue here.
   answers it, before its slot is taken (attachments.Images, below).
 - **The GPU.** A lease (`gpu_lease`, an exclusive ticket) takes a llama-swap endpoint
   whole for a batch of images or music. Text goes first: a lease waits while any request
-  runs there, then `gpu_idle_seconds` more. One lease per batch.
+  runs there, then `gpu_idle_seconds` more. One lease per batch. A ComfyUI that starts on
+  demand has a second lease, the comfy helper's (Images and music, On demand).
 - **No model.** When no model of the task can answer, a turn waits with a `waiting` event
   (reason `no_model`), rechecks on every change and every 5 s. Stop always works. A
   wait under `MODEL_WAIT_FRESH` (300 s) goes on with the request as built; a longer
@@ -1526,13 +1527,39 @@ music). One code path for both (`batches.Batches`).
   `music/<date>/`. At the end every server used frees its models (`POST /free`) and the
   leases are released. A restart stops the batches it cut (`batches.sweep`) and frees the
   shared servers (`server.free_shared`).
+- **On demand**: a ComfyUI provider with Starts on demand (`on_demand`) has the comfy
+  helper as its address, a host process that starts ComfyUI in a container for a batch,
+  books the GPU in the machine's heavy-job queue while it is up, and stops it some
+  minutes after the last lease ends. The batches are queue-based load leveling in front
+  of the one GPU: a busy GPU makes a batch wait, never fail. Before the first item (after
+  `gpu_lease`, when both apply) the batch takes the helper's lease (`server.lease`):
+  `POST /leases {holder, kind}`, then `GET /leases/<id>` every 2 s while the lease is
+  `waiting` (the GPU is in use; `why` is the helper's sentence, `ahead` the leases asked
+  for earlier) or `starting`, with no limit of its own, a Stop ends it. Meanwhile the
+  item's note is "Waiting for the GPU" with the helper's sentence, and the turn that
+  started the batch has its clock held (`LLM.turn_paused`). `ready`: the lease is held
+  to the end of the batch, renewed every 20 s by a task in the batch's own task group
+  (a lease lives 90 s past its last GET), and released (`DELETE`, shielded, bounded)
+  after the `/free`, also after a Stop or an error. `failed` fails the item with the
+  helper's sentence and every later item on that provider at once; a 404 while the lease
+  waits (the helper restarted) asks for a new one; a lease the renewal finds gone or not
+  ready is asked for again before the next item. A helper that does not answer fails
+  the item with the unreachable sentence, as ComfyUI does. While ComfyUI is down the
+  helper answers `/object_info` and the model listings from ComfyUI's last start, so the
+  Settings check, a preset's check and the catalog work; the router's probe
+  (`/system_stats`) gets a 503 then, which counts as up.
 - **State**: every change is one write: the row, the display of the call that started it,
   and the event `images.batch` or `music.batch` with the whole batch, on its
   conversation's stream and the global feed.
 - **The agent's call** is a blocking tool: it creates the batch, starts it in the app's task group
   (`Batches.begin`), and answers at once with the batch id and its slots. The batch is no
-  job: nothing wakes it. `wait=true` holds its turn for the end, as long as its time
-  allows. `read` shows a batch, `stop` stops one. `image_generator__list_presets` lists
+  job. `wait=true` holds its turn for the end, as long as its time allows; a batch that
+  still waits for the helper's GPU after `GPU_TRY` (20 s) comes back as it is, with a
+  last line that it is made when the GPU is free. A batch of the call that had to wait
+  for the helper's GPU and settles after the call returned brings its conversation one
+  notice from the app (`system:app`, kind `notice`, delivered and waking it as a job's
+  result does): what was made and how long it waited. A batch that did not wait, or one
+  the agent stopped itself, says nothing. `read` shows a batch, `stop` stops one. `image_generator__list_presets` lists
   the presets or a preset's models and LoRAs (`image_catalog.py`), `list_images` the images
   of the conversation.
 

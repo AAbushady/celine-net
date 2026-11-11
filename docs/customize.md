@@ -211,3 +211,16 @@ each input the app fills, and upload it. The placeholders are `{{prompt}}`, `{{s
 `{{negative}}`, `{{model:file}}`, `{{mode:value}}` for images and `{{style}}`, `{{seed}}`,
 `{{lyrics}}`, `{{duration:30}}`, `{{instrumental:true}}` for music; after the colon is the
 default. Download workflow gives a preset back in the same form.
+
+### ComfyUI on demand
+
+On a GPU that is also used for other things, ComfyUI can run only while a batch needs
+it. The comfy helper, a small host process outside this repo, starts ComfyUI in a
+container when the GPU is free and stops it some minutes after the last batch. To use
+it, add a ComfyUI provider in Settings, Models with the helper's address
+(`http://host.docker.internal:8791` from the app's container), a key whose sha256 the
+helper keeps in its config, and Starts on demand on. A batch then waits
+for the GPU as long as it takes, its slots say "Waiting for the GPU" and why, and a
+batch the agent started that had to wait tells it once it is done. While ComfyUI is
+stopped the helper answers the Settings check and the model listings from ComfyUI's
+last start.
