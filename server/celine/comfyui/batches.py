@@ -556,11 +556,11 @@ class Batches:
                     _settle(b)
                     await _save(store, b)
                 # a call still waiting for the batch gets it settled: no notice then
-                heard = bid in self.awaited
+                if report is not None and waited is not None and b is not None and \
+                        bid not in self.awaited:
+                    await self._notice(b, report, waited)
                 ended.set()
                 self.gpu.pop(bid, None)
-                if report is not None and waited is not None and not heard and b is not None:
-                    await self._notice(b, report, waited)
         return b
 
     async def _notice(self, b: dict, report: Callable[[dict, float], str],
