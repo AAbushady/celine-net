@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
@@ -40,6 +41,10 @@ CLEANUP_SECONDS = 5.0       # the most the interrupt and /free may take after a 
                             # restart frees what was left (free_shared)
 LEASE_POLL = 2.0            # seconds between looks at a lease that waits or starts
 LEASE_RENEW = 20.0          # seconds between renewals of a lease that is held
+LEASE_OUTAGE = 120.0        # seconds a lease that waits or starts rides out a comfy helper
+                            # that does not answer (a restart), from the first look it missed
+HELPER_SILENT = "The comfy helper does not answer and the batch keeps waiting."
+clock = time.monotonic      # the clock of such an outage
 
 
 class Comfy:
@@ -129,6 +134,10 @@ class Comfy:
         _ok(await self.client.delete(f"{self.url}/leases/{lid}"))
 
     def _lease(self, r: httpx.Response) -> dict[str, Any]:
+        """The lease an answer holds; HelperDown for a server error, ImageError with the
+        helper's words for any other error answer or one that is not a lease."""
+        if r.status_code >= 500:
+            raise HelperDown(_who(r))
         _ok(r)
         try:
             data = r.json()
@@ -145,6 +154,11 @@ class Comfy:
 LEASE_STATES = ("waiting", "starting", "ready", "failed")
 
 
+class HelperDown(ImageError):
+    """The comfy helper answered a request about a lease with a server error (5xx): it is
+    restarting or failing. ImageError with the helper's words."""
+
+
 @dataclass
 class Lease:
     """A lease from the comfy helper as its batch holds it. `lost`: the helper no longer
@@ -156,34 +170,46 @@ class Lease:
 
 @contextlib.asynccontextmanager
 async def lease(comfy: Comfy, holder: str, kind: str,
-                on_wait: Callable[[dict[str, Any]], Awaitable[None]],
+                on_wait: Callable[[str, bool], Awaitable[None]],
                 tg: anyio.abc.TaskGroup) -> AsyncIterator[Lease]:
     """The GPU of a ComfyUI that starts on demand, held (the module docstring): a lease
     asked for, looked at every LEASE_POLL seconds until it is ready, with no limit of its
     own (a Stop ends the wait), then renewed every LEASE_RENEW seconds in `tg` while
-    held. `on_wait(lease)` hears every look while it waits or starts. A lease the helper
-    does not know while it waits (it restarted) is asked for again. `failed` raises
-    ImageError with the helper's sentence; a helper that does not answer raises httpx's
-    error. On exit, also after a Stop or an error, the renewal is cancelled and waited
-    for, then the lease is released (shielded, CLEANUP_SECONDS at most each), so no
-    renewal outlives the lease or its client."""
+    held. `on_wait(note, waits)` hears every look while it waits or starts: the item's
+    note (waiting_note) and whether the lease waits for the GPU. A lease the helper does
+    not know while it waits (it restarted) is asked for again. `failed` raises
+    ImageError with the helper's sentence. A helper that does not answer the first
+    request raises httpx's error at once; a later look it does not answer (no
+    connection, a timeout, a 5xx) is tried again at the next one, with HELPER_SILENT as
+    the note, until LEASE_OUTAGE seconds after the first look it missed, then raises
+    that look's error. On exit, also after a Stop or an error, the renewal is
+    cancelled and waited for, then the lease is released (shielded, CLEANUP_SECONDS at
+    most each), so no renewal outlives the lease or its client."""
     held = Lease()
     renewal = anyio.CancelScope()
     renewing: anyio.Event | None = None     # set when the renewal has ended
     try:
-        got: dict[str, Any] | None = None
+        got = await comfy.take_lease(holder, kind)
         while True:
-            if got is None:
-                got = await comfy.take_lease(holder, kind)
             lid: str = got["id"]
             held.id = lid
             if got["state"] == "ready":
                 break
             if got["state"] == "failed":
                 raise ImageError(got.get("why") or "ComfyUI could not be started.")
-            await on_wait(got)
-            await anyio.sleep(LEASE_POLL)
-            got = await comfy.renew_lease(lid)
+            waits = got["state"] == "waiting"
+            await on_wait(waiting_note(got), waits)
+            missed: float | None = None     # when the first look the helper missed was
+            while True:
+                await anyio.sleep(LEASE_POLL)
+                try:
+                    got = await comfy.renew_lease(lid) or await comfy.take_lease(holder, kind)
+                    break
+                except (httpx.TransportError, HelperDown):
+                    missed = clock() if missed is None else missed
+                    if clock() - missed >= LEASE_OUTAGE:
+                        raise
+                    await on_wait(HELPER_SILENT, waits)
         renewing = anyio.Event()
         tg.start_soon(_renew, comfy, held, lid, renewal, renewing)
         yield held

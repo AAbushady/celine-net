@@ -18,7 +18,9 @@ renders the items that wait, one after the other:
    own (a Stop ends it), and holds the lease to its end. While either lease waits, the
    item's note says "Waiting for the GPU" and the clock of the turn that started the
    batch stands still. Queue-based load leveling: the batches line up in front of the
-   one GPU, and a busy GPU makes a batch wait, never fail.
+   one GPU, and a busy GPU makes a batch wait, never fail. A comfy helper that stops
+   answering while the batch waits (a restart) is looked at again for
+   server.LEASE_OUTAGE seconds before the item fails.
 2. Each item: an edit uploads its source image (POST /upload/image), the workflow is
    queued (POST /prompt), followed until it ends, and what it made is fetched
    (server.run). A failed item (ComfyUI refused or failed, the timeout, a model or LoRA
@@ -842,7 +844,7 @@ class _Servers:
 
     async def _lease(self, pid: str, comfy: server_mod.Comfy, note) -> None:
         """The comfy helper's lease (server.lease), held to the end of the batch. While it
-        waits or starts, the item's note says so (server.waiting_note) and the turn's
+        waits or starts, the item's note says so (server.lease's note) and the turn's
         clock stands still; while it waits, the batch waits for the GPU
         (Batches.waits_for_gpu), and that time from its request to its end is the
         batch's wait (Batches.waited)."""
@@ -851,11 +853,10 @@ class _Servers:
         batches, bid = self.batches, self.b["id"]
         waited = False
 
-        async def on_wait(lease: dict) -> None:
+        async def on_wait(line: str, waits: bool) -> None:
             nonlocal waited
-            waits = lease["state"] == "waiting"
             waited = waited or waits
-            await note(server_mod.waiting_note(lease))  # stored before a call reads it
+            await note(line)                        # stored before a call reads it
             batches._gpu_wait(bid, waits)
 
         t0 = clock()

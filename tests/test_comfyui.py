@@ -849,16 +849,21 @@ class Helper:
         self.keys: set[str | None] = set()
         self.forget = False         # the next look at a lease answers 404: a restart
         self.down = False           # it refuses connections
+        self.refused = 0            # the connections it refused
+        self.error: int | None = None   # it answers every request with this status
         self.answer: dict[str, httpx.Response] = {}
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         if request.url.host != "helper":
             return self.fake(request)
         if self.down:
+            self.refused += 1
             raise httpx.ConnectError("refused", request=request)
         path, method = request.url.path, request.method
         self.log.append(f"{method} {path}")
         self.keys.add(request.headers.get("authorization"))
+        if self.error:
+            return httpx.Response(self.error, text="The helper is restarting.")
         if path == "/leases" and method == "POST":
             self.n += 1
             self.held.add(f"L{self.n}")
@@ -899,7 +904,7 @@ class Clock:
 @pytest.fixture
 async def od(tmp_path, monkeypatch, store):
     """The app with its ComfyUI behind the comfy helper, the app's key saved for it, an
-    intercom, and a fixed clock for the batches."""
+    intercom, and a fixed clock for the batches and the helper's outages."""
     from celine.intercom import Intercom
     from celine.settings.secrets import set_key
     scratch(tmp_path, monkeypatch, providers=OD_PROVIDERS, roles=OD_ROLES)
@@ -907,6 +912,7 @@ async def od(tmp_path, monkeypatch, store):
         monkeypatch.setattr(server, name, 0.01)
     clock = Clock()
     monkeypatch.setattr(batches_mod, "clock", clock)
+    monkeypatch.setattr(server, "clock", clock)
     cfg = load()
     set_key(cfg.settings.secrets_root, "od", "k3y")
     fake = Fake()
@@ -997,6 +1003,73 @@ async def test_a_helper_restart_while_the_batch_waits_asks_for_a_new_lease(od):
     assert (await _item(od.store, b["id"]))["state"] == "done"
     assert helper.log.count("POST /leases") == 2 and "404 L1" in helper.log
     assert "DELETE /leases/L2" in helper.log and "DELETE /leases/L1" not in helper.log
+
+
+SILENT = "The comfy helper does not answer and the batch keeps waiting."
+
+
+def _note_is(od, bid: str, note: str):
+    """A check for `until`: the batch's first item has this note."""
+    async def check() -> bool:
+        return (await _item(od.store, bid)).get("note") == note
+    return check
+
+
+async def test_a_helper_that_stops_answering_while_the_batch_waits_is_waited_out(od):
+    helper, store = od.helper, od.store
+    helper.states, helper.ahead = ["waiting"], 1
+    b = await od.batches.create("images", [{"prompt": "a"}])
+    od.batches.start(b["id"])
+    await until(lambda: od.batches.waits_for_gpu(b["id"]))
+    helper.down = True
+    await until(_note_is(od, b["id"], SILENT))
+    assert (await _item(store, b["id"]))["state"] == "running"
+    assert od.batches.waits_for_gpu(b["id"]), "it still waits for the GPU"
+    od.clock.t += 60
+    helper.down, helper.error = False, 503            # it starts again: 503 for a while
+    looked = helper.log.count("GET /leases/L1")
+    await until(lambda: helper.log.count("GET /leases/L1") > looked + 1)
+    assert (await _item(store, b["id"]))["note"] == SILENT
+    od.clock.t += server.LEASE_OUTAGE - 61             # 119 s since the first look it missed
+    looked = helper.log.count("GET /leases/L1")
+    await until(lambda: helper.log.count("GET /leases/L1") > looked + 1)
+    helper.error, helper.states = None, ["ready"]
+    await od.batches.wait(b["id"])
+    assert (await _item(store, b["id"]))["state"] == "done"
+    assert helper.log.count("POST /leases") == 1, "the lease it held all along"
+    assert "DELETE /leases/L1" in helper.log
+
+
+async def test_a_helper_that_stays_silent_fails_the_item_as_a_helper_that_is_not_there(od):
+    helper, store = od.helper, od.store
+    helper.states = ["waiting"]
+    b = await od.batches.create("images", [{"prompt": "a"}, {"prompt": "b"}])
+    od.batches.start(b["id"])
+    await until(lambda: od.batches.waits_for_gpu(b["id"]))
+    helper.down = True
+    await until(_note_is(od, b["id"], SILENT))
+    od.clock.t += server.LEASE_OUTAGE
+    await od.batches.wait(b["id"])
+    b = await batches_mod.get(store, b["id"])
+    assert [i["error"] for i in b["items"]] == [
+        "ComfyUI at helper:8791 refused the connection."] * 2
+    assert od.fake.graphs == [] and not od.batches.waits_for_gpu(b["id"])
+
+
+async def test_a_helper_restart_in_the_outage_asks_for_a_new_lease(od):
+    helper = od.helper
+    helper.states = ["starting"]
+    b = await od.batches.create("images", [{"prompt": "a"}])
+    od.batches.start(b["id"])
+    await until(_note_is(od, b["id"], "Waiting for the GPU. ComfyUI is starting"))
+    helper.down = True
+    await until(_note_is(od, b["id"], SILENT))
+    assert not od.batches.waits_for_gpu(b["id"]), "a lease that starts waits for no GPU"
+    helper.down, helper.forget, helper.states = False, True, ["ready"]
+    await od.batches.wait(b["id"])
+    assert (await _item(od.store, b["id"]))["state"] == "done"
+    assert helper.log.count("POST /leases") == 2 and "404 L1" in helper.log
+    assert "DELETE /leases/L2" in helper.log
 
 
 async def test_a_stop_ends_the_wait_and_releases_the_lease(od, store):
