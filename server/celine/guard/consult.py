@@ -19,14 +19,14 @@ log = logging.getLogger("celine.guard")
 NOT_READ = "I could not read that: {why} Say unfreeze, keep, or a pass for a while."
 
 
-async def from_session(request, iid: int, text: str) -> None:
+async def from_session(request, services, iid: int, text: str) -> None:
     """Their reply #iid on the Intercom (intercom/api.py): from their session, it is
     their answer to Bastet when the thread is hers about a decision; else a message,
     nothing more."""
     from . import owner
     by = owner.session_or_none(request)
     if by is not None:
-        await replied(request.app.state.services, iid, text, by=by)
+        await replied(services, iid, text, by=by)
 
 
 async def replied(app, iid: int, text: str, *, by) -> str | None:

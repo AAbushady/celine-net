@@ -4,24 +4,23 @@ changes: restore an old version as the newest, trash or restore, and delete a tr
 permanently."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from fastapi.responses import Response
 
 from ..errors import CelineError, NotFound
 from . import page
 from . import store as artifacts
 from ..core.event_types import ARTIFACT_UPDATED
-from ..core.route_params import TheStore, store_of
+from ..core.route_params import TheStore
 
 router = APIRouter()
 
 
-def _changed(request: Request, a: dict) -> None:
+def _changed(store, a: dict) -> None:
     """Your change on the global bus, as its writes are (skills/artifacts.py); `yours`
     keeps the UI from opening it as its first write."""
-    request.app.state.services.store.emit_global({"type": ARTIFACT_UPDATED, "id": a["id"],
-                                         "n": a["n"], "conversation": a["conversation_id"],
-                                         "yours": True})
+    store.emit_global({"type": ARTIFACT_UPDATED, "id": a["id"], "n": a["n"],
+                       "conversation": a["conversation_id"], "yours": True})
 
 
 @router.get("/api/artifacts")
@@ -41,63 +40,63 @@ async def artifact(store: TheStore, id: str) -> dict:
     return a
 
 
-async def _version(request: Request, id: str, n: int) -> dict:
-    v = await artifacts.version(store_of(request), id, n)
+async def _version(store, id: str, n: int) -> dict:
+    v = await artifacts.version(store, id, n)
     if v is None:
         raise NotFound("artifact version")
     return v
 
 
 @router.get("/api/artifacts/{id}/versions/{n}")
-async def version_page(request: Request, id: str, n: int) -> Response:
+async def version_page(store: TheStore, id: str, n: int) -> Response:
     """The page, sandboxed by its own headers; a markdown document as its text."""
-    v = await _version(request, id, n)
+    v = await _version(store, id, n)
     body, headers = (page.render if v["kind"] == "html" else page.source)(v["content"])
     return Response(body, headers=headers)
 
 
 @router.get("/api/artifacts/{id}/versions/{n}/source")
-async def version_source(request: Request, id: str, n: int) -> Response:
+async def version_source(store: TheStore, id: str, n: int) -> Response:
     """What it wrote, as plain text."""
-    body, headers = page.source((await _version(request, id, n))["content"])
+    body, headers = page.source((await _version(store, id, n))["content"])
     return Response(body, headers=headers)
 
 
 @router.post("/api/artifacts/{id}/versions/{n}/restore")
-async def restore(request: Request, store: TheStore, id: str, n: int) -> dict:
+async def restore(store: TheStore, id: str, n: int) -> dict:
     """An old version copied to the top as a new one; the history stays as it was."""
-    v = await _version(request, id, n)
+    v = await _version(store, id, n)
     await artifacts.add_version(store, id, v["kind"], v["title"], v["content"],
                                 f"restored from v{n}", None, None)
     a = await artifacts.get(store, id)
-    _changed(request, a)
+    _changed(store, a)
     return a
 
 
 @router.post("/api/artifacts/{id}/restore")
-async def untrash(request: Request, id: str) -> dict:
+async def untrash(store: TheStore, id: str) -> dict:
     """Out of the trash again."""
-    return await _set_trashed(request, id, False)
+    return await _set_trashed(store, id, False)
 
 
-async def _set_trashed(request: Request, id: str, trashed: bool) -> dict:
+async def _set_trashed(store, id: str, trashed: bool) -> dict:
     """Into the trash, or restored. A trashed one still opens by its id."""
-    if not await artifacts.trash(store_of(request), id, trashed):
+    if not await artifacts.trash(store, id, trashed):
         raise NotFound("artifact")
-    a = await artifacts.get(store_of(request), id)
-    _changed(request, a)
+    a = await artifacts.get(store, id)
+    _changed(store, a)
     return a
 
 
 @router.delete("/api/artifacts/{id}")
-async def delete_artifact(request: Request, store: TheStore, id: str, for_good: bool = False) -> dict:
+async def delete_artifact(store: TheStore, id: str, for_good: bool = False) -> dict:
     """Into the trash; for_good=1: a trashed artifact and every version of it, gone."""
     if not for_good:
-        return await _set_trashed(request, id, True)
+        return await _set_trashed(store, id, True)
     a = await artifacts.get(store, id)
     if a is None:
         raise NotFound("artifact")
     if not await artifacts.purge(store, id):
         raise CelineError("conflict", "It is not in the Trash.", 409)
-    _changed(request, {**a, "n": 0})
+    _changed(store, {**a, "n": 0})
     return {"ok": True}

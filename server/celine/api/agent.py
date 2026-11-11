@@ -13,23 +13,23 @@ from ..settings import files
 from ..settings.files import Invalid, version
 from ..settings import write
 from .deps import etag, json_body
-from ..core.route_params import TheConfig, TheStore, cfg_of, store_of
+from ..core.route_params import TheConfig, TheStore
 from ..core.event_types import AGENT_CHANGED
 
 router = APIRouter(prefix="/api")
 log = logging.getLogger("celine.agent")
 
 
-async def _changed(request: Request) -> None:
-    await agent.refresh(store_of(request), cfg_of(request))
-    store_of(request).emit_global({"type": AGENT_CHANGED})
+async def _changed(store, cfg) -> None:
+    await agent.refresh(store, cfg)
+    store.emit_global({"type": AGENT_CHANGED})
 
 
 @router.get("/agent")
-async def get_agent(request: Request, response: Response) -> dict:
+async def get_agent(cfg: TheConfig, response: Response) -> dict:
     """The agent's plain fields, persona, talk (null: the shipped one, which is `talk_shipped`),
     voice and `voice_text` (as its History keeps it), its portrait, plus `version`."""
-    out = agent.package(cfg_of(request))
+    out = agent.package(cfg)
     return {**out, "version": etag(response, version(out))}
 
 
@@ -42,8 +42,8 @@ async def put_agent(request: Request, store: TheStore, cfg: TheConfig, response:
     async with write.lock():
         files.check_version("agent", agent.package(cfg), if_match)
         await agent.write(store, cfg, body)
-        await _changed(request)
-    return await get_agent(request, response)
+        await _changed(store, cfg)
+    return await get_agent(cfg, response)
 
 
 @router.put("/agent/portrait")
@@ -76,17 +76,17 @@ async def put_portrait(request: Request, store: TheStore, cfg: TheConfig) -> dic
         await agent.set_portrait(store, cfg, data)
     except ValueError as e:
         raise Invalid(field, str(e)) from None
-    await _changed(request)
+    await _changed(store, cfg)
     return {"portrait": agent.portrait_view(cfg.agent)}
 
 
 @router.delete("/agent/portrait")
-async def delete_portrait(request: Request, store: TheStore, cfg: TheConfig) -> dict:
+async def delete_portrait(store: TheStore, cfg: TheConfig) -> dict:
     """{deleted}: false when there was none."""
     if not (cfg.agent and cfg.agent.portrait):
         return {"deleted": False}
     await agent.set_portrait(store, cfg, None)
-    await _changed(request)
+    await _changed(store, cfg)
     return {"deleted": True}
 
 

@@ -42,6 +42,7 @@ from .core.ids import now
 from .errors import CelineError, NotFound
 from .settings import address, secrets
 from .core.parts import Part
+from .core.route_params import TheServices
 
 log = logging.getLogger("celine.push")
 router = APIRouter(prefix="/api")
@@ -173,21 +174,17 @@ def _shown(r: sqlite3.Row) -> dict:
             "kinds": json.loads(r["kinds"]), "created_at": r["created_at"]}
 
 
-def _push(request: Request) -> Push:
-    return request.app.state.services.push
-
-
 @router.get("/push/key")
-async def public_key(request: Request) -> dict:
+async def public_key(services: TheServices) -> dict:
     """The VAPID public key a browser subscribes with (applicationServerKey)."""
-    return {"key": _push(request).public_key}
+    return {"key": services.push.public_key}
 
 
 @router.get("/push-subscriptions")
-async def subscriptions(request: Request) -> dict:
+async def subscriptions(services: TheServices) -> dict:
     """The devices that take pushes, oldest first."""
-    await _push(request).forget_ended()
-    rows = await _push(request).store.read(lambda c: c.execute(
+    await services.push.forget_ended()
+    rows = await services.push.store.read(lambda c: c.execute(
         "SELECT * FROM push_subscriptions ORDER BY id").fetchall())
     return {"subscriptions": [_shown(r) for r in rows]}
 
@@ -205,7 +202,7 @@ class SubscriptionBody(BaseModel):
 
 
 @router.post("/push-subscriptions")
-async def subscribe(request: Request, body: SubscriptionBody) -> dict:
+async def subscribe(request: Request, services: TheServices, body: SubscriptionBody) -> dict:
     """A device takes pushes; the same endpoint again replaces its keys and kinds."""
     try:
         ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), _unb64(body.keys.p256dh))
@@ -216,7 +213,7 @@ async def subscribe(request: Request, body: SubscriptionBody) -> dict:
         raise CelineError("invalid", "That is not a push subscription.")
     name = device(request.headers.get("user-agent", ""))
     session = getattr(request.state, "session", None)     # none with the login off
-    store = _push(request).store
+    store = services.push.store
 
     def fn(c: sqlite3.Connection) -> sqlite3.Row:
         row = c.execute(
@@ -232,8 +229,8 @@ async def subscribe(request: Request, body: SubscriptionBody) -> dict:
 
 
 @router.delete("/push-subscriptions/{sid}")
-async def unsubscribe(request: Request, sid: int) -> dict:
-    store = _push(request).store
+async def unsubscribe(services: TheServices, sid: int) -> dict:
+    store = services.push.store
     if not await store.write(lambda c: _delete(c, store, sid)):
         raise NotFound("subscription")
     return {"deleted": True}

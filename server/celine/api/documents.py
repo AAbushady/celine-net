@@ -13,7 +13,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 
 import anyio
-from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi import APIRouter, File, Form, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -23,7 +23,7 @@ from ..kb.documents import MODES, DocumentsKB, DocumentsPathError
 from ..kb.documents_extract import kind_of
 from .cursor import page_cursor, read_cursor
 from .deps import in_thread
-from ..core.route_params import TheConfig
+from ..core.route_params import TheConfig, TheServices
 from .kb import kb_changed
 
 router = APIRouter(prefix="/api/documents")
@@ -169,8 +169,8 @@ class Written(BaseModel):
 
 # ---- plumbing -----------------------------------------------------------------------------
 
-def _kb(request: Request) -> DocumentsKB:
-    kb = request.app.state.services.kbs.documents()
+def _kb(services) -> DocumentsKB:
+    kb = services.kbs.documents()
     if kb is None:
         raise CelineError("not_found", "Documents is not set up. Add a block with "
                                        "kind = \"documents\" to config/kb.toml.", 404)
@@ -215,13 +215,13 @@ def _next(offset: int, shown: int, total: int, *key: str) -> str | None:
 # ---- folders ------------------------------------------------------------------------------
 
 @router.get("/folders/{path:path}", response_model=FolderPage)
-async def folder_page(request: Request, path: str, sort: Sort = "name",
+async def folder_page(services: TheServices, path: str, sort: Sort = "name",
                       order: Order | None = None, limit: int = 200,
                       cursor: str | None = None) -> dict:
     """One folder (/folders/ is the top): its folders (first page only), then its documents,
     sorted by `sort` (name, added, changed, type, size) in `order` (default: names and
     types A to Z, the rest newest and biggest first). Trashed ones are left out."""
-    kb = _kb(request)
+    kb = _kb(services)
     key = (path.strip("/"), f"{sort}:{order or ''}")
     off = _offset(cursor, *key)
     desc = None if order is None else order == "desc"
@@ -240,9 +240,9 @@ class NewFolder(BaseModel):
 
 
 @router.post("/folders", response_model=Folder)
-async def create_folder(request: Request, body: NewFolder) -> dict:
+async def create_folder(services: TheServices, body: NewFolder) -> dict:
     """A new folder (and the folders above it). 400 when it exists."""
-    kb = _kb(request)
+    kb = _kb(services)
     return await _call(kb.make_folder, body.path)
 
 
@@ -253,26 +253,26 @@ class FolderPatch(BaseModel):
 
 
 @router.patch("/folders/{path:path}", response_model=Folder)
-async def patch_folder(request: Request, path: str, body: FolderPatch) -> dict:
+async def patch_folder(services: TheServices, path: str, body: FolderPatch) -> dict:
     """Rename a folder (`name`), move it into another (`folder`, "" is the top), put
     it in the trash with its documents or restore it (`trashed`). Fields left out are
     unchanged."""
-    kb = _kb(request)
+    kb = _kb(services)
     out = await _call(kb.folder, path)
     if body.trashed is not None:
         out = await _call(kb.trash_folder, path, body.trashed)
     if body.name is not None or body.folder is not None:
         out = await _call(kb.move_folder, path, name=body.name, folder=body.folder)
-    kb_changed(request, kb.id)
+    kb_changed(services.store, kb.id)
     return out
 
 
 @router.delete("/folders/{path:path}")
-async def delete_folder(request: Request, path: str) -> dict:
+async def delete_folder(services: TheServices, path: str) -> dict:
     """A trashed folder for good: the folder on disk and every file in it."""
-    kb = _kb(request)
+    kb = _kb(services)
     out = await _call(kb.delete_folder, path)
-    kb_changed(request, kb.id)
+    kb_changed(services.store, kb.id)
     return out
 
 
@@ -284,14 +284,14 @@ class Trash(BaseModel):
 # ---- items --------------------------------------------------------------------------------
 
 @router.get("", response_model=ItemsPage | Trash)
-async def items(request: Request, q: str | None = None, folder: str = "",
+async def items(services: TheServices, q: str | None = None, folder: str = "",
                 kind: str | None = None, sort: Sort = "name", order: Order | None = None,
                 limit: int = 200, cursor: str | None = None, trashed: bool = False) -> dict:
     """Documents anywhere under `folder` (default all), matching `q` (names,
     descriptions, and the text of chunked documents) and `kind`; trashed ones left
     out. `trashed=1`: the trash instead, newest first: the folders, then the documents
     that are not in one of them (`{folders, items}`)."""
-    kb = _kb(request)
+    kb = _kb(services)
     if trashed:
         return await _call(kb.trash)
     if folder.strip("/"):
@@ -306,7 +306,7 @@ async def items(request: Request, q: str | None = None, folder: str = "",
 
 
 @router.post("", response_model=UploadResult)
-async def upload(request: Request, cfg: TheConfig, files: list[UploadFile] = File(...),
+async def upload(services: TheServices, cfg: TheConfig, files: list[UploadFile] = File(...),
                  paths: list[str] = Form([]), modes: list[str] = Form([]),
                  folder: str = Form(""), title: str = Form(""),
                  description: str = Form("")) -> dict:
@@ -317,7 +317,7 @@ async def upload(request: Request, cfg: TheConfig, files: list[UploadFile] = Fil
     "chunked" or "full_file" per file, in the order of `files` (missing or "": the
     default for its kind and size). `title`/`description` apply to every file of this
     request (meant for one)."""
-    kb = _kb(request)
+    kb = _kb(services)
     bad = [m for m in modes if m and m not in MODES]
     if bad:
         raise CelineError("bad_request", f"The mode is chunked or full_file, not "
@@ -380,7 +380,7 @@ async def upload(request: Request, cfg: TheConfig, files: list[UploadFile] = Fil
         t = await _call(kb.kick, quiet=False)       # the user's upload: a listed task
         out["task"] = t.id if t is not None else None
         kb.changed(touched)
-        kb_changed(request, kb.id)
+        kb_changed(services.store, kb.id)
     return out
 
 
@@ -394,17 +394,17 @@ class DefaultModesBody(BaseModel):
 
 
 @router.post("/default-modes", response_model=DefaultModes)
-async def default_modes(request: Request, body: DefaultModesBody) -> dict:
+async def default_modes(services: TheServices, body: DefaultModesBody) -> dict:
     """The mode each file would get without a choice, from its name and size: the
     upload dialog preselects exactly what the server would store."""
-    kb = _kb(request)
+    kb = _kb(services)
     return {"modes": [kb.default_mode(kind_of(Path(f.name)), f.size) for f in body.files]}
 
 
 @router.get("/{iid}", response_model=ItemDetail)
-async def get_item(request: Request, iid: int) -> dict:
+async def get_item(services: TheServices, iid: int) -> dict:
     """The item and the Markdown items linking to it (`backlinks`)."""
-    kb = _kb(request)
+    kb = _kb(services)
     it = await _item(kb, iid)
     it["backlinks"] = await _call(kb.backlinks, iid)
     return it
@@ -420,12 +420,12 @@ class ItemPatch(BaseModel):
 
 
 @router.patch("/{iid}", response_model=Item)
-async def patch_item(request: Request, iid: int, body: ItemPatch) -> dict:
+async def patch_item(services: TheServices, iid: int, body: ItemPatch) -> dict:
     """The user's title and description (null or "" clears one), `mode` (a change
     reads the file again), `name` to rename the file, `folder` to move it into another
     folder ("" is the top), `trashed` to put it in the trash or restore it. Fields
     left out are unchanged."""
-    kb = _kb(request)
+    kb = _kb(services)
     await _item(kb, iid)
     sent = body.model_dump(exclude_unset=True)
     meta = {k: sent[k] for k in ("title", "description") if k in sent}
@@ -437,16 +437,16 @@ async def patch_item(request: Request, iid: int, body: ItemPatch) -> dict:
         await _call(kb.set_trashed, iid, sent["trashed"])
     if sent.get("name") is not None or sent.get("folder") is not None:
         await _call(kb.move_item, iid, name=sent.get("name"), folder=sent.get("folder"))
-    kb_changed(request, kb.id)
+    kb_changed(services.store, kb.id)
     return await _item(kb, iid)
 
 
 @router.delete("/{iid}", response_model=Deleted)
-async def delete_item(request: Request, iid: int) -> dict:
+async def delete_item(services: TheServices, iid: int) -> dict:
     """Delete permanently: the file and everything about it (segments, descriptions)."""
-    kb = _kb(request)
+    kb = _kb(services)
     out = await _call(kb.delete_item, iid)
-    kb_changed(request, kb.id)
+    kb_changed(services.store, kb.id)
     return out
 
 
@@ -455,26 +455,26 @@ class ReindexBody(BaseModel):
 
 
 @router.post("/{iid}/reindex", response_model=Reindexed)
-async def reindex_item(request: Request, iid: int, body: ReindexBody | None = None) -> dict:
+async def reindex_item(services: TheServices, iid: int, body: ReindexBody | None = None) -> dict:
     """Read the file again; `describe: true` also writes its AI description again."""
-    kb = _kb(request)
+    kb = _kb(services)
     await _call(kb.reindex, iid, describe=True if body is None else body.describe,
                 quiet=False)
     return {"ok": True, "item": await _item(kb, iid)}
 
 
 @router.get("/{iid}/segments", response_model=Segments)
-async def item_segments(request: Request, iid: int, from_seq: int = 0, limit: int = 500,
+async def item_segments(services: TheServices, iid: int, from_seq: int = 0, limit: int = 500,
                         around: int | None = None) -> dict:
-    kb = _kb(request)
+    kb = _kb(services)
     await _item(kb, iid)
     return await _call(kb.segments, iid, from_seq=from_seq, limit=max(1, min(limit, 2000)),
                        around=around)
 
 
 @router.get("/{iid}/file")
-async def item_file(request: Request, iid: int, download: bool = False):
-    kb = _kb(request)
+async def item_file(services: TheServices, iid: int, download: bool = False):
+    kb = _kb(services)
     it = await _item(kb, iid)
     p = await _call(kb.resolve, it["path"], must_exist=True)
     mime = it["mime"] or mimetypes.guess_type(p.name)[0] or "application/octet-stream"
@@ -497,10 +497,10 @@ class TextBody(BaseModel):
 
 
 @router.put("/text-files/{path:path}", response_model=Written)
-async def write_text(request: Request, path: str, body: TextBody) -> dict:
+async def write_text(services: TheServices, path: str, body: TextBody) -> dict:
     """Create or replace a Markdown (or .txt) file from the app's editor; `.md` is added
     to a name without a text suffix. Returns {"path", "text", "item"}."""
-    kb = _kb(request)
+    kb = _kb(services)
     out = await _call(kb.write, path, body.text)
-    kb_changed(request, kb.id)
+    kb_changed(services.store, kb.id)
     return out

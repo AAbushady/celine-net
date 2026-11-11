@@ -9,7 +9,7 @@ import re
 from typing import Any
 
 import anyio
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -25,20 +25,20 @@ router = APIRouter(prefix="/api")
 log = logging.getLogger("celine.connectors")
 
 
-def not_set_up(request: Request, sid: str) -> CelineError:
+def not_set_up(services, sid: str) -> CelineError:
     """A source with no connection: the sentence names the source, the log says why."""
-    kb = request.app.state.services.kbs.get(sid)
+    kb = services.kbs.get(sid)
     log.warning("This source has no connection. Add a server block with kb = %r to "
                 "config/mcp.toml.", sid, extra={"event": "connector.missing", "kb": sid})
     return CelineError("not_found", f"The {getattr(kb, 'title', None) or sid} connection "
                                     f"is not set up.", 404)
 
 
-def connector(request: Request, sid: str, platform: str | None = None):
-    connectors = request.app.state.services.connectors
+def connector(services, sid: str, platform: str | None = None):
+    connectors = services.connectors
     c = connectors.get(sid) if connectors is not None else None
     if c is None:
-        raise not_set_up(request, sid)
+        raise not_set_up(services, sid)
     if platform is not None and c.kb.platform != platform:
         raise CelineError("bad_request", f"{sid} is not a {platform.title()} source.", 400)
     return c
@@ -77,10 +77,10 @@ async def connectors_list(services: TheServices) -> dict:
 
 
 @router.get("/sources/{sid}/connector")
-async def connector_state(request: Request, sid: str) -> dict:
+async def connector_state(services: TheServices, sid: str) -> dict:
     """The connection record, the account, the login in progress (`login`) or the code
     to scan (`qr_at`, the code at GET .../connector/qr.png)."""
-    c = connector(request, sid)
+    c = connector(services, sid)
     await c.poll()
     st = c.status or {}
     return {
@@ -89,8 +89,8 @@ async def connector_state(request: Request, sid: str) -> dict:
     }
 
 
-def _optional_connector(request: Request, sid: str):
-    connectors = request.app.state.services.connectors
+def _optional_connector(services, sid: str):
+    connectors = services.connectors
     return connectors.get(sid) if connectors is not None else None
 
 
@@ -104,23 +104,23 @@ async def _ignoring(fn, *args):
 
 
 @router.delete("/sources/{sid}/chats/{chat_id}")
-async def delete_chat(request: Request, sid: str, chat_id: int) -> dict:
+async def delete_chat(services: TheServices, sid: str, chat_id: int) -> dict:
     """Delete and ignore: the chat leaves the archive and no sync or import brings it
     back until it is included again (kb/ignore.py). Discord's connector stops reading
     it."""
-    kb = chat_kb(request, sid)
+    kb = chat_kb(services, sid)
     if await anyio.to_thread.run_sync(kb.get_chat, chat_id) is None:
         raise CelineError("not_found", "There is no such chat.", 404)
     out = await _ignoring(delete_and_ignore, kb, [chat_id],
-                          _optional_connector(request, sid))
-    kb_changed(request, sid)
+                          _optional_connector(services, sid))
+    kb_changed(services.store, sid)
     return {"deleted": out["messages"]}
 
 
 @router.get("/sources/{sid}/ignored-chats")
-async def ignored(request: Request, sid: str) -> dict:
+async def ignored(services: TheServices, sid: str) -> dict:
     """The chats deleted and ignored: `{"chats": [{"key", "kind", "name", "at"}]}`."""
-    kb = chat_kb(request, sid)
+    kb = chat_kb(services, sid)
     return {"chats": await anyio.to_thread.run_sync(kb.ignored_chats)}
 
 
@@ -129,24 +129,24 @@ class IncludeBody(BaseModel):
 
 
 @router.post("/sources/{sid}/ignored-chats/include")
-async def include(request: Request, sid: str, body: IncludeBody) -> dict:
+async def include(services: TheServices, sid: str, body: IncludeBody) -> dict:
     """Include an ignored chat again. Discord: the connector reads it from the start
     (task kind `sync`). WhatsApp: what comes of it from now on lands; wa-link deleted
     its history. `{"task": id|null}`."""
-    kb = chat_kb(request, sid)
-    c = _optional_connector(request, sid)
+    kb = chat_kb(services, sid)
+    c = _optional_connector(services, sid)
     job = await _ignoring(include_again, kb, body.key, c)
-    task = _follow(request, sid, "sync", "Discord sync", job) if job else None
-    kb_changed(request, sid)
+    task = _follow(services, sid, "sync", "Discord sync", job) if job else None
+    kb_changed(services.store, sid)
     return {"task": task}
 
 
 @router.post("/sources/{sid}/import")
-async def first_import(request: Request, services: TheServices, sid: str) -> dict:
+async def first_import(services: TheServices, sid: str) -> dict:
     """The first import, from the onboarding: a visible task `import` (its progress the
     archive's message count, kb/connectors.py first_import), done once the archive has
     what the connector had. Discord starts its sync first. `{"task": id}`."""
-    c = connector(request, sid)
+    c = connector(services, sid)
     tasks = services.kbs.tasks
     running = tasks.running(sid, "import")
     if running is not None:
@@ -160,8 +160,8 @@ async def first_import(request: Request, services: TheServices, sid: str) -> dic
 # ---- Discord -----------------------------------------------------------------------------
 
 @router.get("/sources/{sid}/discord/targets")
-async def discord_targets(request: Request, sid: str) -> dict:
-    return await _admin(connector(request, sid, "discord"), "GET", "/admin/targets")
+async def discord_targets(services: TheServices, sid: str) -> dict:
+    return await _admin(connector(services, sid, "discord"), "GET", "/admin/targets")
 
 
 class TargetSet(BaseModel):
@@ -169,31 +169,31 @@ class TargetSet(BaseModel):
 
 
 @router.put("/sources/{sid}/discord/targets")
-async def discord_set(request: Request, sid: str, body: TargetSet) -> dict:
+async def discord_set(services: TheServices, sid: str, body: TargetSet) -> dict:
     """Include (true) or leave out (false) DMs, group DMs, server channels and threads
     by their Discord id. A chat included again is read from the start at once (task
     kind `sync`); one that was deleted and ignored is no longer ignored."""
-    c = connector(request, sid, "discord")
+    c = connector(services, sid, "discord")
     out = await _admin(c, "PUT", "/admin/targets", {"set": body.set})
     # a deleted and ignored chat ticked again is included again
     await anyio.to_thread.run_sync(c.kb.unignore, [k for k, on in body.set.items() if on])
-    task = _follow(request, sid, "sync", "Discord sync", out["job"]) if out.get("job") \
+    task = _follow(services, sid, "sync", "Discord sync", out["job"]) if out.get("job") \
         else None
-    kb_changed(request, sid)
+    kb_changed(services.store, sid)
     return {"changed": out.get("changed", 0), "task": task}
 
 
 @router.get("/sources/{sid}/discord/guilds/{guild}/channels")
-async def discord_channels(request: Request, sid: str, guild: str) -> dict:
-    c = connector(request, sid, "discord")
+async def discord_channels(services: TheServices, sid: str, guild: str) -> dict:
+    c = connector(services, sid, "discord")
     return await _admin(c, "GET", f"/admin/guilds/{_guild(guild)}/channels")
 
 
 @router.post("/sources/{sid}/discord/login-sessions")
-async def discord_login(request: Request, sid: str) -> dict:
+async def discord_login(services: TheServices, sid: str) -> dict:
     """Start a QR login in the Discord link; answers once Discord sent the code (at
     most 8 s). Poll GET .../connector for what happens next (`login`)."""
-    c = connector(request, sid, "discord")
+    c = connector(services, sid, "discord")
     session = await _admin(c, "POST", "/admin/login")
     with anyio.move_on_after(LOGIN_WAIT_SECONDS):
         while session.get("state") == "starting":
@@ -203,16 +203,16 @@ async def discord_login(request: Request, sid: str) -> dict:
 
 
 @router.delete("/sources/{sid}/discord/login-sessions/{lid}")
-async def discord_login_cancel(request: Request, sid: str, lid: str) -> dict:
+async def discord_login_cancel(services: TheServices, sid: str, lid: str) -> dict:
     if not _LOGIN_ID.match(lid):
         raise CelineError("not_found", "There is no such login.", 404)
-    return await _admin(connector(request, sid, "discord"), "DELETE", f"/admin/login/{lid}")
+    return await _admin(connector(services, sid, "discord"), "DELETE", f"/admin/login/{lid}")
 
 
 @router.post("/sources/{sid}/discord/logout")
-async def discord_logout(request: Request, sid: str) -> dict:
-    out = await _admin(connector(request, sid, "discord"), "POST", "/admin/logout")
-    kb_changed(request, sid)
+async def discord_logout(services: TheServices, sid: str) -> dict:
+    out = await _admin(connector(services, sid, "discord"), "POST", "/admin/logout")
+    kb_changed(services.store, sid)
     return out
 
 
@@ -221,18 +221,18 @@ class TokenBody(BaseModel):
 
 
 @router.put("/sources/{sid}/discord/token")
-async def discord_token(request: Request, sid: str, body: TokenBody) -> dict:
+async def discord_token(services: TheServices, sid: str, body: TokenBody) -> dict:
     """A token pasted in Settings replaces the stored one (the connector checks it)."""
-    out = await _admin(connector(request, sid, "discord"), "PUT", "/admin/token",
+    out = await _admin(connector(services, sid, "discord"), "PUT", "/admin/token",
                        {"token": body.token})
-    kb_changed(request, sid)
+    kb_changed(services.store, sid)
     return out
 
 
-def _follow(request: Request, sid: str, kind: str, label: str, job: str) -> str:
+def _follow(services, sid: str, kind: str, label: str, job: str) -> str:
     """The connector's job as a task of this app (its progress, Stop, its end)."""
-    c = connector(request, sid)
-    tasks = request.app.state.services.kbs.tasks
+    c = connector(services, sid)
+    tasks = services.kbs.tasks
     running = tasks.running(sid, kind)
     if running is not None:
         return running.id
@@ -240,15 +240,15 @@ def _follow(request: Request, sid: str, kind: str, label: str, job: str) -> str:
 
 
 @router.post("/sources/{sid}/discord/sync")
-async def discord_sync(request: Request, sid: str) -> dict:
-    c = connector(request, sid, "discord")
+async def discord_sync(services: TheServices, sid: str) -> dict:
+    c = connector(services, sid, "discord")
     data = await _admin(c, "POST", "/admin/sync")
-    return {"task": _follow(request, sid, "sync", "Discord sync", data["job"])}
+    return {"task": _follow(services, sid, "sync", "Discord sync", data["job"])}
 
 
 @router.get("/sources/{sid}/discord/subscriptions")
-async def discord_subscriptions(request: Request, sid: str) -> dict:
-    return await _admin(connector(request, sid, "discord"), "GET", "/admin/subscriptions")
+async def discord_subscriptions(services: TheServices, sid: str) -> dict:
+    return await _admin(connector(services, sid, "discord"), "GET", "/admin/subscriptions")
 
 
 class SubPut(BaseModel):
@@ -259,49 +259,49 @@ class SubPut(BaseModel):
     icon: str | None = None
 
 
-def _sub_task(request: Request, sid: str, guild: str, data: dict, kind: str,
+def _sub_task(services, sid: str, guild: str, data: dict, kind: str,
               label: str) -> dict:
     task = None
     if data.get("job"):
-        task = _follow(request, sid, f"{kind}:{guild}", label, data["job"])
-    kb_changed(request, sid)
+        task = _follow(services, sid, f"{kind}:{guild}", label, data["job"])
+    kb_changed(services.store, sid)
     return {"subscription": data["subscription"], "task": task}
 
 
 @router.put("/sources/{sid}/discord/subscriptions/{guild}")
-async def discord_subscribe(request: Request, sid: str, guild: str, body: SubPut) -> dict:
+async def discord_subscribe(services: TheServices, sid: str, guild: str, body: SubPut) -> dict:
     """Create or change a subscription (a new one is a draft). On a running one,
     channels ticked by this change get their history at once (task `channels:<id>`)."""
-    c = connector(request, sid, "discord")
+    c = connector(services, sid, "discord")
     data = await _admin(c, "PUT", f"/admin/subscriptions/{_guild(guild)}",
                         body.model_dump(exclude_none=True))
     name = data["subscription"].get("guild_name") or guild
-    return _sub_task(request, sid, guild, data, "channels", f"New channels in {name}")
+    return _sub_task(services, sid, guild, data, "channels", f"New channels in {name}")
 
 
 @router.post("/sources/{sid}/discord/subscriptions/{guild}/start")
-async def discord_start(request: Request, sid: str, guild: str,
+async def discord_start(services: TheServices, sid: str, guild: str,
                         body: SubPut | None = None) -> dict:
-    c = connector(request, sid, "discord")
+    c = connector(services, sid, "discord")
     data = await _admin(c, "POST", f"/admin/subscriptions/{_guild(guild)}/start",
                         (body or SubPut()).model_dump(exclude_none=True))
     name = data["subscription"].get("guild_name") or guild
-    return _sub_task(request, sid, guild, data, "subscribe", f"Discord server {name}")
+    return _sub_task(services, sid, guild, data, "subscribe", f"Discord server {name}")
 
 
 @router.delete("/sources/{sid}/discord/subscriptions/{guild}")
-async def discord_unsubscribe(request: Request, sid: str, guild: str) -> dict:
-    out = await _admin(connector(request, sid, "discord"), "DELETE",
+async def discord_unsubscribe(services: TheServices, sid: str, guild: str) -> dict:
+    out = await _admin(connector(services, sid, "discord"), "DELETE",
                        f"/admin/subscriptions/{_guild(guild)}")
-    kb_changed(request, sid)
+    kb_changed(services.store, sid)
     return out
 
 
 # ---- WhatsApp ----------------------------------------------------------------------------
 
 @router.get("/sources/{sid}/connector/qr.png")
-async def wa_qr(request: Request, sid: str) -> Response:
-    c = connector(request, sid, "whatsapp")
+async def wa_qr(services: TheServices, sid: str) -> Response:
+    c = connector(services, sid, "whatsapp")
     try:
         r = await c.raw("GET", "/admin/qr", timeout=30.0)
     except Unreachable as e:

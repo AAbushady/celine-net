@@ -14,12 +14,12 @@
 
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from ..errors import CelineError, NotFound
 from . import batches as batches_mod, presets as presets_mod
-from ..core.route_params import TheConfig, TheStore
+from ..core.route_params import TheConfig, TheServices, TheStore
 
 router = APIRouter(prefix="/api")
 
@@ -68,16 +68,16 @@ def _kind(kind: str) -> str:
     return kind
 
 
-async def _batch(request: Request, bid: str) -> dict:
-    b = await batches_mod.get(request.app.state.services.store, bid)
+async def _batch(store, bid: str) -> dict:
+    b = await batches_mod.get(store, bid)
     if b is None:
         raise NotFound("batch")
     return b
 
 
-def _runner(request: Request):
-    runner = request.app.state.services.batches
-    if runner is None or request.app.state.services.llm is None:
+def _runner(services):
+    runner = services.batches
+    if runner is None or services.llm is None:
         raise CelineError("unavailable", "ComfyUI is not running in this app.", 409)
     return runner
 
@@ -96,13 +96,13 @@ async def list_batches(store: TheStore, kind: str, conversation: str | None = No
 
 
 @router.get("/batches/{bid}")
-async def get_batch(request: Request, bid: str) -> dict:
-    return batches_mod.view(await _batch(request, bid))
+async def get_batch(store: TheStore, bid: str) -> dict:
+    return batches_mod.view(await _batch(store, bid))
 
 
 @router.post("/batches")
-async def start_batch(request: Request, body: BatchIn) -> dict:
-    runner = _runner(request)
+async def start_batch(services: TheServices, body: BatchIn) -> dict:
+    runner = _runner(services)
     items = [i.model_dump(exclude_none=True) for i in body.items]
     try:
         b = await runner.create(body.kind, items, count=body.count)
@@ -114,15 +114,15 @@ async def start_batch(request: Request, body: BatchIn) -> dict:
 
 
 @router.post("/batches/{bid}/items/{index}/retry")
-async def retry_item(request: Request, bid: str, index: int) -> dict:
-    await _batch(request, bid)
+async def retry_item(store: TheStore, services: TheServices, bid: str, index: int) -> dict:
+    await _batch(store, bid)
     try:
-        return batches_mod.view(await _runner(request).retry(bid, index))
+        return batches_mod.view(await _runner(services).retry(bid, index))
     except batches_mod.ImageError as e:
         raise CelineError("conflict", str(e), 409) from None
 
 
 @router.post("/batches/{bid}/stop")
-async def stop_batch(request: Request, bid: str) -> dict:
-    await _batch(request, bid)
-    return {"stopped": await _runner(request).stop(bid)}
+async def stop_batch(store: TheStore, services: TheServices, bid: str) -> dict:
+    await _batch(store, bid)
+    return {"stopped": await _runner(services).stop(bid)}

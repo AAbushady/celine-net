@@ -7,7 +7,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict
 
 from ..conversations import store as conversations
@@ -101,8 +101,8 @@ async def _conversation_exists(store, cid: str | None) -> None:
         raise NotFound("chat")
 
 
-async def _mission(request: Request, cid: str) -> dict:
-    row = await missions.get(request.app.state.services.store, cid)
+async def _mission(store, cid: str) -> dict:
+    row = await missions.get(store, cid)
     if row is None:
         raise NotFound("mission")
     return row
@@ -215,11 +215,11 @@ def _announce(store, row: dict | None) -> None:
 
 
 @router.patch("/missions/{cid}")
-async def edit_mission(request: Request, store: TheStore, cfg: TheConfig, services: TheServices, cid: str, body: MissionEdit) -> dict:
+async def edit_mission(store: TheStore, cfg: TheConfig, services: TheServices, cid: str, body: MissionEdit) -> dict:
     """The given fields only; a changed one reaches it as a message. A stopped
     mission takes no change: nobody would read it."""
     tz = zone(cfg)
-    row = await _mission(request, cid)
+    row = await _mission(store, cid)
     if row["status"] == "stopped":
         raise CelineError("stopped", "The mission is stopped. Start a new one.", 409)
     given = body.model_fields_set
@@ -286,7 +286,7 @@ async def edit_mission(request: Request, store: TheStore, cfg: TheConfig, servic
 
 
 @router.post("/missions/{cid}/stop")
-async def stop_mission(request: Request, services: TheServices, cid: str) -> dict:
-    await _mission(request, cid)
+async def stop_mission(store: TheStore, services: TheServices, cid: str) -> dict:
+    await _mission(store, cid)
     await skill.stop(services, cid, None)
     return {"ok": True}

@@ -37,12 +37,8 @@ HELP = {
 CHOICES = {"on_fail": [{"value": "retry", "label": "Retry"}, {"value": "skip", "label": "Skip"}]}
 
 
-def _folder(request: Request):
-    return seed.schedules_dir(files.settings_dir(request.app.state.services.cfg))
-
-
-def _schedules(request: Request) -> dict:
-    return request.app.state.services.cfg.schedules
+def _folder(cfg):
+    return seed.schedules_dir(files.settings_dir(cfg))
 
 
 def _today(cfg) -> date:
@@ -86,15 +82,15 @@ def _planned(cfg, taken: set[tuple[str, str]], now_: datetime) -> list[dict]:
     return sorted(out, key=lambda p: (p["slot"], p["schedule"]))
 
 
-def _scheduler(request: Request):
+def _scheduler(services):
     """The running Scheduler: set while Routines is on."""
-    if (s := request.app.state.services.schedules) is None:
+    if (s := services.schedules) is None:
         raise CelineError("unavailable", "Routines are off.", 409)
     return s
 
 
 @router.get("/schedules")
-async def list_schedules(request: Request, cfg: TheConfig) -> dict:
+async def list_schedules(cfg: TheConfig) -> dict:
     """{schedules: [{name, label, title, summary, cron, time, every, prompt, after, reviewer,
     reviewer_prompt, turns, note, role, on, idle_only, wall_minutes, on_fail}],
     roles, variables, today, choices, help}: by time of day; `time` "02:00" for a daily one (else
@@ -103,7 +99,7 @@ async def list_schedules(request: Request, cfg: TheConfig) -> dict:
     `variables` the words a prompt can hold, `today` the day the page opens on,
     `choices` a field's choices ({on_fail: [{value, label}]}), `help` a field's "?" text
     (on_fail, idle_only, wall_minutes)."""
-    rows = sorted(_schedules(request).values(), key=lambda s: (s.time or "99", s.name))
+    rows = sorted(cfg.schedules.values(), key=lambda s: (s.time or "99", s.name))
     return {"schedules": [_view(s, cfg) for s in rows],
             "roles": [{"name": r, "label": ROLES[r]["label"]} for r in run_roles()],
             "variables": [*VARIABLES, *(f"result:{s.name}" for s in rows)],
@@ -131,21 +127,21 @@ async def put_schedule(request: Request, cfg: TheConfig, services: TheServices, 
 
 
 @router.delete("/schedules/{name}")
-async def delete_schedule(request: Request, services: TheServices, name: str) -> dict:
+async def delete_schedule(cfg: TheConfig, services: TheServices, name: str) -> dict:
     """The schedule goes, its reviewer prompt with it when no other schedule talks with
     it. Its waiting and running runs stop, all its runs stay readable. Refused while
     another schedule follows it."""
     from .. import reload
     from ..settings import write
-    every_ = _schedules(request)
+    every_ = cfg.schedules
     s = every_.get(name)
     if s is None:
         raise NotFound("schedule")
     after = [shown(o) for o in every_.values() if name in o.after]
     if after:
         raise Invalid("after", f"{after[0]} runs after {shown(s)}. Take it out of there first.")
-    await _scheduler(request).stop_schedule(name)
-    folder = _folder(request)
+    await _scheduler(services).stop_schedule(name)
+    folder = _folder(cfg)
     async with write.lock():
         (folder / f"{name}.toml").unlink(missing_ok=True)
         if s.reviewer and not any(o.reviewer == s.reviewer for o in every_.values()
@@ -153,16 +149,16 @@ async def delete_schedule(request: Request, services: TheServices, name: str) ->
             (folder / s.reviewer).unlink(missing_ok=True)
         applied = reload.apply(services)
     write.publish(services, ["schedules"])
-    _scheduler(request).wake()
+    _scheduler(services).wake()
     return {"deleted": name, "applied": applied}
 
 
 @router.post("/schedules/{name}/run")
-async def run_schedule(request: Request, name: str) -> dict:
+async def run_schedule(cfg: TheConfig, services: TheServices, name: str) -> dict:
     """A run of the schedule at this second, waiting like any other. -> {run}."""
-    if name not in _schedules(request):
+    if name not in cfg.schedules:
         raise NotFound("schedule")
-    return {"run": await _scheduler(request).run_now(name, by="user")}
+    return {"run": await _scheduler(services).run_now(name, by="user")}
 
 
 def _date(raw, field: str) -> date:
@@ -240,7 +236,7 @@ async def list_runs(services: TheServices, day: str | None = None,
 
 
 @router.get("/runs/{rid}")
-async def get_run(request: Request, services: TheServices, rid: str) -> dict:
+async def get_run(services: TheServices, rid: str) -> dict:
     """{run, prompt, reviewer_prompt, note}: the run, and what its schedule asks filled
     for its date (run_date of its first try, first_slot; null for a deleted schedule)."""
     cfg, store = services.cfg, services.store
@@ -250,7 +246,7 @@ async def get_run(request: Request, services: TheServices, rid: str) -> dict:
     r, slot = await store.read(one)
     if r is None:
         raise NotFound("run")
-    s = _schedules(request).get(r["schedule"])
+    s = cfg.schedules.get(r["schedule"])
     res = await store.read(lambda c: results(c, r["night"]))
 
     def filled(text: str) -> str | None:
@@ -263,14 +259,14 @@ async def get_run(request: Request, services: TheServices, rid: str) -> dict:
 
 
 @router.post("/runs/{rid}/stop")
-async def stop_run(request: Request, store: TheStore, cfg: TheConfig, rid: str) -> dict:
+async def stop_run(services: TheServices, store: TheStore, cfg: TheConfig, rid: str) -> dict:
     """A waiting or running run stops, `stopped` "Stopped by <user>"; a running one's
     turn is aborted. -> {run}. 404: no such run; 400: it has finished."""
     exists = await store.read(lambda c: c.execute(
         "SELECT 1 FROM runs WHERE id = ?", (rid,)).fetchone())
     if exists is None:
         raise NotFound("run")
-    out = await _scheduler(request).end(rid, "stopped",
+    out = await _scheduler(services).end(rid, "stopped",
                                         cfg.substitute(STOPPED))
     if out is None:
         raise Invalid("run", "The run has finished.")
@@ -278,8 +274,8 @@ async def stop_run(request: Request, store: TheStore, cfg: TheConfig, rid: str) 
 
 
 @router.post("/runs/{rid}/retry")
-async def retry_run(request: Request, rid: str) -> dict:
+async def retry_run(services: TheServices, rid: str) -> dict:
     """A failed, skipped or stopped run runs again for its night, now: a new waiting run
     `again_of` it (Scheduler.retry). -> {run}. 404: no such run; 400: it has not ended,
     it is done, it ran again already, or its schedule was deleted."""
-    return {"run": await _scheduler(request).retry(rid)}
+    return {"run": await _scheduler(services).retry(rid)}

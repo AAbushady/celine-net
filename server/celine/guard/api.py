@@ -11,7 +11,7 @@ from fastapi import APIRouter, Header, Request, Response
 
 from .. import reload
 from ..api.deps import etag, json_body, person_only, settings_of
-from ..core.route_params import TheServices, cfg_of
+from ..core.route_params import TheConfig, TheServices
 from ..errors import CelineError, NotFound
 from ..settings import files, write
 from ..settings.files import Invalid, version
@@ -165,8 +165,8 @@ async def end_pass(pid: int, request: Request, services: TheServices) -> dict:
 
 # ---- its rules (var/settings/guard.toml) -----------------------------------------------
 
-def _rules_view(request: Request) -> dict:
-    s, cfg = settings_of(request), cfg_of(request)
+def _rules_view(cfg) -> dict:
+    s = settings_of(cfg)
     current = rule_set.current(cfg)
     return {**current, "version": version(s.guard), "saved": bool(s.saved.get("guard")),
             "rows": rule_set.rows(current), "acts": rule_set.ACTS,
@@ -174,19 +174,19 @@ def _rules_view(request: Request) -> dict:
 
 
 @router.get("/guard/rules")
-async def get_guard_rules(request: Request, response: Response) -> dict:
+async def get_guard_rules(request: Request, cfg: TheConfig, response: Response) -> dict:
     """The rules in use: the saved values over guard/rules.py DEFAULTS (model, chain,
     patrol, learn, gates and the rule tables), plus version and saved; `rows` (each rule
     Settings, Guard sets: its label and what it does now, rules.rows), `acts` (the words
     of what a rule can do) and `help` (the page's "?" texts, names filled in)."""
     person_only(request)
-    view = _rules_view(request)
+    view = _rules_view(cfg)
     etag(response, view["version"])
     return view
 
 
 @router.put("/guard/rules")
-async def put_guard_rules(request: Request, services: TheServices, response: Response,
+async def put_guard_rules(request: Request, cfg: TheConfig, services: TheServices, response: Response,
                           if_match: str | None = Header(default=None)) -> dict:
     """The tables to change, merged into the saved rules: {"chain": {provider, model}}
     changes only those two keys. Validated as the file is (guard/rules.py)."""
@@ -195,7 +195,7 @@ async def put_guard_rules(request: Request, services: TheServices, response: Res
     body.pop("version", None)
     body.pop("saved", None)
     async with write.lock():
-        s = settings_of(request)
+        s = settings_of(cfg)
         files.check_version("guard", s.guard, if_match)
         given = rule_set.validate(body)
         merged = copy.deepcopy(s.guard)
@@ -206,6 +206,6 @@ async def put_guard_rules(request: Request, services: TheServices, response: Res
             else:
                 merged.setdefault(name, {}).update(table)
         out = await reload.commit(services, {"guard": merged})
-        view = _rules_view(request)
+        view = _rules_view(cfg)
         etag(response, view["version"])
         return {**view, **out}

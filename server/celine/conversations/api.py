@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .. import attachments as attachments_mod, homes
 from ..api.cursor import page_cursor, read_cursor
 from ..api.deps import json_body, settings_of
-from ..core.route_params import TheConfig, TheServices, TheStore, cfg_of, store_of
+from ..core.route_params import TheConfig, TheServices, TheStore
 from ..settings import conversations as conv
 from ..errors import Busy, CelineError, NotFound
 from ..turns import store as turns
@@ -87,10 +87,6 @@ async def conversation(store: TheStore, services: TheServices, cid: str) -> dict
                                    getattr(services, "llm", None))
     except KeyError:
         raise NotFound("chat") from None
-
-
-async def writable(request: Request, cid: str) -> None:
-    await conversations.ensure_writable(store_of(request), cid)
 
 
 BLOCKS = ("persona", "talk", "about", "notes", "tools", "history")
@@ -194,15 +190,15 @@ async def patch_conversation(store: TheStore, cid: str, body: ConversationPatch)
 
 
 @router.delete("/conversations/{cid}")
-async def delete_conversation(request: Request, cid: str, for_good: bool = False) -> dict:
+async def delete_conversation(store: TheStore, cfg: TheConfig, cid: str, for_good: bool = False) -> dict:
     """Any kind: trashed with its sub-agents, nothing removed (restore brings it back).
     `for_good`: one in the Trash removed for good, with everything that is part of it
     (store.purge); 409 when it is not in the Trash. Refused while it works."""
     try:
         if for_good:
-            ok = await conversations.purge(store_of(request), cfg_of(request), cid) is not None
+            ok = await conversations.purge(store, cfg, cid) is not None
         else:
-            ok = await conversations.delete(store_of(request), cid)
+            ok = await conversations.delete(store, cid)
     except tree.Busy:
         raise Busy("Stop the running turn first.") from None
     except ValueError as e:
@@ -213,35 +209,35 @@ async def delete_conversation(request: Request, cid: str, for_good: bool = False
 
 
 @router.post("/conversations/{cid}/restore")
-async def restore_conversation(request: Request, cid: str) -> dict:
-    if not await conversations.restore(store_of(request), cid):
+async def restore_conversation(store: TheStore, cid: str) -> dict:
+    if not await conversations.restore(store, cid):
         raise NotFound("deleted chat")
     return {"ok": True}
 
 
 @router.post("/conversations/{cid}/archive")
-async def archive_conversation(request: Request, cid: str) -> dict:
+async def archive_conversation(store: TheStore, services: TheServices, cid: str) -> dict:
     """The conversation and its sub-agents leave the list, every message kept. A
     message to it brings it back. Refused while any of them works. With Lock archived
     chats refused only while a turn of the user's is live: its turns and jobs there are
     stopped."""
     try:
-        out = await conversations.archive(store_of(request), cid, True)
+        out = await conversations.archive(store, cid, True)
     except tree.Busy:
         raise Busy("Stop the running turn first.") from None
     if out is None:
         raise NotFound("chat")
-    dispatcher = request.app.state.services.dispatcher
-    if dispatcher is not None and await store_of(request).read(conversations.lock_archived):
+    dispatcher = services.dispatcher
+    if dispatcher is not None and await store.read(conversations.lock_archived):
         # its work there stops
         await dispatcher.abort_conversation(
-            await store_of(request).read(lambda c: homes.root(c, cid)["id"]))
+            await store.read(lambda c: homes.root(c, cid)["id"]))
     return out
 
 
 @router.post("/conversations/{cid}/unarchive")
-async def unarchive_conversation(request: Request, cid: str) -> dict:
-    out = await conversations.archive(store_of(request), cid, False)
+async def unarchive_conversation(store: TheStore, cid: str) -> dict:
+    out = await conversations.archive(store, cid, False)
     if out is None:
         raise NotFound("chat")
     return out
@@ -274,11 +270,11 @@ async def search(store: TheStore, q: str = "", limit: int = 30, place: str | Non
 
 
 @router.post("/conversations/{cid}/messages")
-async def post_message(request: Request, store: TheStore, cfg: TheConfig, services: TheServices, cid: str, body: NewMessage) -> dict:
+async def post_message(store: TheStore, cfg: TheConfig, services: TheServices, cid: str, body: NewMessage) -> dict:
     """Sends the user's message to the conversation (an intercom message from `user`).
     Idle, it lands at once with a queued turn; while a turn runs it reaches it at its
     next step, and message_id, turn_id and seq are null."""
-    await writable(request, cid)
+    await conversations.ensure_writable(store, cid)
     if len(body.text.encode()) > cfg.r("max_message_bytes"):
         from ..errors import TooLarge
         raise TooLarge("This message", len(body.text.encode()),
@@ -302,7 +298,7 @@ async def post_message(request: Request, store: TheStore, cfg: TheConfig, servic
         if any(r is None for r in rows):
             raise NotFound("attachment")
         if any(r["kind"] == "image" for r in rows):
-            sup = await _chat_model(request, cid, None)
+            sup = await _chat_model(cfg, services, cid, None)
             if sup["blocked"]:
                 raise CelineError("cannot_see_images",
                                   f"{sup['model']} cannot see images. Remove the images "
@@ -316,16 +312,15 @@ async def post_message(request: Request, store: TheStore, cfg: TheConfig, servic
         raise CelineError("bad_request", str(e), 400) from None
 
 
-async def _chat_model(request: Request, cid: str | None, model: str | None) -> dict:
+async def _chat_model(cfg, services, cid: str | None, model: str | None) -> dict:
     """What the chat model that answers this conversation (or, before a new
     conversation exists, `model` or the Chat role's first) can do: `tools`, whether it
     takes a tool list at all, and attachments.support for images, plus `blocked`: a
     message with images cannot be sent, because the model can't see images and no
     Photo descriptions model answers. No chat model yet: never blocked (the message
     waits for one)."""
-    cfg = cfg_of(request)
-    llm = request.app.state.services.llm
-    factory = request.app.state.services.dispatcher.backend_factory
+    llm = services.llm
+    factory = services.dispatcher.backend_factory
     if factory is not None:                      # a test backend
         fixed = factory()
         sup = await attachments_mod.support(cfg, llm, None, fixed=fixed)
@@ -343,7 +338,7 @@ async def _chat_model(request: Request, cid: str | None, model: str | None) -> d
 
 
 @router.get("/chat-model")
-async def chat_model(request: Request, cfg: TheConfig, conversation: str | None = None,
+async def chat_model(cfg: TheConfig, services: TheServices, conversation: str | None = None,
                      model: str | None = None) -> dict:
     """What the chat model can do now: {model, tools, sees, describer, blocked}. The
     composer asks when the conversation or its model changes: it says in one line
@@ -352,13 +347,13 @@ async def chat_model(request: Request, cfg: TheConfig, conversation: str | None 
     s = getattr(cfg, "settings", None)
     if model is not None and (s is None or s.model(model) is None):
         raise NotFound("model")
-    return await _chat_model(request, conversation, model)
+    return await _chat_model(cfg, services, conversation, model)
 
 
 @router.post("/conversations/{cid}/regenerate")
-async def regenerate(request: Request, store: TheStore, services: TheServices, cid: str) -> dict:
+async def regenerate(store: TheStore, services: TheServices, cid: str) -> dict:
     """A reply for the last message when it is yours and nothing answered it."""
-    await writable(request, cid)
+    await conversations.ensure_writable(store, cid)
     try:
         tid, seq = await tree.regenerate(store, cid)
     except KeyError:
@@ -374,18 +369,18 @@ class ContinueBody(BaseModel):
 
 
 @router.post("/conversations/{cid}/turns/{tid}/continue")
-async def continue_turn(request: Request, store: TheStore, services: TheServices, cid: str, tid: str,
+async def continue_turn(store: TheStore, services: TheServices, cid: str, tid: str,
                         body: ContinueBody | None = None) -> dict:
     """Pick an interrupted, stopped, capped, retryably failed or cut-off turn up again,
     as the same turn: its steps are kept, read-only steps that did not finish run
     again, a cut-off reply is continued in the same message. `wait` (Keep waiting on
     a turn that failed `busy`): its model is waited for until Stop."""
-    await writable(request, cid)
+    await conversations.ensure_writable(store, cid)
     registry = services.registry
     try:
         tid, seq = await turns.continue_turn(store, cid, tid, registry,
                                              wait=bool(body and body.wait),
-                                             prefill=_prefills(request, cid))
+                                             prefill=prefills(services, cid))
     except KeyError:
         raise NotFound("turn") from None
     except ValueError as e:
@@ -393,10 +388,6 @@ async def continue_turn(request: Request, store: TheStore, services: TheServices
                           {"reason": str(e)}) from None
     services.dispatcher.notify()
     return {"turn_id": tid, "seq": seq}
-
-
-def _chat_backend(request: Request, cid: str, **kw):
-    return chat_backend(request.app.state.services, cid, **kw)
 
 
 def chat_backend(services, cid: str, **kw):
@@ -410,10 +401,6 @@ def chat_backend(services, cid: str, **kw):
         return fixed
     return llm.bind(fixed, role="chat", conversation_id=cid,
                     **{"priority": Priority.INTERACTIVE, **kw})
-
-
-def _prefills(request: Request, cid: str) -> bool:
-    return prefills(request.app.state.services, cid)
 
 
 def prefills(services, cid: str) -> bool:
@@ -437,8 +424,8 @@ class EditBody(BaseModel):
 
 
 @router.post("/conversations/{cid}/retry")
-async def retry(request: Request, store: TheStore, services: TheServices, cid: str, body: Target) -> dict:
-    await writable(request, cid)
+async def retry(store: TheStore, services: TheServices, cid: str, body: Target) -> dict:
+    await conversations.ensure_writable(store, cid)
     try:
         tid, seq = await tree.retry(store, cid, body.message_id)
     except KeyError:
@@ -450,11 +437,11 @@ async def retry(request: Request, store: TheStore, services: TheServices, cid: s
 
 
 @router.post("/conversations/{cid}/messages/{mid}/versions")
-async def edit(request: Request, store: TheStore, services: TheServices, cid: str, mid: str, body: EditBody) -> dict:
+async def edit(store: TheStore, services: TheServices, cid: str, mid: str, body: EditBody) -> dict:
     """A new version of a message with the new text, the active leaf from then on;
     what followed the old one stays on its path. Yours is answered (turn_id); its
     reply is not (turn_id null): its tool calls stay, only its text is new."""
-    await writable(request, cid)
+    await conversations.ensure_writable(store, cid)
     try:
         mid, tid, seq = await tree.edit(store, cid, mid, body.text)
     except KeyError:
@@ -467,14 +454,14 @@ async def edit(request: Request, store: TheStore, services: TheServices, cid: st
 
 
 @router.post("/conversations/{cid}/messages/{mid}/continue")
-async def continue_message(request: Request, store: TheStore, cfg: TheConfig, services: TheServices, cid: str, mid: str) -> dict:
+async def continue_message(store: TheStore, cfg: TheConfig, services: TheServices, cid: str, mid: str) -> dict:
     """The agent's finished reply at the active leaf, carried on as a new version of it: a turn
     sends the conversation with its text as a prefilled assistant turn and what comes
     is appended. -> {message_id, turn_id, seq}, or {refused: the sentence why}."""
-    await writable(request, cid)
+    await conversations.ensure_writable(store, cid)
     try:
         new, tid, seq = await tree.continue_message(store, cid, mid,
-                                                    prefill=_prefills(request, cid))
+                                                    prefill=prefills(services, cid))
     except KeyError:
         raise NotFound("message") from None
     except ValueError as e:
@@ -484,23 +471,23 @@ async def continue_message(request: Request, store: TheStore, cfg: TheConfig, se
 
 
 @router.put("/conversations/{cid}/messages/{mid}/voice-sample")
-async def love_this(request: Request, cid: str, mid: str) -> dict:
+async def love_this(store: TheStore, cfg: TheConfig, cid: str, mid: str) -> dict:
     """"Love this": its reply as a voice sample in samples.md (conversations/
     samples.py), with the date and the model that wrote it; the note's earlier text is
     kept as a version. -> {sample: true}."""
-    return {"sample": await _sample(request, cid, mid, True)}
+    return {"sample": await _sample(store, cfg, cid, mid, True)}
 
 
 @router.delete("/conversations/{cid}/messages/{mid}/voice-sample")
-async def unlove_this(request: Request, cid: str, mid: str) -> dict:
+async def unlove_this(store: TheStore, cfg: TheConfig, cid: str, mid: str) -> dict:
     """The sample out of the note again. -> {sample: false}."""
-    return {"sample": await _sample(request, cid, mid, False)}
+    return {"sample": await _sample(store, cfg, cid, mid, False)}
 
 
-async def _sample(request: Request, cid: str, mid: str, on: bool) -> bool:
+async def _sample(store, cfg, cid: str, mid: str, on: bool) -> bool:
     from . import samples
-    await writable(request, cid)
-    return await samples.mark(store_of(request), cfg_of(request), cid, mid, on)
+    await conversations.ensure_writable(store, cid)
+    return await samples.mark(store, cfg, cid, mid, on)
 
 
 class ImpersonateBody(BaseModel):
@@ -508,7 +495,7 @@ class ImpersonateBody(BaseModel):
 
 
 @router.post("/conversations/{cid}/impersonate")
-async def impersonate(request: Request, store: TheStore, cfg: TheConfig, cid: str,
+async def impersonate(store: TheStore, cfg: TheConfig, services: TheServices, cid: str,
                       body: ImpersonateBody | None = None) -> dict:
     """The user's next message as the chat model writes it in their voice (a one-off
     request, thinking off), beginning with what they typed (`start`). Nothing is sent
@@ -519,8 +506,8 @@ async def impersonate(request: Request, store: TheStore, cfg: TheConfig, cid: st
     if await store.read(lambda c: c.execute(
             "SELECT 1 FROM conversations WHERE id=?", (cid,)).fetchone()) is None:
         raise NotFound("chat")
-    await writable(request, cid)
-    backend = _chat_backend(request, cid, priority=Priority.INTERACTIVE, thinking="off",
+    await conversations.ensure_writable(store, cid)
+    backend = chat_backend(services, cid, priority=Priority.INTERACTIVE, thinking="off",
                             voice=False, fallback=False)
     if backend is None:
         raise CelineError("unavailable", "No chat model is set up.", 503)
@@ -562,11 +549,11 @@ async def delete_message(store: TheStore, cid: str, mid: str) -> dict:
 # ---- one conversation's settings: model, thinking, tool switches -------------------------
 
 @router.get("/conversations/{cid}/settings")
-async def get_conversation_settings(request: Request, store: TheStore, cid: str) -> dict:
+async def get_conversation_settings(cfg: TheConfig, store: TheStore, cid: str) -> dict:
     stored = await conv.get(store, cid)
     if stored is None:
         raise NotFound("chat")
-    return conv.view(settings_of(request), cid, stored)
+    return conv.view(settings_of(cfg), cid, stored)
 
 
 @router.patch("/conversations/{cid}/settings")
@@ -575,11 +562,11 @@ async def patch_conversation_settings(request: Request, store: TheStore, cfg: Th
     "medium"|"high"|null, "tools"?: {"chat_archive": false, "chat_archive__search": true,
     "shell": null}}. A key left out stays; null goes back to the default. Idempotent."""
     body = await json_body(request)
-    clean = conv.validate(settings_of(request), services.registry, body)
-    before = settings_of(request).chat_chain(cid)[:1]
+    clean = conv.validate(settings_of(cfg), services.registry, body)
+    before = settings_of(cfg).chat_chain(cid)[:1]
     if not await conv.apply(store, cid, clean):
         raise NotFound("chat")
-    out = conv.view(settings_of(request), cid, await conv.get(store, cid))
+    out = conv.view(settings_of(cfg), cid, await conv.get(store, cid))
     await store.append_event(cid, CONVERSATION_SETTINGS, out)
     await attachments_mod.after_switch(store, cfg,
                                        services.llm, cid,

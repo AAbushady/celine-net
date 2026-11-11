@@ -34,7 +34,7 @@ from .. import plugins, saves
 from ..settings import form
 from ..settings.files import version
 from .deps import etag, json_body, settings_of
-from ..core.route_params import TheServices, services_of
+from ..core.route_params import TheConfig, TheServices
 
 router = APIRouter(prefix="/api")
 
@@ -46,12 +46,12 @@ def _plugin(id: str) -> Plugin:
     return p
 
 
-async def _view(request: Request, response: Response, p: Plugin) -> dict[str, Any]:
-    s = settings_of(request)
+async def _view(cfg, services, response: Response, p: Plugin) -> dict[str, Any]:
+    s = settings_of(cfg)
     saved = s.plugins.get(p.id, {})
     copies = {}
     if p.data is not None and (ref := p.form.get("copies")):
-        copies = await p.attr(ref)(services_of(request), p)
+        copies = await p.attr(ref)(services, p)
     note = copies.pop("note", None) or p.form.get("note")
     ask = copies.pop("address", None)
     hide = set(copies.pop("hide", ()))      # actions that do nothing now (the plugin says)
@@ -72,20 +72,20 @@ async def _view(request: Request, response: Response, p: Plugin) -> dict[str, An
 
 
 @router.get("/forms/{id}")
-async def get_form(request: Request, response: Response, id: str) -> dict:
-    return await _view(request, response, _plugin(id))
+async def get_form(cfg: TheConfig, services: TheServices, response: Response, id: str) -> dict:
+    return await _view(cfg, services, response, _plugin(id))
 
 
 @router.put("/forms/{id}")
-async def put_form(request: Request, services: TheServices, response: Response, id: str,
+async def put_form(request: Request, cfg: TheConfig, services: TheServices, response: Response, id: str,
                    if_match: str | None = Header(default=None)) -> dict:
     p = _plugin(id)
     body = await json_body(request, need=("values",), allow=("values", "secrets"))
     values = form.kept(p.id, p.form["fields"], body["values"], body.get("secrets", {}),
-                       settings_of(request).plugins.get(p.id, {}))
+                       settings_of(cfg).plugins.get(p.id, {}))
     out = await saves.plugin_form(services, p, values,
                                   body.get("secrets", {}), if_match)
-    return {**await _view(request, response, p), **out}
+    return {**await _view(cfg, services, response, p), **out}
 
 
 @router.post("/forms/{id}/{action}")

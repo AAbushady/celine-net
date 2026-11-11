@@ -210,7 +210,7 @@ def _refused(e: BrowserRefused) -> CelineError:
 
 
 @ws_router.websocket("/ws/browser")
-async def screen(ws: WebSocket):
+async def screen(ws: WebSocket, cfg: TheConfig):
     """Xvnc's bytes to the page as binary frames, the page's binary frames to Xvnc, as
     they come; each side waits for the other, so a slow page slows Xvnc down. Text frames
     are pings, answered with pong. Another site's page: 1008; no Xvnc or it went away:
@@ -220,7 +220,7 @@ async def screen(ws: WebSocket):
         return
     await ws.accept()
     try:
-        vnc = await sync.screen(ws.app.state.services.cfg)
+        vnc = await sync.screen(cfg)
     except OSError:
         await ws.close(code=1011)
         return

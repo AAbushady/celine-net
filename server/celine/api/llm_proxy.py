@@ -58,7 +58,7 @@ from ..settings.kinds import headers as provider_headers, server_output
 from ..settings.registry import backend_config
 from ..backends import tokens
 from .deps import LLM_PROXY
-from ..core.route_params import TheServices
+from ..core.route_params import TheConfig, TheServices
 
 log = logging.getLogger("celine.llm_proxy")
 router = APIRouter(prefix=LLM_PROXY.rstrip("/"))
@@ -79,23 +79,23 @@ def _error(status: int, message: str, kind: str) -> JSONResponse:
 _PROXIED = ("x-forwarded-for", "forwarded", "x-real-ip")
 
 
-def _caller(request: Request) -> tuple[tuple[str, str, Priority] | None,
+def _caller(request: Request, cfg) -> tuple[tuple[str, str, Priority] | None,
                                         JSONResponse | None]:
     """The key check -> ((its lane, its label, its priority), None), or (None, the
     refusal). The shellbox-llm key only straight from the box, not through the public
     origin; a device's key from anywhere."""
     from ..devices import devices
     given = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
-    for d in devices(request.app.state.services.cfg).values():
+    for d in devices(cfg).values():
         if d.key and hmac.compare_digest(given.encode(), d.key.encode()):
             return (d.id, d.label, Priority.AGENT), None
-    return (LANE, "Shellbox", Priority.BACKGROUND), _refused(request, given)
+    return (LANE, "Shellbox", Priority.BACKGROUND), _refused(request, cfg, given)
 
 
-def _refused(request: Request, given: str) -> JSONResponse | None:
+def _refused(request: Request, cfg, given: str) -> JSONResponse | None:
     if any(n in request.headers for n in _PROXIED):
         return _error(403, "The shellbox's key works only from the shellbox.", "permission_error")
-    want = key(request.app.state.services.cfg)
+    want = key(cfg)
     if not want:
         return _error(503, "The model proxy is off: the app has no keys/shellbox-llm.key.", "unavailable")
     if not hmac.compare_digest(given.encode(), want.encode()):
@@ -247,11 +247,10 @@ def _media_address(body: dict) -> str | None:
     return None
 
 
-async def _forward(request: Request, path: str):
-    caller, refused = _caller(request)
+async def _forward(request: Request, services, path: str):
+    caller, refused = _caller(request, services.cfg)
     if refused is not None:
         return refused
-    services = request.app.state.services
     from ..guard.freeze import frozen
     if await frozen(services.store) is not None:
         return _error(403, services.cfg.substitute(
@@ -300,8 +299,8 @@ async def _forward(request: Request, path: str):
 
 
 @router.get("/models")
-async def models(request: Request, services: TheServices):
-    caller, refused = _caller(request)
+async def models(request: Request, cfg: TheConfig, services: TheServices):
+    caller, refused = _caller(request, cfg)
     if refused is not None:
         return refused
     s = getattr(services.cfg, "settings", None)
@@ -331,5 +330,5 @@ def _sizes(s, ref: str) -> dict:
 
 
 @router.post("/chat/completions")
-async def chat_completions(request: Request):
-    return await _forward(request, "chat/completions")
+async def chat_completions(request: Request, services: TheServices):
+    return await _forward(request, services, "chat/completions")

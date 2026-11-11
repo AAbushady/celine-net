@@ -38,12 +38,12 @@ class MessageIn(BaseModel):
     until: str | None = None
 
 
-async def _sender(request: Request) -> str:
+async def _sender(request: Request, store) -> str:
     """`system:<name>` with a named token, else the user (the app session)."""
     token = tokens.bearer(request.scope.get("headers") or [])
     if token is None:
         return "user"
-    name = await request.app.state.services.store.read(lambda c: tokens.name_of(c, token))
+    name = await store.read(lambda c: tokens.name_of(c, token))
     if name is None:
         raise CelineError("not_found", request.url.path, 404)
     return f"system:{name}"
@@ -70,7 +70,7 @@ async def send(request: Request, store: TheStore, cfg: TheConfig, services: TheS
     """From `system:<name>` with a named token, or from the user what READ_ONLY names
     (_user_may_send). `in` ("30 min") or `at` ("08:00") make it land later; `until`
     ("05:00", "2 h") to `all` is an announcement that stands until then."""
-    sender = await _sender(request)
+    sender = await _sender(request, store)
     text = body.text.strip()
     if not text:
         raise CelineError("bad_request", "Text is required.", 400)
@@ -98,7 +98,7 @@ async def send(request: Request, store: TheStore, cfg: TheConfig, services: TheS
         raise CelineError("bad_request", str(e), 400) from None
     if sender == "user" and body.reply_to is not None and due is None and out:
         from ..guard import consult           # their answer to Bastet, in her thread
-        await consult.from_session(request, out["intercom_id"], text)
+        await consult.from_session(request, services, out["intercom_id"], text)
     return out
 
 
@@ -195,7 +195,7 @@ CARRIED = "{user} continued Intercom thread #{thread} in this chat. The thread:"
 
 
 @router.post("/intercom/threads/{tid}/conversations", dependencies=[Depends(person_only)])
-async def to_chat(request: Request, services: TheServices, tid: int) -> dict:
+async def to_chat(services: TheServices, tid: int) -> dict:
     """Continue in a chat: a new chat with it that carries thread `tid`, its messages
     landing there as one notice from the app without waking it (CARRIED, each message
     with the line it reads above it). The thread moves: what waits for you in it is read
@@ -216,7 +216,7 @@ async def to_chat(request: Request, services: TheServices, tid: int) -> dict:
     cid = await conversations.create(store, (msgs[0]["subject"] or "").strip()[:200])
     await services.intercom.send("system:app", f"agent:{cid}", "\n\n".join(lines),
                                  kind="notice", wake=False)
-    await _read(request, lambda c: [m["id"] for m in msgs])
+    await _read(store, lambda c: [m["id"] for m in msgs])
 
     def shelve(c):
         if rows.archive(c, [tid]):
@@ -229,10 +229,8 @@ class ReadIn(BaseModel):
     ids: list[int]
 
 
-async def _read(request: Request, ids) -> list[int]:
+async def _read(store, ids) -> list[int]:
     """The user's deliveries of `ids(c)` become read, each one an `intercom.state`."""
-    store = request.app.state.services.store
-
     def fn(c):
         done = rows.read(c, ids(c))
         for iid in done:
@@ -244,13 +242,13 @@ async def _read(request: Request, ids) -> list[int]:
 
 
 @router.post("/intercom/read", dependencies=[Depends(person_only)])
-async def read(request: Request, body: ReadIn | None = None, all: bool = False) -> dict:
+async def read(store: TheStore, body: ReadIn | None = None, all: bool = False) -> dict:
     """The user's deliveries of these messages (`{ids}`) become read; `?all=1`: everything
     that waits for the user (Dismiss all)."""
     if all:
-        return {"read": await _read(request, lambda c: rows.waiting_ids(c, "user"))}
+        return {"read": await _read(store, lambda c: rows.waiting_ids(c, "user"))}
     ids = body.ids if body is not None else []
-    return {"read": await _read(request, lambda c: ids)}
+    return {"read": await _read(store, lambda c: ids)}
 
 
 class ThreadsIn(BaseModel):
@@ -324,7 +322,7 @@ async def stream(request: Request, store: TheStore, services: TheServices, to: s
 
 @router.post("/intercom/{iid}/stop")
 async def cancel(request: Request, store: TheStore, services: TheServices, iid: int) -> dict:
-    sender = await _sender(request)
+    sender = await _sender(request, store)
     if sender != "user":                # a token takes back only what it sent
         frm = await store.read(lambda c: c.execute(
             "SELECT from_addr FROM intercom WHERE id=?", (iid,)).fetchone())

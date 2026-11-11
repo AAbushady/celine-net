@@ -28,7 +28,7 @@ from fastapi import APIRouter, WebSocket
 
 from ..conversations import changes as changes_mod, view
 from .deps import GONE
-from ..core.route_params import TheStore
+from ..core.route_params import TheServices, TheStore
 from .origin import ws_origin_ok
 from ..core.event_types import MESSAGE_DELTA, MESSAGE_REASONING, TOOL_PROGRESS
 
@@ -41,13 +41,13 @@ MERGED = (MESSAGE_DELTA, MESSAGE_REASONING)    # merged on replay, per message
 
 # a live view's other end went away: the page (Starlette) or the box's socket (anyio)
 @router.websocket("/ws/events")
-async def socket(ws: WebSocket) -> None:
+async def socket(ws: WebSocket, services: TheServices) -> None:
     if not ws_origin_ok(ws.headers, ws.app.state.allowed_origins):
         await ws.close(code=1008)
         return
     await ws.accept()
     lock = anyio.Lock()
-    push = ws.app.state.services.push     # push.py: no push while a page is focused
+    push = services.push     # push.py: no push while a page is focused
 
     async def send(frame: dict) -> None:
         async with lock:
@@ -65,7 +65,7 @@ async def socket(ws: WebSocket) -> None:
                 async def run() -> None:
                     with scope:
                         try:
-                            await fn(ws.app.state.services, send, *args)
+                            await fn(services, send, *args)
                         except GONE:                 # the client left mid-send
                             log.debug("socket closed while sending", exc_info=True)
                             tg.cancel_scope.cancel()

@@ -8,10 +8,11 @@ import base64
 import json
 import logging
 from datetime import datetime
+from typing import Annotated, cast
 
 import anyio
 import httpx
-from fastapi import APIRouter, Query, Request, WebSocket
+from fastapi import APIRouter, Depends, Query, WebSocket
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -19,14 +20,14 @@ from ..conversations import store as conversations
 from .. import commands as commands_mod
 from ..api.origin import ws_origin_ok
 from ..api.deps import GONE, page_frames
-from ..core.route_params import TheConfig, TheServices, TheStore, store_of
+from ..core.route_params import TheConfig, TheServices, TheStore
 from ..core.ids import now
 from ..errors import (CelineError, NotFound, TooLarge, ToolRefused, not_set_up,
                       unreachable_words)
 from ..clock import zone
 from ..settings import features
 from . import store as terminals
-from .sync import MISSES
+from .sync import MISSES, TerminalSync
 from ..core.event_types import TERMINAL_STATE
 
 log = logging.getLogger("celine.terminals")
@@ -45,8 +46,11 @@ EVERYTHING = 1_000_000   # rows: the log filtered here, not in the store
 END = json.dumps({"type": "end"})
 
 
-def _sync(request):
-    return request.app.state.services.terminals
+def _sync(services: TheServices) -> TerminalSync:
+    return cast(TerminalSync, services.terminals)    # the services hold it by its interface
+
+
+TheSync = Annotated[TerminalSync, Depends(_sync)]
 
 
 async def _daemon(sync, path: str, body: dict, read: float) -> dict:
@@ -66,8 +70,8 @@ async def _daemon(sync, path: str, body: dict, read: float) -> dict:
     return res
 
 
-async def _one(request, id: str) -> dict:
-    t = await terminals.get(store_of(request), id)
+async def _one(store, id: str) -> dict:
+    t = await terminals.get(store, id)
     if t is None:
         raise NotFound("terminal")
     return t
@@ -84,11 +88,10 @@ async def _view(store, sync, t: dict) -> dict:
 # ---- the list and one terminal ------------------------------------------------------------
 
 @router.get("/terminals")
-async def list_terminals(request: Request, store: TheStore, cfg: TheConfig, mission: str | None = None,
+async def list_terminals(store: TheStore, cfg: TheConfig, sync: TheSync, mission: str | None = None,
                          trashed: bool = False) -> dict:
     """Open terminals first; trashed ones left out, or only those with `trashed`. With
     `mission`, only the terminals of that mission's conversation and its sub-agents."""
-    sync = _sync(request)
     out = []
     for t in await terminals.list_terminals(store, trashed):
         row = await _view(store, sync, t)
@@ -105,10 +108,9 @@ async def list_terminals(request: Request, store: TheStore, cfg: TheConfig, miss
 
 
 @router.post("/terminals")
-async def new_terminal(request: Request, store: TheStore, cfg: TheConfig) -> dict:
+async def new_terminal(store: TheStore, cfg: TheConfig, sync: TheSync) -> dict:
     """A terminal of the user's own: the first free name of theirs, opened by the
     daemon with them as owner."""
-    sync = _sync(request)
     owner = terminals.slug(cfg.user) or "you"
     held = {t["name"] for t in await terminals.list_terminals(store)
             if t["ended_at"] is None} | sync.names
@@ -124,14 +126,14 @@ async def new_terminal(request: Request, store: TheStore, cfg: TheConfig) -> dic
 
 
 @router.get("/terminals/{id}")
-async def terminal(request: Request, store: TheStore, id: str) -> dict:
-    return await _view(store, _sync(request), await _one(request, id))
+async def terminal(store: TheStore, sync: TheSync, id: str) -> dict:
+    return await _view(store, sync, await _one(store, id))
 
 
 @router.get("/terminals/{id}/log")
-async def history(request: Request, cfg: TheConfig, id: str) -> StreamingResponse:
+async def history(store: TheStore, cfg: TheConfig, id: str) -> StreamingResponse:
     """The terminal's whole stored history, raw bytes as it printed them."""
-    await _one(request, id)
+    await _one(store, id)
     return StreamingResponse(terminals.history(cfg.data_dir, id),
                              media_type="application/octet-stream")
 
@@ -141,9 +143,9 @@ class MayType(BaseModel):
 
 
 @router.patch("/terminals/{id}")
-async def may_type(request: Request, store: TheStore, cfg: TheConfig, id: str, body: MayType) -> dict:
+async def may_type(store: TheStore, cfg: TheConfig, id: str, body: MayType) -> dict:
     """Whether it may type into this terminal of the user's."""
-    t = await _one(request, id)
+    t = await _one(store, id)
     if t["owner"] == "celine":
         raise CelineError("bad_request", f"{t['name']} is "
                           f"{cfg.name}'s terminal.", 400)
@@ -161,29 +163,29 @@ async def trash_ended(store: TheStore, state: str) -> dict:
     return {"trashed": n}
 
 
-async def _trash(request: Request, id: str, on: bool) -> dict:
-    t = await _one(request, id)
-    if not await terminals.set_trashed(store_of(request), id, on):
+async def _trash(store, id: str, on: bool) -> dict:
+    t = await _one(store, id)
+    if not await terminals.set_trashed(store, id, on):
         raise CelineError("bad_request", f"{t['name']} is still open.", 400)
-    store_of(request).emit_global({"type": TERMINAL_STATE})
+    store.emit_global({"type": TERMINAL_STATE})
     return {"ok": True}
 
 
 @router.post("/terminals/{id}/restore")
-async def restore_terminal(request: Request, id: str) -> dict:
-    return await _trash(request, id, False)
+async def restore_terminal(store: TheStore, id: str) -> dict:
+    return await _trash(store, id, False)
 
 
 @router.delete("/terminals/{id}")
-async def delete_terminal(request: Request, id: str, for_good: bool = False) -> dict:
+async def delete_terminal(store: TheStore, cfg: TheConfig, id: str, for_good: bool = False) -> dict:
     """An ended terminal into the trash, its history stays; for_good=1: a trashed
     terminal, its commands and its history, gone."""
     if not for_good:
-        return await _trash(request, id, True)
-    await _one(request, id)
-    if not await terminals.purge(store_of(request), request.app.state.services.cfg.data_dir, id):
+        return await _trash(store, id, True)
+    await _one(store, id)
+    if not await terminals.purge(store, cfg.data_dir, id):
         raise CelineError("conflict", "It is not in the Trash.", 409)
-    store_of(request).emit_global({"type": TERMINAL_STATE})
+    store.emit_global({"type": TERMINAL_STATE})
     return {"ok": True}
 
 
@@ -194,12 +196,11 @@ class Control(BaseModel):
 
 
 @router.post("/terminals/{id}/control")
-async def control(request: Request, store: TheStore, cfg: TheConfig, id: str, body: Control) -> dict:
+async def control(store: TheStore, cfg: TheConfig, sync: TheSync, id: str, body: Control) -> dict:
     """Stop (Ctrl-C), pause, resume or close. All but close are logged as a command of
     the user's with the short word; on its terminals also the sentence it reads with
     its next result."""
-    sync = _sync(request)
-    t = await _one(request, id)
+    t = await _one(store, id)
     if body.action not in LABELS:
         raise CelineError("bad_request", "action is stop, pause, resume or close.", 400)
     if t["ended_at"]:
@@ -237,7 +238,7 @@ def control_words(user: str, action: str, name: str, program: str | None,
 # ---- the commands log -----------------------------------------------------------------------
 
 @router.get("/terminal-commands")
-async def commands(request: Request, store: TheStore, services: TheServices, terminal: str | None = None,
+async def commands(store: TheStore, cfg: TheConfig, sync: TheSync, terminal: str | None = None,
                    from_: str = Query("all", alias="from"), result: str = "all",
                    q: str = "", mission: str | None = None, limit: int = 100,
                    before: str | None = None) -> dict:
@@ -249,8 +250,8 @@ async def commands(request: Request, store: TheStore, services: TheServices, ter
                           "from is all, conversations, missions, sub_agents or you.", 400)
     if result not in RESULTS:
         raise CelineError("bad_request", "result is all, failed or in_progress.", 400)
-    live = _sync(request).live
-    places = {w: services.cfg.substitute(p["where"]) for w, p in store.tool_places.items()
+    live = sync.live
+    places = {w: cfg.substitute(p["where"]) for w, p in store.tool_places.items()
               if p["place"] == "terminals"}
     limit = max(1, min(limit, 500))
     kind = FROM[from_]
@@ -315,9 +316,9 @@ def dur(seconds) -> str:
 # ---- a message from a terminal page ---------------------------------------------------------
 
 @router.get("/terminals/{id}/targets")
-async def targets(request: Request, store: TheStore, cfg: TheConfig, id: str) -> dict:
+async def targets(store: TheStore, cfg: TheConfig, id: str) -> dict:
     """Where the page's message can go, by name: the terminal's conversation first."""
-    await _one(request, id)
+    await _one(store, id)
     own = await terminals.last_conversation(store, id)
     tz = zone(cfg)
     return {"targets": await store.read(
@@ -331,10 +332,11 @@ class TerminalMessage(BaseModel):
 
 
 @router.post("/terminals/{id}/messages")
-async def message(request: Request, store: TheStore, cfg: TheConfig, services: TheServices, id: str, body: TerminalMessage) -> dict:
+async def message(store: TheStore, cfg: TheConfig, services: TheServices, sync: TheSync, id: str,
+                  body: TerminalMessage) -> dict:
     """The user's text into a conversation, with one trailing line that links the
     terminal, or quotes one of its commands."""
-    t = await _one(request, id)
+    t = await _one(store, id)
     size = len(body.text.encode())
     if size > cfg.r("max_message_bytes"):
         raise TooLarge("This message", size, cfg.r("max_message_bytes"))
@@ -347,7 +349,7 @@ async def message(request: Request, store: TheStore, cfg: TheConfig, services: T
         raise CelineError("bad_request", "Nothing to send.", 400)
     line = f"[[terminal:{id}]] {t['name']}"
     if body.command_id:
-        row = await _command(store, id, body.command_id, _sync(request).live)
+        row = await _command(store, id, body.command_id, sync.live)
         if row is None:
             raise NotFound("command")
         said = ", ".join(p for p in (row["text"], outcome_words(row)) if p)
@@ -382,7 +384,7 @@ async def _command(store, terminal_id: str, command_id: str, live: dict) -> dict
 # ---- the live view --------------------------------------------------------------------------
 
 @ws_router.websocket("/ws/terminals/{id}")
-async def terminal_socket(ws: WebSocket, id: str):
+async def terminal_socket(ws: WebSocket, store: TheStore, sync: TheSync, id: str):
     """The daemon's view of the terminal, chunk by chunk as binary frames, then the text
     frame {"type": "end"} when the terminal ends. Binary frames from the page are keys
     into the user's own terminal; a ping gets a pong."""
@@ -390,7 +392,6 @@ async def terminal_socket(ws: WebSocket, id: str):
         await ws.close(code=1008)
         return
     await ws.accept()
-    store, sync = ws.app.state.services.store, ws.app.state.services.terminals
     t = await terminals.get(store, id)
     if t is None:
         await ws.close(code=1008)

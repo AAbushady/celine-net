@@ -7,21 +7,15 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from ..agent import Agent
 from ..errors import CelineError, NotFound, TooLarge
 from ..skills import notebook_index
 from ..skills.notebook import NO_SUMMARY, is_stamp, move_note, trash, unstamped, write_note
-from ..core.route_params import TheConfig, TheStore, cfg_of, store_of
+from ..core.route_params import TheConfig, TheServices, TheStore
 
 router = APIRouter(prefix="/api")
-
-
-def _who(request: Request) -> Agent:
-    """The agent's own is the one notebook."""
-    return cfg_of(request).agent
 
 
 def _notebook_path(ch, rel: str) -> Path:
@@ -35,8 +29,8 @@ def _notebook_path(ch, rel: str) -> Path:
     return p
 
 
-def _virtual(request: Request) -> dict[str, str]:
-    nb = request.app.state.services.registry.skills.get("notebook")
+def _virtual(services) -> dict[str, str]:
+    nb = _notebook_skill(services)
     return nb.virtual() if nb is not None else {}
 
 
@@ -45,12 +39,12 @@ def _refuse_virtual(rel: str) -> None:
         raise CelineError("bad_request", "The app generates tools/. You cannot change it.", 400)
 
 
-def _notebook_skill(request: Request):
-    return request.app.state.services.registry.skills.get("notebook")
+def _notebook_skill(services):
+    return services.registry.skills.get("notebook")
 
 
-def _owner(request: Request, rel: str) -> str | None:
-    nb = _notebook_skill(request)
+def _owner(services, rel: str) -> str | None:
+    nb = _notebook_skill(services)
     return nb.owner(rel) if nb is not None else None
 
 
@@ -59,11 +53,11 @@ def _mtime(p: Path) -> str:
 
 
 @router.get("/notebook/tree")
-async def notebook_tree(request: Request, store: TheStore) -> dict:
+async def notebook_tree(cfg: TheConfig, services: TheServices, store: TheStore) -> dict:
     """Every folder and note; a note with `updated_at` (ISO, UTC) and `line`, the summary
     its index keeps of it (null before it has one)."""
-    ch = _who(request)
-    nb = _notebook_skill(request)
+    ch = cfg.agent
+    nb = _notebook_skill(services)
     lines = {r["path"]: r["summary"] for r in await notebook_index.list(store)
              if r["summary"] and r["summary"] != NO_SUMMARY}
     if nb is not None:  # a placeholder named after the user lands once there is a name
@@ -80,7 +74,7 @@ async def notebook_tree(request: Request, store: TheStore) -> dict:
                 out.append({"name": p.name, "path": r, "kind": "dir",
                             "children": walk(p, r)})
             else:
-                owner = _owner(request, r)
+                owner = _owner(services, r)
                 out.append({"name": p.name, "path": r, "kind": "file",
                             "bytes": p.stat().st_size, "protected": owner is not None,
                             "owner": owner, "updated_at": _mtime(p),
@@ -88,7 +82,7 @@ async def notebook_tree(request: Request, store: TheStore) -> dict:
         return out
 
     tree = walk(root, "") if root.is_dir() else []
-    virtual = _virtual(request)
+    virtual = _virtual(services)
     if virtual:
         tree.append({"name": "tools", "path": "tools", "kind": "dir", "virtual": True,
                      "children": [{"name": p.split("/", 1)[1], "path": p, "kind": "file",
@@ -98,12 +92,12 @@ async def notebook_tree(request: Request, store: TheStore) -> dict:
 
 
 @router.get("/notebook/entries/{path:path}")
-async def notebook_read(request: Request, cfg: TheConfig, path: str) -> dict:
+async def notebook_read(services: TheServices, cfg: TheConfig, path: str) -> dict:
     """{path, content (the text as stored, for editing), shown (to read: its name, the
     user's and its pronouns filled in, the Last changed line left out, the head says
     it), protected, owner}."""
-    ch = _who(request)
-    if (text := _virtual(request).get(path)) is not None:
+    ch = cfg.agent
+    if (text := _virtual(services).get(path)) is not None:
         return {"path": path, "content": text, "shown": text, "protected": True,
                 "virtual": True}
     p = _notebook_path(ch, path)
@@ -114,8 +108,8 @@ async def notebook_read(request: Request, cfg: TheConfig, path: str) -> dict:
     except UnicodeDecodeError:
         raise CelineError("not_text", f"{path} is not a text file.", 415) from None
     return {"path": path, "content": text, "shown": cfg.substitute(unstamped(text)),
-            "protected": _owner(request, path) is not None,
-            "owner": _owner(request, path)}
+            "protected": _owner(services, path) is not None,
+            "owner": _owner(services, path)}
 
 
 class NotebookWrite(BaseModel):
@@ -123,9 +117,9 @@ class NotebookWrite(BaseModel):
 
 
 @router.put("/notebook/entries/{path:path}")
-async def notebook_write(request: Request, store: TheStore, cfg: TheConfig, path: str, body: NotebookWrite) -> dict:
+async def notebook_write(store: TheStore, cfg: TheConfig, path: str, body: NotebookWrite) -> dict:
     """The note's whole text."""
-    ch = _who(request)
+    ch = cfg.agent
     _entry_path(path)
     if len(body.content.encode()) > cfg.r("max_message_bytes"):
         raise TooLarge("This note", len(body.content.encode()),
@@ -191,7 +185,7 @@ def _history(ch, rel: str) -> list[dict]:
 
 
 @router.get("/notebook/versions")
-async def notebook_versions(request: Request, path: str, q: str = "",
+async def notebook_versions(cfg: TheConfig, path: str, q: str = "",
                             before: int | None = None) -> dict:
     """A note's History, as every long text's (web/src/lib/texts.ts): {versions: [{id, at,
     by, change, size}], current, total, next}. `versions` are the texts it had before,
@@ -199,7 +193,7 @@ async def notebook_versions(request: Request, path: str, q: str = "",
     has now, the newest of all (null when `q`, which looks in the changes, misses it or a
     page after the first is asked); `total` counts both."""
     # note: reads every copy on each page; an index once a note has thousands
-    every = [{k: v for k, v in r.items() if k != "text"} for r in _history(_who(request), path)]
+    every = [{k: v for k, v in r.items() if k != "text"} for r in _history(cfg.agent, path)]
     now = every.pop() if every else None
     rows = [r for r in reversed(every)
             if (before is None or r["id"] < before) and q.lower() in r["change"].lower()]
@@ -210,10 +204,10 @@ async def notebook_versions(request: Request, path: str, q: str = "",
 
 
 @router.get("/notebook/versions/{vid}")
-async def notebook_version(request: Request, vid: int, path: str) -> dict:
+async def notebook_version(cfg: TheConfig, vid: int, path: str) -> dict:
     """One text the note had: {id, at, by, change, size, text}, as stored; Restore this
     version puts it into the editor and Save writes it."""
-    found = next((r for r in _history(_who(request), path) if r["id"] == vid), None)
+    found = next((r for r in _history(cfg.agent, path) if r["id"] == vid), None)
     if found is None:
         raise NotFound("version")
     return found
@@ -224,9 +218,9 @@ class NotebookPath(BaseModel):
 
 
 @router.post("/notebook/folders")
-async def notebook_mkdir(request: Request, body: NotebookPath) -> dict:
+async def notebook_mkdir(cfg: TheConfig, body: NotebookPath) -> dict:
     _refuse_virtual(body.path)
-    p = _notebook_path(_who(request), body.path)
+    p = _notebook_path(cfg.agent, body.path)
     if p.exists() and not p.is_dir():
         raise CelineError("bad_request", f"{body.path} is a file.", 400)
     p.mkdir(parents=True, exist_ok=True)
@@ -239,15 +233,15 @@ class NotebookChange(BaseModel):
 
 
 @router.patch("/notebook/entries/{path:path}")
-async def notebook_change(request: Request, store: TheStore, path: str, body: NotebookChange) -> dict:
+async def notebook_change(cfg: TheConfig, services: TheServices, store: TheStore, path: str, body: NotebookChange) -> dict:
     """{path}: the note or folder moves there, its history and protection along;
     {protected}: write protection for it on a note (the seeded ones, skills/notebook.py
     SEEDS, stay). -> {ok, owner}."""
     _entry_path(path)
-    ch = _who(request)
-    nb = _notebook_skill(request)
+    ch = cfg.agent
+    nb = _notebook_skill(services)
     if body.path is not None:
-        await _move(request, ch, nb, path, body.path)
+        await _move(store, ch, nb, path, body.path)
         path = body.path
     if body.protected is not None:
         _refuse_virtual(path)
@@ -261,7 +255,7 @@ async def notebook_change(request: Request, store: TheStore, path: str, body: No
     return {"ok": True, "owner": nb.owner(path) if nb is not None else None}
 
 
-async def _move(request: Request, ch, nb, src_rel: str, dst_rel: str) -> None:
+async def _move(store, ch, nb, src_rel: str, dst_rel: str) -> None:
     _refuse_virtual(src_rel)
     _refuse_virtual(dst_rel)
     src, dst = _notebook_path(ch, src_rel), _notebook_path(ch, dst_rel)
@@ -272,13 +266,13 @@ async def _move(request: Request, ch, nb, src_rel: str, dst_rel: str) -> None:
     if src.is_dir() and dst.is_relative_to(src):
         raise CelineError("bad_request", "A folder cannot move into itself.", 400)
     move_note(ch.notebook.resolve(), src, dst, src_rel, dst_rel)
-    await notebook_index.move(store_of(request), src_rel, dst_rel)
+    await notebook_index.move(store, src_rel, dst_rel)
     if nb is not None:
         base = src_rel.rstrip("/")
         for rel in sorted(nb.marked):
             if rel == src_rel or rel.startswith(base + "/"):
-                await nb.mark(store_of(request), rel, False)
-                await nb.mark(store_of(request), dst_rel.rstrip("/") + rel[len(base):], True)
+                await nb.mark(store, rel, False)
+                await nb.mark(store, dst_rel.rstrip("/") + rel[len(base):], True)
 
 
 def _entry_path(path: str) -> None:
@@ -288,15 +282,15 @@ def _entry_path(path: str) -> None:
 
 
 @router.delete("/notebook/entries/{path:path}")
-async def notebook_delete(request: Request, path: str) -> dict:
+async def notebook_delete(store: TheStore, cfg: TheConfig, path: str) -> dict:
     """The note or folder moves to .trash/<time>/<path>, as its notebook__delete does."""
-    ch = _who(request)
+    ch = cfg.agent
     _refuse_virtual(path)
     p = _notebook_path(ch, path)
     if not p.exists():
         raise NotFound("path")
     trash(ch.notebook.resolve(), p, path)
-    removed = await notebook_index.delete_prefix(store_of(request), path)
+    removed = await notebook_index.delete_prefix(store, path)
     return {"ok": True, "index_rows": removed}
 
 
@@ -317,14 +311,14 @@ def _trashed(root: Path) -> list[dict]:
 
 
 @router.get("/notebook/trash")
-async def notebook_trash(request: Request) -> dict:
-    return {"trash": _trashed(_who(request).notebook.resolve())}
+async def notebook_trash(cfg: TheConfig) -> dict:
+    return {"trash": _trashed(cfg.agent.notebook.resolve())}
 
 
 @router.post("/notebook/trash/{tid}/restore")
-async def notebook_untrash(request: Request, tid: str) -> dict:
+async def notebook_untrash(store: TheStore, cfg: TheConfig, tid: str) -> dict:
     """A deleted note or folder back where it was, indexed again."""
-    ch = _who(request)
+    ch = cfg.agent
     root = ch.notebook.resolve()
     entry = next((e for e in _trashed(root) if e["id"] == tid), None)
     if entry is None:
@@ -344,16 +338,16 @@ async def notebook_untrash(request: Request, tid: str) -> dict:
             text = f.read_text()
         except UnicodeDecodeError:
             continue
-        await notebook_index.upsert(store_of(request), f.relative_to(root).as_posix(),
+        await notebook_index.upsert(store, f.relative_to(root).as_posix(),
                                     NO_SUMMARY, len(text), text)
     return {"ok": True, "path": entry["path"]}
 
 
 @router.delete("/notebook/trash/{tid}")
-async def notebook_purge(request: Request, tid: str) -> dict:
+async def notebook_purge(cfg: TheConfig, tid: str) -> dict:
     """One deleted note or folder gone for good, for you: its .trash folder goes. The agent's
     own delete only ever moves a note to the trash."""
-    root = _who(request).notebook.resolve()
+    root = cfg.agent.notebook.resolve()
     entry = next((e for e in _trashed(root) if e["id"] == tid), None)
     if entry is None:
         raise NotFound("deleted note")

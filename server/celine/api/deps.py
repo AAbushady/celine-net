@@ -18,8 +18,8 @@ from ..settings.files import Invalid
 LLM_PROXY = "/llm/v1/"
 
 
-def settings_of(request: Request):
-    s = getattr(request.app.state.services.cfg, "settings", None)
+def settings_of(cfg):
+    s = getattr(cfg, "settings", None)
     if s is None:
         raise CelineError("unavailable", "Settings are not loaded.", 503)
     return s

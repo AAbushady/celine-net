@@ -6,30 +6,29 @@ from fastapi import APIRouter, Request
 
 from ..errors import NotFound
 from . import Event, declared, fired, state
-from ..core.route_params import TheConfig, TheServices
+from ..core.route_params import TheConfig, TheServices, TheStore
 
 router = APIRouter(prefix="/api")
 
 
-async def _view(request: Request, skill, t) -> dict:
-    cfg = request.app.state.services.cfg
+async def _view(store, cfg, skill, t) -> dict:
     return {"name": t.name, "label": cfg.substitute(t.label),
             "about": cfg.substitute(t.about), "skill": skill.name,
             "kind": "event" if isinstance(t, Event) else "watch", **state(cfg, t),
-            "fired_at": await request.app.state.services.store.read(lambda c: fired(c, t.name))}
+            "fired_at": await store.read(lambda c: fired(c, t.name))}
 
 
 @router.get("/triggers")
-async def list_triggers(request: Request, services: TheServices) -> dict:
+async def list_triggers(store: TheStore, cfg: TheConfig, services: TheServices) -> dict:
     """{triggers: [{name, label, about, skill, kind: event|watch, on, fired_at}]}: every
     trigger a loaded skill declares (its label and one line on what it does), with the
     user's state and when it last fired (null: never)."""
-    return {"triggers": [await _view(request, skill, t) for skill, t in
+    return {"triggers": [await _view(store, cfg, skill, t) for skill, t in
                          declared(services.registry).values()]}
 
 
 @router.put("/triggers/{name}")
-async def put_trigger(request: Request, cfg: TheConfig, services: TheServices, name: str) -> dict:
+async def put_trigger(request: Request, store: TheStore, cfg: TheConfig, services: TheServices, name: str) -> dict:
     """{on}: the whole state of one trigger. Written to var/settings/triggers.toml; the
     reload starts the triggers again with it. -> the trigger as in the list, and
     `applied`."""
@@ -47,7 +46,7 @@ async def put_trigger(request: Request, cfg: TheConfig, services: TheServices, n
     async with write.lock():
         out = await reload.commit(services, {
             "triggers": {**cfg.settings.triggers, name: {"on": body["on"]}}})
-    return {**await _view(request, skill, t), **out}
+    return {**await _view(store, cfg, skill, t), **out}
 
 
 @router.get("/background-conversations")

@@ -14,7 +14,7 @@ as GET /api/generation-presets lists it (comfyui/api.py).
 import json
 from typing import Any, Literal
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Response
 from pydantic import BaseModel
 
 from .. import reload
@@ -47,20 +47,20 @@ def _preset(pid: str) -> presets_mod.Preset:
     return presets_mod.of(kind)[pid]
 
 
-async def _saved(request: Request, p: presets_mod.Preset, changes: dict | None = None
+async def _saved(services, p: presets_mod.Preset, changes: dict | None = None
                  ) -> dict:
     """After a preset's files changed: the settings `changes` (its role, its provider)
     committed, else the config loaded again; every page hears it."""
     if changes:
-        await reload.commit(request.app.state.services, changes)
+        await reload.commit(services, changes)
     else:
-        reload.apply(request.app.state.services)
-    write.publish(request.app.state.services, ["presets"])
-    return next(x for x in presets_mod.listing(request.app.state.services.cfg.settings, p.kind) if x["id"] == p.id)
+        reload.apply(services)
+    write.publish(services, ["presets"])
+    return next(x for x in presets_mod.listing(services.cfg.settings, p.kind) if x["id"] == p.id)
 
 
 @router.post("/generation-presets", status_code=201)
-async def upload_preset(request: Request, cfg: TheConfig, body: UploadIn) -> dict:
+async def upload_preset(services: TheServices, cfg: TheConfig, body: UploadIn) -> dict:
     async with write.lock():
         p = presets_mod.upload(body.kind, body.label, body.workflow)
         s = cfg.settings
@@ -75,22 +75,22 @@ async def upload_preset(request: Request, cfg: TheConfig, body: UploadIn) -> dic
             roles = {**s.roles, p.role: {**role, "chain": [*(role.get("chain") or []),
                                                            f"{comfy}/{p.id}"]}}
             changes = {"providers": providers, "roles": roles}
-        return await _saved(request, p, changes)
+        return await _saved(services, p, changes)
 
 
 @router.put("/generation-presets/{pid}")
-async def edit_preset(request: Request, pid: str, body: ValuesIn) -> dict:
+async def edit_preset(services: TheServices, pid: str, body: ValuesIn) -> dict:
     p = _preset(pid)
     data, wf = presets_mod.edited(p, body.values)
     presets_mod.save(p.kind, p.id, data, wf, "own" if p.origin == "own" else "edited")
-    return await _saved(request, p)
+    return await _saved(services, p)
 
 
 @router.put("/generation-presets/{pid}/workflow")
-async def replace_workflow(request: Request, pid: str, body: WorkflowIn) -> dict:
+async def replace_workflow(services: TheServices, pid: str, body: WorkflowIn) -> dict:
     p = _preset(pid)
     presets_mod.replace_workflow(p, body.workflow)
-    return await _saved(request, p)
+    return await _saved(services, p)
 
 
 @router.get("/generation-presets/{pid}/workflow")
@@ -103,12 +103,12 @@ async def download_workflow(pid: str) -> Response:
 
 
 @router.post("/generation-presets/{pid}/reset")
-async def reset_preset(request: Request, pid: str) -> dict:
+async def reset_preset(services: TheServices, pid: str) -> dict:
     p = _preset(pid)
     if p.origin != "edited":
         raise CelineError("bad_request", f"{p.label} has no changes to reset.", 400)
     presets_mod.forget(p.kind, p.id)
-    return await _saved(request, p)
+    return await _saved(services, p)
 
 
 @router.delete("/generation-presets/{pid}")

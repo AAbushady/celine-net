@@ -37,6 +37,7 @@ from webauthn.helpers.structs import (
 )
 
 from ..api.deps import proven
+from ..core.route_params import services_of
 from ..errors import CelineError
 from . import CEREMONY_SECONDS, Auth, Ceremony, credentials as cred
 from ..settings import address
@@ -94,7 +95,7 @@ async def _signed_in(request: Request, body: dict, passkey: bytes | None = None,
     from .. import saves
     auth = _auth(request)
     if not auth.stored() and (origin := address.same_origin(request.headers)):
-        await saves.address(request.app.state.services, {"origin": origin})
+        await saves.address(services_of(request), {"origin": origin})
         log.info("address learned", extra={"event": "auth.address_learned", "origin": origin,
                                            "client": _client(request)})
     res = JSONResponse(body)
@@ -549,5 +550,5 @@ async def logout(request: Request):
 
 async def _forget_devices(request: Request) -> None:
     """An ended session's push subscriptions end with it (push.py)."""
-    if (push := request.app.state.services.push) is not None:
+    if (push := services_of(request).push) is not None:
         await push.forget_ended()

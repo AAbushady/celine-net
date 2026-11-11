@@ -9,10 +9,13 @@ import functools
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from ..core.ids import iso
+from ..core.route_params import TheServices
+from ..core.services import Services
+from ..core.store import Store
 from ..errors import CelineError
 
 router = APIRouter(prefix="/api")
@@ -37,55 +40,66 @@ class BulkIn(BaseModel):
 
 @functools.cache
 def _routes() -> dict:
-    """(what, action) -> the route that does it to one: (request, id) -> anything."""
+    """(what, action) -> the route that does it to one: (services, id) -> anything. Each
+    route is handed what it takes, by name."""
     from ..conversations import api as conv
     from ..terminals import api as terms
     from . import connectors, documents as docs, kb, notebook
 
     def chat(fn):
-        async def one(r: Request, key: str):
+        async def one(s: Services, key: str):
             kid, _, n = key.rpartition(":")
-            return await fn(r, kid, int(n))
+            return await fn(s, kid, int(n))
         return one
 
     return {
-        ("conversations", "archive"): conv.archive_conversation,
-        ("conversations", "unarchive"): conv.unarchive_conversation,
-        ("conversations", "trash"): conv.delete_conversation,
-        ("conversations", "restore"): conv.restore_conversation,
-        ("conversations", "purge"): lambda r, i: conv.delete_conversation(
-            r, i, for_good=True),
-        ("documents", "trash"): lambda r, i: docs.patch_item(r, int(i), docs.ItemPatch(trashed=True)),
-        ("documents", "restore"): lambda r, i: docs.patch_item(r, int(i), docs.ItemPatch(trashed=False)),
-        ("documents", "purge"): lambda r, i: docs.delete_item(r, int(i)),
-        ("folders", "trash"): lambda r, p: docs.patch_folder(r, p, docs.FolderPatch(trashed=True)),
-        ("folders", "restore"): lambda r, p: docs.patch_folder(r, p, docs.FolderPatch(trashed=False)),
-        ("folders", "purge"): docs.delete_folder,
-        ("notes", "trash"): notebook.notebook_delete,
-        ("notes", "restore"): notebook.notebook_untrash,
-        ("notes", "purge"): notebook.notebook_purge,
-        ("chats", "trash"): chat(lambda r, k, n: kb.patch_chat(r, k, n, kb.ChatPatch(trashed=True))),
-        ("chats", "restore"): chat(lambda r, k, n: kb.patch_chat(r, k, n, kb.ChatPatch(trashed=False))),
-        ("chats", "purge"): chat(connectors.delete_chat),
-        ("terminals", "trash"): terms.delete_terminal,
-        ("terminals", "restore"): terms.restore_terminal,
-        ("terminals", "purge"): lambda r, i: terms.delete_terminal(r, i, for_good=True),
+        ("conversations", "archive"): lambda s, i: conv.archive_conversation(
+            store=s.store, services=s, cid=i),
+        ("conversations", "unarchive"): lambda s, i: conv.unarchive_conversation(store=s.store, cid=i),
+        ("conversations", "trash"): lambda s, i: conv.delete_conversation(
+            store=s.store, cfg=s.cfg, cid=i),
+        ("conversations", "restore"): lambda s, i: conv.restore_conversation(store=s.store, cid=i),
+        ("conversations", "purge"): lambda s, i: conv.delete_conversation(
+            store=s.store, cfg=s.cfg, cid=i, for_good=True),
+        ("documents", "trash"): lambda s, i: docs.patch_item(
+            services=s, iid=int(i), body=docs.ItemPatch(trashed=True)),
+        ("documents", "restore"): lambda s, i: docs.patch_item(
+            services=s, iid=int(i), body=docs.ItemPatch(trashed=False)),
+        ("documents", "purge"): lambda s, i: docs.delete_item(services=s, iid=int(i)),
+        ("folders", "trash"): lambda s, p: docs.patch_folder(
+            services=s, path=p, body=docs.FolderPatch(trashed=True)),
+        ("folders", "restore"): lambda s, p: docs.patch_folder(
+            services=s, path=p, body=docs.FolderPatch(trashed=False)),
+        ("folders", "purge"): lambda s, p: docs.delete_folder(services=s, path=p),
+        ("notes", "trash"): lambda s, p: notebook.notebook_delete(store=s.store, cfg=s.cfg, path=p),
+        ("notes", "restore"): lambda s, t: notebook.notebook_untrash(store=s.store, cfg=s.cfg, tid=t),
+        ("notes", "purge"): lambda s, t: notebook.notebook_purge(cfg=s.cfg, tid=t),
+        ("chats", "trash"): chat(lambda s, k, n: kb.patch_chat(
+            services=s, sid=k, chat_id=n, body=kb.ChatPatch(trashed=True))),
+        ("chats", "restore"): chat(lambda s, k, n: kb.patch_chat(
+            services=s, sid=k, chat_id=n, body=kb.ChatPatch(trashed=False))),
+        ("chats", "purge"): chat(lambda s, k, n: connectors.delete_chat(
+            services=s, sid=k, chat_id=n)),
+        ("terminals", "trash"): lambda s, i: terms.delete_terminal(store=s.store, cfg=s.cfg, id=i),
+        ("terminals", "restore"): lambda s, i: terms.restore_terminal(store=s.store, id=i),
+        ("terminals", "purge"): lambda s, i: terms.delete_terminal(
+            store=s.store, cfg=s.cfg, id=i, for_good=True),
     }
 
 
-async def older(request: Request, kind: str, days: int) -> list[str]:
+async def older(store: Store, kind: str, days: int) -> list[str]:
     """The conversations of `kind` an "Archive older than" takes: in the list (not a
     sub-agent, not archived, not deleted, not pinned), last changed more than `days`
     days ago. The oldest first."""
     cutoff = iso(datetime.now(timezone.utc) - timedelta(days=days))
-    return await request.app.state.services.store.read(lambda c: [r[0] for r in c.execute(
+    return await store.read(lambda c: [r[0] for r in c.execute(
         "SELECT id FROM conversations WHERE agent_of IS NULL AND trashed_at IS NULL AND "
         "archived_at IS NULL AND pinned = 0 AND kind = ? AND updated_at < ? "
         "ORDER BY updated_at, id", (kind, cutoff))])
 
 
 @router.post("/bulk-actions")
-async def bulk(request: Request, body: BulkIn) -> dict:
+async def bulk(services: TheServices, body: BulkIn) -> dict:
     """{what, action, ids} or, to archive, {what: conversations, action: archive, kind,
     older_than}. -> {done: [ids], skipped: [{id, reason}]}; with `dry_run` only {ids}:
     what it would act on (the ones a rule refuses are found when it runs)."""
@@ -96,7 +110,7 @@ async def bulk(request: Request, body: BulkIn) -> dict:
         if (body.what, body.action) != ("conversations", "archive") or body.kind is None:
             raise CelineError("bad_request", "older_than archives conversations of a kind.",
                               400)
-        ids = await older(request, body.kind, body.older_than)
+        ids = await older(services.store, body.kind, body.older_than)
     else:
         ids = list(dict.fromkeys(body.ids))
     if body.dry_run:
@@ -104,7 +118,7 @@ async def bulk(request: Request, body: BulkIn) -> dict:
     done, skipped = [], []
     for i in ids:
         try:
-            await run(request, i)
+            await run(services, i)
         except CelineError as e:
             skipped.append({"id": i, "reason": str(e)})
         except ValueError:
