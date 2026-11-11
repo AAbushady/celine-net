@@ -1,6 +1,7 @@
-# The Krea 2 identity edit workflow: the krea2_identity_edit_v2 LoRA, ref_boost 4, 12 steps
-# (the face-detail end of the card's 8-12), cfg 1.0, euler, simple, grounding 1024. The
-# source image is uploaded to ComfyUI's input folder for each edit.
+# The Krea 2 identity edit workflow (comfyui-krea2edit's nodes): the turbo model in fp8
+# (krea2_turbo_fp8_scaled), the krea2_identity_edit_v2 LoRA, ref_boost 4, 12 steps (the
+# face-detail end of the card's 8-12), cfg 1.0, euler, simple, grounding 1024. The source
+# image is uploaded to ComfyUI's input folder for each edit.
 label = "Krea 2 identity edit"
 family = "Krea 2"
 task = "edit"
