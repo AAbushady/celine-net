@@ -224,6 +224,46 @@ async def test_the_texts_from_before_the_user_deleted_a_note_are_the_users(noteb
             "path": "lore/reef.md"})).json()["versions"]] == [1]
 
 
+async def test_the_users_restore_gives_the_earlier_texts_back(notebook, store):
+    """The user's Restore lifts the line from each note it brings back, a note or every
+    note of a folder; the user's next delete draws it again; its own restore keeps it."""
+    app, nb, cfg = notebook
+    ctx, root, user = _ctx("c", store, cfg), cfg.agent.notebook.resolve(), cfg.user
+    for text in ("# sea\nwaves", "# sea\ngulls"):
+        await nb.write(ctx, "lore/sea.md", text, "the sea")
+    for text in ("# reef\nfish", "# reef\ncoral"):
+        await nb.write(ctx, "lore/reef.md", text, "the reef")
+    async with client(app) as c:
+        await c.delete("/api/notebook/entries/lore/sea.md")
+        assert (await nb.read_version(ctx, "lore/sea.md", 1)).is_error
+        [sea] = (await c.get("/api/notebook/trash")).json()["trash"]
+        assert (await c.post(f"/api/notebook/trash/{sea['id']}/restore")).status_code == 200
+        assert (await nb.list_versions(ctx, "lore/sea.md")).content.splitlines()[1:] == [
+            f'version 1, from {WHEN}, 42 characters: "sea"',
+            f"Its text now is version 2, from {WHEN}: notebook__read shows it."]
+        assert (await nb.read_version(ctx, "lore/sea.md", 1)).content.endswith("# sea\nwaves")
+
+        await c.delete("/api/notebook/entries/lore")
+        assert (await nb.read_version(ctx, "lore/reef.md", 1)).is_error
+        [lore] = (await c.get("/api/notebook/trash")).json()["trash"]
+        assert (await c.post(f"/api/notebook/trash/{lore['id']}/restore")).status_code == 200
+        for rel, first in (("lore/sea.md", "# sea\nwaves"), ("lore/reef.md", "# reef\nfish")):
+            assert (await nb.read_version(ctx, rel, 1)).content.endswith(first), rel
+
+        # deleted by the user again: the line is back, and its own restore keeps it
+        line = (f"{user} deleted lore/reef.md on {WHEN}, so its texts from before then are "
+                f"{user}'s.")
+        await c.delete("/api/notebook/entries/lore/reef.md")
+        assert (await nb.list_versions(ctx, "lore/reef.md")).content == line
+        assert (await nb.read_version(ctx, "lore/reef.md", 1)).is_error
+        await nb.write(ctx, "lore/reef.md", "kelp", "the reef again")
+        await nb.delete(ctx, "lore/reef.md")
+        assert not (await nb.restore(ctx, trashed(root)[0]["id"])).is_error
+        assert (await nb.list_versions(ctx, "lore/reef.md")).content.splitlines() == [
+            line, f"Its text now is version 2, from {WHEN}: notebook__read shows it."]
+        assert (await nb.read_version(ctx, "lore/reef.md", 1)).is_error
+
+
 async def test_a_restore_is_named_by_the_path_it_went_back_to():
     """The call names a trash id; its row, its Events line and its link name the path its
     display says."""

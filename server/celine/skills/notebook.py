@@ -534,7 +534,8 @@ class Notebook:
     ) -> ToolResult:
         """List the earlier texts of one note, newest first: each change keeps the text the
         note had, also after the note is deleted. The texts from before {{username}}
-        deleted the note or its folder are {{username}}'s and left out. Each as `version
+        deleted the note or its folder are {{username}}'s and left out, until {{username}}
+        restores it. Each as `version
         3, from Tue 10 Nov 14:02, 1,204 characters: "<the line that changed>"`;
         notebook__read_version reads one. Example:
         notebook__list_versions(path="people/noor.md")."""
@@ -683,7 +684,7 @@ class Notebook:
                 f"{why}, so it stays in the trash for {{{{username}}}} to bring back."),
                 is_error=True)
         try:
-            await untrash(ctx.store, self.root.resolve(), id)
+            await untrash(ctx.store, self.root.resolve(), id, "agent")
         except FileExistsError:
             return ToolResult(content=f"A note is at {path} now, so nothing changed: "
                                       f"{_read_deleted(entry)} shows the deleted text, and "
@@ -870,7 +871,8 @@ def _now() -> datetime:
 # was deleted in .trash/<time>/<path>, each named by when it was kept (KEPT_AT, UTC). The
 # notebook browser's routes (api/notebook.py) and its tools read and restore them through
 # the functions here. What the user deleted is the user's: its text in the trash, and the
-# texts its notes had before (USER_LINE), are for the user's page only.
+# texts its notes had before (USER_LINE), are for the user's page only, until the user's
+# Restore gives them back.
 KEPT_AT = "%Y-%m-%d_%H%M%S_%f"
 BY_AGENT = ".deleted-by-agent"      # in .trash/<time>/: the agent's notebook__delete
 USER_LINE = ".deleted-by-user"      # in .versions/<path>/: the user's newest delete, <time>
@@ -917,8 +919,8 @@ def trash(root: Path, p: Path, rel: str, by: Literal["agent", "user"]) -> str:
 
 def user_line(root: Path, rel: str) -> str | None:
     """When the user last deleted note `rel` (itself or a folder that held it), as its
-    trash folder is named; None when the user never did. The line moves with the note's
-    .versions."""
+    trash folder is named; None when the user never did, or restored it since. The line
+    moves with the note's .versions."""
     f = root / ".versions" / rel / USER_LINE
     return f.read_text().strip() if f.is_file() else None
 
@@ -1021,9 +1023,10 @@ def trashed(root: Path) -> list[dict]:
     return out
 
 
-async def untrash(store, root: Path, tid: str) -> dict:
+async def untrash(store, root: Path, tid: str, by: Literal["agent", "user"]) -> dict:
     """The note or folder deleted as `tid` back where it was, each note indexed again with
-    NO_SUMMARY. -> its entry (trashed). LookupError when the trash has no `tid`,
+    NO_SUMMARY. The user's restore gives each note back with its earlier texts: its line
+    (USER_LINE) goes. -> its entry (trashed). LookupError when the trash has no `tid`,
     FileExistsError (the path) when something is at its path now."""
     entry = next((e for e in trashed(root) if e["id"] == tid), None)
     if entry is None:
@@ -1042,12 +1045,14 @@ async def untrash(store, root: Path, tid: str) -> dict:
     for d in [*src.parents][:len(Path(entry["path"]).parts)]:
         d.rmdir()
     for f in [dst] if dst.is_file() else sorted(x for x in dst.rglob("*") if x.is_file()):
+        rel = f.relative_to(root).as_posix()
+        if by == "user":
+            (root / ".versions" / rel / USER_LINE).unlink(missing_ok=True)
         try:
             text = f.read_text()
         except UnicodeDecodeError:
             continue
-        await notebook_index.upsert(store, f.relative_to(root).as_posix(), NO_SUMMARY,
-                                    len(text), text)
+        await notebook_index.upsert(store, rel, NO_SUMMARY, len(text), text)
     return entry
 
 

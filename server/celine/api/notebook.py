@@ -253,10 +253,10 @@ async def notebook_trash(cfg: TheConfig) -> NotebookTrash:
 
 @router.post("/notebook/trash/{tid}/restore")
 async def notebook_untrash(store: TheStore, cfg: TheConfig, tid: str) -> dict:
-    """A deleted note or folder back where it was, indexed again (skills/notebook.py
-    untrash, as its notebook__restore does)."""
+    """A deleted note or folder back where it was, indexed again, its notes' earlier texts
+    the agent's again (skills/notebook.py untrash, as its notebook__restore does)."""
     try:
-        entry = await untrash(store, cfg.agent.notebook.resolve(), tid)
+        entry = await untrash(store, cfg.agent.notebook.resolve(), tid, "user")
     except LookupError:
         raise NotFound("deleted note") from None
     except FileExistsError as e:
