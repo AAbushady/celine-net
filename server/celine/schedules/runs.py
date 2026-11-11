@@ -18,7 +18,10 @@ When a run starts. A run is `waiting` until all of these hold; its `reason` says
 first that does not, in words:
 0. its slot has come: a run again waits for its time ("Retry of the 02:00 run");
 1. every run it follows in the same night is finished, done or failed or skipped
-   ("Runs after World news");
+   ("Runs after World news"); when that run is a run again, the reason names it in
+   RETRY_OF's words with the time it is set for in the app's zone, or says it runs now
+   ("Runs after Self-review (retry of the 02:00 run, set for 02:20)", "Runs after
+   Self-review (retry of the 02:00 run, running now)");
 2. the first model of its role can answer now, the Router says ("Waiting for <model>.
    <why>", the why in the server's words); a server known to be failing is asked again
    at most every RETRY_DOWN (backends/router.py), and the run starts by itself when the
@@ -253,12 +256,9 @@ def view(r: sqlite3.Row | dict, cfg, held: bool = False) -> dict:
     s = (getattr(cfg, "schedules", None) or {}).get(r["schedule"])
     waits = held and r["state"] == "running"
     reason = HELD if waits else r["reason"]
-
-    def at(slot: str) -> str:
-        return datetime.fromisoformat(slot).astimezone(zone(cfg)).strftime("%H:%M")
     return {"id": r["id"], "schedule": r["schedule"],
-            "label": shown(s) if s else r["label"], "slot": r["slot"], "at": at(r["slot"]),
-            "day": r["day"],
+            "label": shown(s) if s else r["label"], "slot": r["slot"],
+            "at": time_of(r["slot"], cfg), "day": r["day"],
             "night": r["night"], "state": "waiting" if waits else r["state"],
             "display": RunState("waiting" if waits else r["state"]).display,
             "reason": reason, "reason_why": why_alone(reason),
@@ -266,10 +266,15 @@ def view(r: sqlite3.Row | dict, cfg, held: bool = False) -> dict:
             "error": r["error"], "created_at": r["created_at"],
             "started_at": r["started_at"], "finished_at": r["finished_at"],
             "started_by": r["started_by"],
-            "again_of": {"id": r["again_of"], "at": at(r["again_slot"])}
+            "again_of": {"id": r["again_of"], "at": time_of(r["again_slot"], cfg)}
             if r["again_of"] else None,
-            "retried": {"id": r["retried"], "at": at(r["retried_slot"])}
+            "retried": {"id": r["retried"], "at": time_of(r["retried_slot"], cfg)}
             if r["retried"] else None}
+
+
+def time_of(slot: str, cfg) -> str:
+    """A slot's time of day in the app's zone: "02:00"."""
+    return datetime.fromisoformat(slot).astimezone(zone(cfg)).strftime("%H:%M")
 
 
 def _set(c: sqlite3.Connection, store, cfg, rid: str, held: bool = False,
@@ -430,6 +435,19 @@ def idle(c: sqlite3.Connection, at: datetime, missions: bool = False) -> bool:
     return not waited_on(c, missions) and c.execute(
         f"SELECT 1 FROM messages m WHERE {FROM_USER} AND m.created_at >= ? LIMIT 1",
         (since,)).fetchone() is None
+
+
+def open_runs(c: sqlite3.Connection) -> dict[tuple[str, str], dict]:
+    """{(night, schedule): its open run}: a waiting or running run, the running one
+    first, else the one with the earliest slot; each {id, state, slot, again_of,
+    again_slot}, `again_slot` the slot of the run it runs again."""
+    out: dict[tuple[str, str], dict] = {}
+    for r in c.execute("SELECT r.night, r.schedule, r.id, r.state, r.slot, r.again_of, "
+                       "a.slot AS again_slot FROM runs r LEFT JOIN runs a ON a.id = "
+                       "r.again_of WHERE r.state IN ('waiting', 'running') "
+                       "ORDER BY r.state = 'running' DESC, r.slot"):
+        out.setdefault((r["night"], r["schedule"]), dict(r))
+    return out
 
 
 def binding(c: sqlite3.Connection, cid: str, cfg) -> dict | None:
@@ -735,8 +753,7 @@ class Scheduler:
         from ..guard.freeze import frozen
         cold = await frozen(store) is not None
         unused = await store.read(lambda c: idle(c, self.now(), missions))
-        open_ = await store.read(lambda c: {(r["night"], r["schedule"]) for r in c.execute(
-            "SELECT night, schedule FROM runs WHERE state IN ('waiting', 'running')")})
+        open_ = await store.read(open_runs)
         models: dict[str, str | None] = {}
         for r in waiting:
             if datetime.fromisoformat(r["slot"]) > self.now():
@@ -810,12 +827,12 @@ class Scheduler:
             return PASSED
         return None if unused else IN_USE
 
-    async def _why(self, r: dict, s, open_: set, busy: bool, models: dict) -> str | None:
+    async def _why(self, r: dict, s, open_: dict, busy: bool, models: dict) -> str | None:
         """None when run `r` may start now, else the first reason it may not."""
         for a in s.after:
-            if (r["night"], a) in open_:
+            if (o := open_.get((r["night"], a))) is not None:
                 other = self.schedules.get(a)
-                return f"Runs after {shown(other) if other else a}"
+                return self._after(shown(other) if other else a, o)
         if s.role not in models:
             models[s.role] = await self._model_why(s.role)
         if models[s.role]:
@@ -828,6 +845,18 @@ class Scheduler:
             other = self.schedules.get(label["schedule"]) if label else None
             return f"While {shown(other) if other else 'another run'} runs"
         return None
+
+    def _after(self, label: str, o: dict) -> str:
+        """"Runs after <label>" while that schedule's open run `o` (open_runs) of the night
+        has not finished; when `o` is a run again (`again_of`), with it in RETRY_OF's words
+        and the time it is set for, or that it runs now."""
+        if not o["again_of"] or not o["again_slot"]:
+            return f"Runs after {label}"
+        cfg = self.app.cfg
+        retry = RETRY_OF.format(at=time_of(o["again_slot"], cfg))
+        when = "running now" if o["state"] == "running" or o["id"] == self.current else \
+            f"set for {time_of(o['slot'], cfg)}"
+        return f"Runs after {label} ({retry[:1].lower()}{retry[1:]}, {when})"
 
     async def _model_why(self, role: str, probe: bool = True) -> str | None:
         """"Waiting for <model>. <why>" while the Router says the first model of `role`

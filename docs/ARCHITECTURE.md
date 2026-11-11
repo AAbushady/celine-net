@@ -1618,9 +1618,11 @@ rule (`idle_only`) never skips it.
 
 **When a run starts.** A run waits until all of these hold; its `reason` says the first
 that does not: its slot has come (a retry waits for its time, "Retry of the 02:00
-run"); every run it follows in the same night is finished; the first model of
-its role can answer now (`Router.can_answer`, "Waiting for <model>. <why>", the why in
-the server's words; a server known to be failing is asked again at most every 10 s); no
+run"); every run it follows in the same night is finished ("Runs after World news";
+when that run is a retry, with its time in the app's zone or that it runs: "Runs after
+Self-review (retry of the 02:00 run, set for 02:20)", "... (retry of the 02:00 run,
+running now)"); the first model of its role can answer now (`Router.can_answer`,
+"Waiting for <model>. <why>", the why in the server's words; a server known to be failing is asked again at most every 10 s); no
 turn you wait on is live (a chat's, or one you started in a mission; with Routines wait
 for missions on, any turn of a mission: `runs.waited_on`); no other run is running. The queue is ordered by night, then by how deep the
 schedule follows, then by slot.

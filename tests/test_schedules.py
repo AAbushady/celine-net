@@ -250,6 +250,37 @@ async def test_a_run_waits_for_a_model_and_for_what_it_follows_then_runs_its_own
     assert cid not in [c["id"] for c in await conversations.list(store)]
 
 
+async def test_a_run_after_a_routine_that_failed_names_its_retry_and_when(store, cfg):
+    """Self-review failed and runs again at 02:20 UTC: Reflection, which runs after it,
+    says so in the retry's own words and its time in the app's zone, then that it runs."""
+    cfg.timezone = "Europe/Berlin"                       # 02:00 UTC is 04:00 there
+    cfg.schedules = {"review": _s("review", label="Self-review"),
+                     "reflect": _s("reflect", label="Reflection", after=("review",))}
+    await store.write(lambda c: (
+        add_run(c, "f1", "review", state="failed"),
+        add_run(c, "a1", "review", slot="2026-10-10T02:20:00.000+00:00", night="2026-10-10",
+                state="waiting", reason="Retry of the 04:00 run", again_of="f1"),
+        add_run(c, "r1", "reflect", state="waiting")))
+
+    async def reason() -> str:
+        return await store.read(lambda c: c.execute(
+            "SELECT reason FROM runs WHERE id = 'r1'").fetchone()[0])
+    clock = Clock(datetime(2026, 10, 10, 2, 10, tzinfo=UTC))
+    backend = Hanging()
+    async with _scheduler(store, cfg, _app(store, cfg, backend), backend, clock) as sched:
+        await sched.tick()
+        assert await reason() == "Runs after Self-review (retry of the 04:00 run, set for 04:20)"
+        clock.at = datetime(2026, 10, 10, 2, 20, tzinfo=UTC)
+        await sched.tick()
+        assert sched.current == "a1", "the retry starts in the same look"
+        assert await reason() == "Runs after Self-review (retry of the 04:00 run, running now)"
+        await until(lambda: _live(store, "a1"))
+        await sched.tick()
+        assert await reason() == "Runs after Self-review (retry of the 04:00 run, running now)"
+        await sched.end("a1", "stopped", "Stopped by Joe")
+        await until(lambda: _idle(sched))
+
+
 async def _state(store, rid, state) -> bool:
     r = await store.read(lambda c: c.execute("SELECT state FROM runs WHERE id = ?",
                                              (rid,)).fetchone())
