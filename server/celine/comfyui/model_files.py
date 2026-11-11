@@ -28,7 +28,8 @@ hub marks it mature). A request (`ModelFiles.request`, image_generator__request_
    (its display and words, `model_file.state` on its conversation) and the page
    (`model_files.changed` on the global feed). Ready: the catalog is read anew and the
    conversation gets one notice from the app with the id to use and the trigger words the
-   hub lists. Failed: one notice with the helper's sentence. Denied or not answered: one
+   hub lists. Failed: one notice with the helper's sentence, or the app's own when the job
+   carries one of the Civitai key's codes (key_words). Denied or not answered: one
    notice with the approvals' sentence. A helper that does not answer (a restart) is
    looked at again at the next round: it keeps its jobs.
 5. The follower runs while Images is on (part.py), like the batches, and outside any
@@ -135,11 +136,18 @@ def unreachable(app, pid: str, e: httpx.HTTPError) -> str:
     return f"The comfy helper stopped answering ({type(e).__name__})."
 
 
+def key_words(code: Any, user: str) -> str | None:
+    """The app's own sentence for the helper's two refusals about the Civitai key, by their
+    code (an answer's, a failed job's), which says where the key is set; None for any
+    other."""
+    said = KEY_SAID.get(str(code))
+    return said.format(user=user) if said else None
+
+
 def refused(e: HelperRefused, user: str) -> str:
-    """The helper's refusal as the agent reads it: its sentence as it is, or for the two
-    about the Civitai key (by their code) the app's own, which says where the key is set."""
-    said = KEY_SAID.get(e.code or "")
-    return said.format(user=user) if said else str(e)
+    """The helper's refusal as the agent reads it: its sentence as it is, or the app's own
+    for the two about the Civitai key (key_words)."""
+    return key_words(e.code, user) or str(e)
 
 
 # ---- where a file goes ----------------------------------------------------------------
@@ -491,7 +499,8 @@ class ModelFiles:
                                     "download.")
             return True
         if state is S.FAILED:
-            await self._failed(row, job.get("why") or "The comfy helper gave no reason.",
+            await self._failed(row, key_words(job.get("code"), self.app.cfg.user)
+                               or job.get("why") or "The comfy helper gave no reason.",
                                job=job["id"])
             return True
         changes: dict[str, Any] = {}

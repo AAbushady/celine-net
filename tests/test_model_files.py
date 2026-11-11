@@ -103,6 +103,7 @@ class Stand(Helper):
         super().__init__(fake)
         self.script = ["fetching", "listing", "ready"]
         self.fail_why = "The checksum did not match"
+        self.fail_code: str | None = None   # a failed job's code (the Civitai key's)
         self.files = [{"path": "loras/qwen2.1/old.safetensors", "size": 5 * MB,
                        "requested": None}]
         self.free = 500 * GB
@@ -191,7 +192,8 @@ class Stand(Helper):
                 return httpx.Response(404, json={"error": "There is no such job."})
             state = self.script.pop(0) if len(self.script) > 1 else self.script[0]
             job.update(state=state, done=job["size"] // 2 if state == "fetching"
-                       else job["size"], why=self.fail_why if state == "failed" else None)
+                       else job["size"], why=self.fail_why if state == "failed" else None,
+                       code=self.fail_code if state == "failed" else None)
             if state == "ready" and all(f["path"] != job["saved_as"] for f in self.files):
                 b = job["body"]
                 look = next(x for x in LOOKS.values() if x["sha256"] == b["sha256"])
@@ -440,6 +442,25 @@ async def test_a_download_that_failed_says_the_helpers_sentence(hub):
     text = await _notice_for(hub, ctx.conversation_id)
     assert text == ("The model krea2/big was not downloaded: The checksum did not match.")
     assert (await _row(hub))["state"] == "failed"
+
+
+@pytest.mark.parametrize("code, said", [
+    ("civitai_key_missing", "This file needs a Civitai key, which sam sets in Settings, "
+                            "Images & Music."),
+    ("civitai_key_refused", "Civitai refused the key set in Settings, Images & Music for "
+                            "this file.")])
+async def test_a_download_that_failed_on_the_civitai_key_says_where_the_key_is_set(
+        hub, code, said):
+    hub.helper.script = ["fetching", "failed"]
+    hub.helper.fail_why, hub.helper.fail_code = KEY, code
+    ctx = await _ctx(hub)
+    await _images(hub).request_model(ctx, preset="krea2-turbo", kind="model",
+                                     file="civitai:444", why=WHY)
+    await _card(hub)
+    _answer(hub, True)
+    assert await _notice_for(hub, ctx.conversation_id) == (
+        f"The model krea2/big was not downloaded: {said}")
+    assert (await _row(hub))["error"] == said
 
 
 async def test_a_denied_request_downloads_nothing_and_says_so(hub):
