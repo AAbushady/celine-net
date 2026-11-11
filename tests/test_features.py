@@ -229,6 +229,10 @@ async def test_the_guard_probe_names_its_two_models(api):
     assert r.json()["chain"]["seconds"] == 300, "the rest of the table stays"
     assert (await api.get("/api/features/guard/probe")).json()["detail"] == \
         "Decision model: Small. Second look: Big."
+    await api.put("/api/guard/rules", json={"chain": {"provider": "main", "model": "huge"}})
+    assert (await api.get("/api/features/guard/probe")).json()["detail"] == \
+        "Decision model: Small. Second look: huge is not among the models of llama-swap " \
+        "(Settings, Guard, Second look model)."
     await api.put("/api/guard/rules", json={"chain": {"provider": "gone", "model": "huge"}})
     assert (await api.get("/api/features/guard/probe")).json()["detail"] == \
         "Decision model: Small. Second look: huge is not on a saved provider."

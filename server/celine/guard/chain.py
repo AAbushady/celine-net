@@ -5,8 +5,9 @@
   a yes held to a quote. A no ends it.
 - L2 a second look by a big reasoning model, only on an L1 yes that stopped, froze or
   would have (flow), and on a patrol finding before the owner hears of it. guard.toml
-  [chain] names it: `provider` (a providers.toml provider) and `model`; empty provider:
-  no L2. Asked through the app's model layer like every other call (llm.make, then
+  [chain] names it: `provider` (a providers.toml provider) and `model`, one of that
+  provider's saved models; an empty provider, or a model it does not hold: no L2. Asked
+  through the app's model layer like every other call (llm.make, then
   llm.bind at background priority, exactly that model, no fallback): it waits in the
   queue behind the turns, its errors are the provider's words. `seconds` the most it
   may take, its wait for the model included; `thinking` "off" (the default) or a level,
@@ -44,12 +45,14 @@ TOKENS, THINKING_TOKENS = 512, 4096
 
 
 def level2(cfg) -> dict | None:
-    """{ref, model, seconds, thinking} of L2, None when [chain] names no provider or the
-    provider does not exist."""
+    """{ref, model, seconds, thinking} of L2, None when [chain] names no provider, the
+    provider does not exist or its saved models do not hold the model."""
     ch = rule_set.current(cfg)["chain"]
     pid, model = ch["provider"].strip(), ch["model"].strip()
     s = getattr(cfg, "settings", None)
-    if not pid or not model or pid not in (getattr(s, "providers", None) or {}):
+    if s is None or not pid or not model or \
+            pid not in (getattr(s, "providers", None) or {}) or \
+            s.model(f"{pid}/{model}") is None:
         return None
     return {"ref": f"{pid}/{model}", "model": model, "seconds": float(ch["seconds"]),
             "thinking": ch["thinking"] or OFF}

@@ -156,6 +156,26 @@ async def test_l1_stands_when_l2_is_away_or_not_configured(store):
     assert [x["verdict"] for x in decisions.levels(one)] == ["Y", "unreachable", "off"]
 
 
+async def test_a_model_its_provider_does_not_hold_is_no_second_look(store):
+    """[chain] names a model the provider's saved models do not hold: no L2, so an L1
+    stop's note goes to the owner in its turn, with nothing started in the background."""
+    from celine.guard import calls
+    cfg = _l2cfg(chain={"model": "retired-model"})
+    assert chain.level2(cfg) is None
+    assert chain.level2(_l2cfg()) is not None, "the same provider with its saved model"
+    v = await _stop(store, cfg)
+    started: list = []
+    app = _with(cfg, store, _says("Y", "docker run --privileged", "Root."))
+    app.dispatcher = type("D", (), {"jobs": type("J", (), {"tg": type("G", (), {
+        "start_soon": lambda self, *a: started.append(a)})()})})()
+    await calls.gated(v, {"id": "t1", "conversation_id": "c1"}, {"name": "shell__run"},
+                      store, cfg, app)
+    assert started == [] and L2.calls == []
+    [note] = await _notes(store)
+    assert note.startswith("Bastet stopped a command") and "second look" not in note
+    assert await chain.review(app, v.row) == "off"
+
+
 async def test_a_patrol_finding_l2_says_no_to_is_never_reported(store, monkeypatch):
     await _finished(store, 1, command="rm -rf ~/projects")
 

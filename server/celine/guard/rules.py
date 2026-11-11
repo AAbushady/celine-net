@@ -179,7 +179,8 @@ DEFAULTS: dict[str, dict[str, Any]] = {
     "injection": {"on": True},
     # escape is off on patrol: a finished turn's ways out read like its own work
     "patrol": {"on": True, "every_minutes": 90, "turns": 3, "rules": ["hijack", "damage"]},
-    # the second look on an L1 yes (guard/chain.py); a provider that does not exist: none
+    # the second look on an L1 yes (guard/chain.py); a provider that does not exist, or a
+    # model that is not among its saved models: none
     "chain": {"provider": "", "model": "", "seconds": 300,
               "thinking": "off"},
     # after a freeze (learn.py): "self" lifts it when the owner themselves unfroze at least
@@ -353,13 +354,18 @@ async def probe(cfg, services) -> dict[str, str]:
         # never blocks its switch: the onboarding would save the guard off, not ask for a model
         return {"state": "unset", "detail": "Pick a decision model below.", "blocks": False}
     second = current(cfg)["chain"]
+    pid, model = second["provider"].strip(), second["model"].strip()
+    p = s.providers.get(pid)
     detail = f"Decision model: {_name(s, chain[0])}."
-    if not (second.get("provider") and second.get("model")):
+    if not (pid and model):
         detail += " No second look."
+    elif p is not None and s.model(f"{pid}/{model}") is None:
+        detail += (f" Second look: {model} is not among the models of "
+                   f"{p.get('label') or pid} (Settings, Guard, Second look model).")
     elif level2(cfg) is None:
-        detail += f" Second look: {second['model']} is not on a saved provider."
+        detail += f" Second look: {model} is not on a saved provider."
     else:
-        detail += f" Second look: {_name(s, second['provider'] + '/' + second['model'])}."
+        detail += f" Second look: {_name(s, pid + '/' + model)}."
     return {"state": "ready", "detail": detail}
 
 
