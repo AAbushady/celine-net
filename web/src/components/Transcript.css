@@ -42,6 +42,12 @@
 .msg__text a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
 .msg__text blockquote { margin-left: 0; padding-left: var(--s-3); border-left: 2px solid var(--bubble-meta); }
 .msg__picture { width: min(100%, 18rem); }
+/* a message's pictures in their fold (Attached): side by side; yours to the right, its head too */
+.msg__pictures { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.ui-msg--mine .msg__pictures { justify-content: flex-end; }
+.ui-msg--mine .ui-msg__before > .ui-fold { display: flex; flex-direction: column; align-items: flex-end; flex-basis: 100%; }
+/* its column takes the fold's own width: a head pulled out by a margin would be cut short */
+.ui-msg--mine .ui-msg__before > .ui-fold > .ui-fold__head { flex-shrink: 0; margin-left: 0; }
 .msg__audio {
   display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3); border-radius: var(--r-md);
   background: var(--surface-2);

@@ -19,7 +19,7 @@ import {
   conversationApi, type Attachment, type Compaction, type ImageNotice, type Live, type Message, type Queued, type Switched,
   type ToolCall, type ToolRun, type Turn, type Unanswered,
 } from '../lib/api'
-import { bytes, errorText, fullDate, stamp } from '../lib/format'
+import { bytes, count, errorText, fullDate, stamp } from '../lib/format'
 import { TILE, fileUrl, tileUrl } from '../lib/media'
 import { format } from '../lib/nav'
 import { getPref, setPref } from '../lib/prefs'
@@ -453,11 +453,18 @@ function Line({ t, m, steps, calls, writing = false, thoughts = null, sawTitle, 
   )
 }
 
-/* The files on a message: pictures, tracks, and other files to download */
+/* The files on a message: pictures (under a fold that hides them, open until its head is
+   clicked, a hidden one hidden on this device), tracks, and other files to download */
 export function Attached({ list }: { list: Attachment[] }) {
   if (!list.length) return null
+  const pictures = list.filter(a => a.kind === 'image')
   return <>
-    {list.filter(a => a.kind === 'image').map(a => <YourPicture key={a.id} a={a} />)}
+    {pictures.length > 0 && (
+      <Fold defaultOpen remember={`pictures:${pictures[0]!.id}`} icon={ImageIcon}
+            title={count(pictures.length, 'picture')}>
+        <div className="msg__pictures">{pictures.map(a => <YourPicture key={a.id} a={a} />)}</div>
+      </Fold>
+    )}
     {list.filter(a => a.kind === 'audio').map(a => (
       <div key={a.id} className="msg__audio">
         <span className="msg__audio-title">{a.filename}</span>
