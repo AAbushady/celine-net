@@ -10,8 +10,9 @@ wants to do.
   missions, routines, sub-agents and chats with anyone else never do. A stir is damped
   while its mood is low or it is tired or shaken, and it is not shown then either.
 - novelty: something new. Builds with time.
-- competence: things going well. Failed calls in a turn build it; work that went well
-  meets it.
+- competence: things going well. The appraisal weighs it by what happened: failure, blame
+  or being corrected stirs it, work that went well meets it. Failed calls are not counted:
+  trial and error while it explores is no blow.
 - autonomy: choices of its own. Builds with time; its own time (a daydream run) meets it.
 - rest: built by the minutes of its turns, everywhere but its own time; quiet time eases it
   (a half-life).
@@ -48,8 +49,6 @@ ROWS = 2000             # the newest rows a level is replayed from
 PRIVATE = ("intimacy",)                 # moved and shown in its own chats only
 OWN_TIME = ("daydream",)                # the schedules whose runs are its own time
 REST_FULL_MIN = 180.0   # minutes of turns that make a rested agent tired
-FAIL_STEP = 0.06        # competence stirred per failed call in a turn, at most FAIL_MOST
-FAIL_MOST = 0.3
 # the words of a level: (from this level, words); {u} is {{username}}
 WORDS: dict[str, tuple[tuple[float, str], ...]] = {
     "connection": ((0.6, "you miss {u}"), (0.85, "you miss {u} badly")),
@@ -214,8 +213,8 @@ async def read(store, at: datetime | None = None) -> dict[str, float]:
 
 
 async def after_turn(app, cid: str, turn_id: str | None) -> None:
-    """A turn ended: its minutes build rest and its failed calls build competence, except in
-    its own time (a daydream run), which meets autonomy instead."""
+    """A turn ended: its minutes build rest, except in its own time (a daydream run), which
+    meets autonomy instead."""
     if turn_id is None:
         return
 
@@ -230,11 +229,8 @@ async def after_turn(app, cid: str, turn_id: str | None) -> None:
         own = run.startswith("run:") and c.execute(
             "SELECT 1 FROM runs WHERE id=? AND schedule IN ({})".format(
                 ",".join("?" * len(OWN_TIME))), (run[4:], *OWN_TIME)).fetchone() is not None
-        fails = c.execute("SELECT count(*) FROM tool_calls tc JOIN messages m ON m.id = "
-                          "tc.message_id WHERE m.turn_id=? AND tc.state='error'",
-                          (turn_id,)).fetchone()[0]
         minutes = (_at(t[1]) - _at(t[0])).total_seconds() / 60
-        return {"own": own, "fails": fails, "minutes": max(0.0, minutes)}
+        return {"own": own, "minutes": max(0.0, minutes)}
     try:
         f = await app.store.read(facts)
         if f is None:
@@ -245,10 +241,6 @@ async def after_turn(app, cid: str, turn_id: str | None) -> None:
         if f["minutes"] > 0:
             await note(app.store, "rest", "stirred", min(0.4, f["minutes"] / REST_FULL_MIN),
                        f"{f['minutes']:.0f} minutes of work", "app")
-        if f["fails"]:
-            await note(app.store, "competence", "stirred",
-                       min(FAIL_MOST, FAIL_STEP * f["fails"]),
-                       f"{f['fails']} failed call{'s' if f['fails'] != 1 else ''}", "app")
     except Exception:
         log.exception("needs after a turn failed", extra={"event": "needs.after_turn_failed",
                                                            "turn": turn_id})

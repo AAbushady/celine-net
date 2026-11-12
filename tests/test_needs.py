@@ -1,7 +1,7 @@
 """The agent's needs (skills/needs.py): levels that build while unmet and ease when met,
 replayed from their rows; the private one (closeness) moved and shown only in its chats and
 damped by a low mood; the felt words and the mood's pull; a turn's end (its minutes, its
-failed calls, its own time); the appraisal naming needs; the mind block's line."""
+own time, never its failed calls); the appraisal naming needs; the mind block's line."""
 from __future__ import annotations
 
 from datetime import timedelta
@@ -103,7 +103,7 @@ def test_the_knobs_turn_needs_off_and_refuse_what_is_not_hours():
     assert set(shipped) == set(needs.NEEDS) and shipped["rest"] == {"eases_h": 4.0}
 
 
-async def test_a_turns_minutes_build_rest_its_failures_competence_its_own_time_autonomy(store):
+async def test_a_turns_minutes_build_rest_and_its_own_time_meets_autonomy(store):
     app = SimpleNamespace(store=store)
     cid = await conversations.create(store)
     later = (T0 + timedelta(minutes=60)).isoformat()
@@ -124,7 +124,8 @@ async def test_a_turns_minutes_build_rest_its_failures_competence_its_own_time_a
     await needs.after_turn(app, cid, "t1")
     got = await store.read(lambda c: [tuple(r) for r in c.execute(
         "SELECT need, change, round(strength, 3), by FROM needs ORDER BY id")])
-    assert got == [("rest", "stirred", 0.333, "app"), ("competence", "stirred", 0.12, "app")]
+    assert got == [("rest", "stirred", 0.333, "app")], \
+        "failed calls are trial and error, not a blow: the appraisal weighs competence"
 
     own = await conversations.create(store, kind="background")
     def daydream(c):
@@ -136,7 +137,7 @@ async def test_a_turns_minutes_build_rest_its_failures_competence_its_own_time_a
     await needs.after_turn(app, own, "t2")
     last = await store.read(lambda c: tuple(c.execute(
         "SELECT need, change, strength FROM needs ORDER BY id DESC LIMIT 1").fetchone()))
-    assert last == ("autonomy", "met", 0.3), "its own time: no work, no failures counted"
+    assert last == ("autonomy", "met", 0.3), "its own time: no work counted"
 
 
 async def test_the_appraisal_names_needs_and_they_are_stored(store):
