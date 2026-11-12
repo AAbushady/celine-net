@@ -404,7 +404,11 @@ class Mind:
         from . import notebook_index
         await notebook_index.upsert(ctx.store, rel, f"your thoughts on {local:%-d %b %Y}",
                                     len(body), body)
-        return ToolResult(content=f"Saved {rel}.", display={"path": rel})
+        # what the file holds now, read back
+        n = len(nb.lines_of(p.read_text())[0])
+        was = len(nb.lines_of(old)[0]) if old else 0
+        return ToolResult(content=f"Saved {rel}. {n} lines now, was {was}.",
+                          display={"path": rel})
 
     @tool(read_only=False, destructive=False)
     async def set_status(self, ctx: ToolContext,
@@ -412,8 +416,12 @@ class Mind:
         """Set the emojis or the kaomoji shown next to your name, whenever your mood or
         what you are doing changes, during a reply too. Example:
         mind__set_status(text="\U0001f319\u2615\u2728")."""
-        mood = await store_mood(ctx.store, text, ctx.conversation_id)
-        return ToolResult(content=f"Shown: {mood['text']}", display={"text": mood["text"]})
+        await store_mood(ctx.store, text, ctx.conversation_id)
+        shown = await get_mood(ctx.store)           # what is shown now, read back
+        if not shown:
+            return ToolResult(content="Nothing is shown: the status was not stored.",
+                              is_error=True)
+        return ToolResult(content=f"Shown: {shown['text']}", display={"text": shown["text"]})
 
     @tool(read_only=False, destructive=False)
     async def feel(self, ctx: ToolContext,

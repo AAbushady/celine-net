@@ -126,8 +126,10 @@ async def test_a_thought_goes_into_todays_thoughts_with_the_time(store):
     cid = await conversations.create(store)
     ctx = ToolContext(cid, "t", "x", store, cfg, None)  # type: ignore[arg-type]
     first = await skill.think(ctx, "the build keeps failing on the same test")
-    await skill.think(ctx, "maybe he forgot")
-    rel = first.content.removeprefix("Saved ").removesuffix(".")
+    second = await skill.think(ctx, "maybe he forgot")
+    rel = first.content.split()[1].removesuffix(".")
+    assert first.content.endswith(". 2 lines now, was 0."), "read back, as notebook__write"
+    assert second.content.endswith(". 3 lines now, was 2.")
     assert rel.startswith("thoughts/") and rel.endswith(".md")
     text = (cfg.agent.notebook / rel).read_text()
     lines = text.splitlines()

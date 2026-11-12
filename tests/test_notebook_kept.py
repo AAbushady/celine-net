@@ -166,7 +166,8 @@ async def test_it_restores_what_it_deleted_and_the_users_stays_in_the_trash(note
         # moved away, it comes back: the file, the index, the page's tree and trash
         await nb.move(ctx, "people/noor.md", "people/noor-2.md")
         out = await nb.restore(ctx, noor)
-        assert not out.is_error and out.content == "Restored people/noor.md from the trash."
+        assert not out.is_error and out.content == \
+            "Restored people/noor.md from the trash: 2 lines, back in your index."
         assert out.display == {"path": "people/noor.md"}
         assert (root / "people/noor.md").read_text().endswith("Noor climbs.")
         assert not (root / ".trash" / noor).exists()
@@ -299,5 +300,5 @@ async def test_a_sub_agent_sees_and_restores_only_its_folder(notebook, store):
                 await nb.list_deleted(ctx, "plans")):
         assert out.is_error and out.content.endswith("is outside your folder agents/scout."), \
             out.content
-    assert (await nb.restore(ctx, mine)).content == \
-        "Restored agents/scout/found.md from the trash."
+    assert (await nb.restore(ctx, mine)).content.startswith(
+        "Restored agents/scout/found.md from the trash: ")

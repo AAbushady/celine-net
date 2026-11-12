@@ -274,7 +274,7 @@ class Notebook:
         keep_version(self.root, p, path)
         p.write_text(body)
         await notebook_index.upsert(ctx.store, path, summary, len(body), body)
-        n = _lines(body)
+        n = _lines(p.read_text())                   # what the file holds now, read back
         said = (f"Saved {path}, a new note of {n}." if old is None
                 else f"Saved {path}. {n} now, was {len(lines_of(old)[0])}.")
         return ToolResult(content=said,
@@ -703,7 +703,14 @@ class Notebook:
                                       f"{_read_deleted(entry)} shows the deleted text, and "
                                       f"notebook__write saves it under another path.",
                               is_error=True)
-        return ToolResult(content=f"Restored {path} from the trash.", display={"path": path})
+        p = self.root / path                        # what came back, read back
+        if not p.is_file():
+            return ToolResult(content=f"{path} was taken out of the trash, and no note is "
+                                      f"there now.", is_error=True)
+        listed = await notebook_index.summary(ctx.store, path) is not None
+        return ToolResult(content=f"Restored {path} from the trash: {_lines(p.read_text())}, "
+                                  + ("back in your index." if listed else "not in your index."),
+                          display={"path": path})
 
     async def _deleted(self, ctx: ToolContext, tid: str) -> dict:
         """The trash's entry `tid` (trashed); ToolRefused, the tool's answer, when there is
