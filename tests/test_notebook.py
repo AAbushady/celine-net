@@ -4,6 +4,7 @@ anchors, a write says where it saved, web citations are taken out, a note it onl
 ages out after one turn."""
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime, timezone
 
@@ -113,7 +114,11 @@ async def test_the_agents_notes_move_and_the_users_and_tools_stay(store, cfg):
     assert not (cfg.agent.notebook / "tools").exists()
 
 
-async def test_a_stale_anchor_is_refused_and_fresh_ones_apply(store, cfg):
+async def test_an_anchor_read_before_a_save_follows_its_line_and_a_changed_one_is_refused(
+        store, cfg):
+    """A third of its failed edits were anchors read before its own last save, the line
+    moved down by an insert above it: the line is followed through the note's earlier
+    text, never to another line that shares its two-character hash by chance."""
     nb = Notebook(cfg)
     ctx = _ctx("c", store, cfg)
     a = await _note(nb, ctx)
@@ -122,16 +127,38 @@ async def test_a_stale_anchor_is_refused_and_fresh_ones_apply(store, cfg):
     out = await nb.edit(ctx, "opinions/food.md",
                         [{"op": "replace", "start": a[2], "text": "# FOOD"},
                          {"op": "replace", "start": a[4], "text": "- olives: fine"}])
-    assert out.is_error
+    assert not out.is_error, out.content
+    assert (f"Anchors read before an earlier save were followed to their lines: "
+            f"{a[2]} is line 3 now, {a[4]} is line 5 now.") in out.content
     p = cfg.agent.notebook / "opinions/food.md"
-    assert p.read_text() == f"{STAMP}\nupdated today\n{NOTE}", "nothing changed"
+    assert p.read_text() == (f"{STAMP}\nupdated today\n# FOOD\n- pizza: love it\n"
+                             "- olives: fine\n\n## drinks\n- coffee: yes\n")
+    out = await nb.edit(ctx, "opinions/food.md",
+                        [{"op": "replace", "start": a[4], "text": "- olives: great"}])
+    assert out.is_error and f"{a[4]} does not match" in out.content, "the line it read changed"
     fresh = _anchors((await nb.read(ctx, "opinions/food.md")).content)
     out = await nb.edit(ctx, "opinions/food.md", [
-        {"op": "replace", "start": fresh[5], "text": "- olives: fine"},
+        {"op": "replace", "start": fresh[5], "text": "- olives: good"},
         {"op": "insert", "after": fresh[4], "text": "- pineapple: fine"}])
     assert not out.is_error
-    assert p.read_text() == (f"{STAMP}\nupdated today\n# food\n- pizza: love it\n"
-                             "- pineapple: fine\n- olives: fine\n\n## drinks\n- coffee: yes\n")
+    assert p.read_text() == (f"{STAMP}\nupdated today\n# FOOD\n- pizza: love it\n"
+                             "- pineapple: fine\n- olives: good\n\n## drinks\n- coffee: yes\n")
+
+
+async def test_an_insert_under_a_replace_joins_it_and_end_is_the_bottom(store, cfg):
+    """Replacing a line and adding one under it in one call was refused as two edits on
+    the same lines; "end" was not an anchor; the list came as its JSON text."""
+    nb = Notebook(cfg)
+    ctx = _ctx("c", store, cfg)
+    a = await _note(nb, ctx)
+    out = await nb.edit(ctx, "opinions/food.md", json.dumps([
+        {"op": "replace", "start": a[3], "text": "- pizza: fine"},
+        {"op": "insert", "after": a[3], "text": "- pasta: yes"},
+        {"op": "insert", "after": "end", "text": "- tea: no"}]))  # type: ignore[arg-type]
+    assert not out.is_error, out.content
+    assert (cfg.agent.notebook / "opinions/food.md").read_text() == (
+        f"{STAMP}\n# food\n- pizza: fine\n- pasta: yes\n- olives: gross\n\n## drinks\n"
+        "- coffee: yes\n- tea: no\n")
 
 
 async def test_an_anchor_that_does_not_match_names_the_line_as_it_is(store, cfg):
@@ -315,8 +342,9 @@ async def test_an_edit_of_the_wrong_shape_is_told_the_right_one(store, cfg):
     nothing = "Nothing changed in opinions/food.md. "
     out = await nb.edit(ctx, "opinions/food.md", [{"op": "insert", "start": a[2], "text": "x"}])
     assert out.is_error and out.content == nothing + (
-        "edit 1 (insert) needs `after` (the anchor of the line the text goes under, or "
-        "\"start\" for the top), and `start` is not a field of insert, which takes `after` "
+        "edit 1 (insert) needs `after` (the anchor of the line the text goes under, "
+        "\"start\" for the top or \"end\" for the bottom), and `start` is not a field of "
+        "insert, which takes `after` "
         "and `text`.")
     out = await nb.edit(ctx, "opinions/food.md", [{"op": "replace", "start": a[2], "end": a[3],
                                                    "new_text": "x", "old_text": "y"}])

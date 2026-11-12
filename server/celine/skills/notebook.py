@@ -368,10 +368,16 @@ class Notebook:
         text = p.read_text(newline="")
         lines, newline, trailing = lines_of(text)
         has_stamp = bool(lines) and is_stamp(lines[0])
+        if isinstance(edits, str):
+            try:                        # the list sent as its JSON text
+                edits = json.loads(edits)
+            except ValueError:
+                pass
         edits = [{**e, "text": _joined(e["text"])}
                  if isinstance(e, dict) and e.get("text") else e for e in edits]
+        moved: list[str] = []
         try:
-            planned = plan(edits, lines, has_stamp)
+            planned = plan(edits, lines, has_stamp, _texts_before(self.root, path), moved)
         except EditRefused as e:
             return ToolResult(content=f"Nothing changed in {path}. {e}", is_error=True)
         new, regions = apply(lines, planned)
@@ -389,9 +395,11 @@ class Notebook:
         n = len(planned)
         shown = "\n...\n".join("\n".join(numbered(new, a, b)) or "(the note is empty now)"
                                 for a, b in regions)
+        followed = (f" Anchors read before an earlier save were followed to their lines: "
+                    f"{', '.join(moved)}." if moved else "")
         return ToolResult(content=f"Saved {path}. {n} {'change' if n == 1 else 'changes'}, "
-                                  f"{len(new)} lines now. The changed part, with its new "
-                                  f"anchors:\n\n{shown}",
+                                  f"{len(new)} lines now.{followed} The changed part, with "
+                                  f"its new anchors:\n\n{shown}",
                           display={"path": path, "bytes": len(body), "changes": n})
 
     @tool()
@@ -823,6 +831,17 @@ def _near_names(p: Path, path: str) -> str:
         return ""
     where = path.rsplit("/", 1)[0] + "/" if "/" in path else ""
     return f" {where or 'Your notebook'} has: {', '.join(where + n for n in names)}."
+
+
+EARLIER = 10        # a note's earlier texts an edit's stale anchor is looked for in
+
+
+def _texts_before(root: Path, rel: str) -> list[list[str]]:
+    """The note's last EARLIER texts before this one (keep_version), newest first, as
+    lines."""
+    folder = root / ".versions" / rel
+    files = sorted(folder.glob("*.md"), reverse=True)[:EARLIER] if folder.is_dir() else []
+    return [lines_of(f.read_text(errors="replace", newline=""))[0] for f in files]
 
 
 def _lines(text: str) -> str:

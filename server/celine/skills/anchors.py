@@ -3,6 +3,7 @@
 (notebook__edit) uses them."""
 from __future__ import annotations
 
+import difflib
 import json
 import re
 import zlib
@@ -27,13 +28,14 @@ class Edit(TypedDict, total=False):
                           "\"12:ab\"."]
     end: Annotated[str, "replace, delete: the anchor of the last line. Leave it out for "
                         "one line."]
-    after: Annotated[str, "insert: the anchor of the line to insert below, or \"start\" "
-                          "for the top of the note."]
+    after: Annotated[str, "insert: the anchor of the line to insert below, \"start\" for "
+                          "the top of the note or \"end\" for its bottom."]
     text: Annotated[str, "replace, insert: the new lines, plain, without anchors."]
 
 
 # Hashline anchors: `<n>:<hash>`, the hash two base32 characters of the line's text.
-# A stale anchor (the line changed or moved since it read it) no longer matches.
+# A stale anchor no longer matches: a line that changed since it was read is refused, one
+# that only moved is followed through the note's earlier texts (_followed).
 _ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz"
 _ANCHOR = re.compile(r"^\s*(\d+)\s*:\s*([0-9a-z]{2})\b")
 
@@ -69,8 +71,27 @@ def _near(lines: list[str], n: int) -> str:
     return "\n".join(numbered(lines, n - 2, n + 2))
 
 
-def _anchor(ref, lines: list[str], bad: list[str]) -> int:
-    """The line number of an `n:hash` anchor, or 0 after noting what is wrong in `bad`."""
+def _followed(n: int, h: str, lines: list[str], earlier) -> int:
+    """Where line `n` of an earlier text, whose hash is `h`, is now: the newest earlier
+    text (newest first) that has `h` on line `n` and keeps that line unchanged into
+    `lines`; 0 when none does. The line itself is followed through the change, so a hash
+    another line shares by chance never moves an edit there."""
+    for old in earlier:
+        if not (1 <= n <= len(old) and line_hash(old[n - 1]) == h):
+            continue
+        for tag, a1, a2, b1, _ in difflib.SequenceMatcher(None, old, lines,
+                                                          autojunk=False).get_opcodes():
+            if tag == "equal" and a1 <= n - 1 < a2:
+                return b1 + (n - 1 - a1) + 1
+        return 0                # the line it read was changed since: stale
+    return 0
+
+
+def _anchor(ref, lines: list[str], bad: list[str], earlier=(),
+            followed: list[str] | None = None) -> int:
+    """The line number of an `n:hash` anchor, or 0 after noting what is wrong in `bad`.
+    An anchor read before an earlier save is followed to its line now (`_followed`),
+    noted in `followed`."""
     m = _ANCHOR.match(str(ref or ""))
     if not m:
         raise EditRefused(f"{ref!r} is not an anchor. An anchor is `n:hash` from "
@@ -78,6 +99,10 @@ def _anchor(ref, lines: list[str], bad: list[str]) -> int:
     n, h = int(m[1]), m[2]
     if 1 <= n <= len(lines) and line_hash(lines[n - 1]) == h:
         return n
+    if (now := _followed(n, h, lines, earlier)):
+        if followed is not None:
+            followed.append(f"{n}:{h} is line {now} now")
+        return now
     if not 1 <= n <= len(lines):
         where = f"the note has {len(lines)} lines"
         around = _near(lines, len(lines)) if lines else "(the note is empty)"
@@ -103,7 +128,8 @@ def _number(ref) -> int | None:
 TAKES = {"replace": ("start", "end", "text"), "insert": ("after", "text"),
          "delete": ("start", "end")}
 NEEDS = {"replace": ("start", "text"), "insert": ("after", "text"), "delete": ("start",)}
-HOLDS = {"after": "the anchor of the line the text goes under, or \"start\" for the top"}
+HOLDS = {"after": "the anchor of the line the text goes under, \"start\" for the top or "
+                  "\"end\" for the bottom"}
 
 
 def _listed(names: list[str]) -> str:
@@ -139,11 +165,15 @@ def _op(i: int, e) -> str:
     return op
 
 
-def plan(edits, lines: list[str], has_stamp: bool) -> list[tuple[int, int, list[str]]]:
+def plan(edits, lines: list[str], has_stamp: bool, earlier=(),
+         moved: list[str] | None = None) -> list[tuple[int, int, list[str]]]:
     """Check every edit against the file as it is. Returns (first, last, new lines) per
     edit, sorted from the top: lines first..last are replaced; an insert is (a+1, a).
     With a stamp on line 1, the top of the note is below it; the stamp's own anchor
-    only counts as a place to insert after, whatever its hash (it changes every save)."""
+    only counts as a place to insert after, whatever its hash (it changes every save).
+    `earlier`: the note's earlier texts as lines, newest first, which an anchor read
+    before a save is followed through (`moved` says where it went). An insert right
+    under lines another edit replaces joins that edit."""
     if not isinstance(edits, list) or not edits:
         raise EditRefused("`edits` needs at least one edit.")
     bad: list[str] = []
@@ -158,16 +188,19 @@ def plan(edits, lines: list[str], has_stamp: bool) -> list[tuple[int, int, list[
             after = e["after"]
             if str(after) in ("start", "0") or (has_stamp and _number(after) == 1):
                 a = 1 if has_stamp else 0
+            elif str(after) == "end":
+                a = len(lines)
             else:
-                a = _anchor(after, lines, bad)
+                a = _anchor(after, lines, bad, earlier, moved)
                 if not a:
                     continue
             planned.append((a + 1, a, new))
         else:
             if has_stamp and 1 in (_number(e["start"]), _number(e.get("end"))):
                 raise EditRefused(STAMP_KEPT)
-            s = _anchor(e["start"], lines, bad)
-            end = _anchor(e["end"], lines, bad) if e.get("end") is not None else s
+            s = _anchor(e["start"], lines, bad, earlier, moved)
+            end = _anchor(e["end"], lines, bad, earlier, moved) \
+                if e.get("end") is not None else s
             if not s or not end:
                 continue
             if end < s:
@@ -177,12 +210,19 @@ def plan(edits, lines: list[str], has_stamp: bool) -> list[tuple[int, int, list[
         raise EditRefused("\n\n".join(bad) + "\n\nUse these anchors and send all the "
                           "edits again.")
     planned.sort(key=lambda x: (x[0], x[1]))
-    for (s1, e1, _), (s2, e2, _) in zip(planned, planned[1:]):
-        # an insert after line a is (a+1, a): it clashes with an edit that changes line a
-        if s2 <= e1 or (e2 < s2 and s2 - 1 <= e1):
-            raise EditRefused(f"two edits touch the same lines ({_span(s1, e1)} and "
-                              f"{_span(s2, e2)}). Put them into one edit.")
-    return planned
+    joined: list[tuple[int, int, list[str]]] = []
+    for s2, e2, new2 in planned:
+        if joined:
+            s1, e1, new1 = joined[-1]
+            if e1 >= s1 and e2 < s2 and s2 - 1 == e1:
+                joined[-1] = (s1, e1, new1 + new2)      # an insert right under a replace
+                continue
+            # an insert after line a is (a+1, a): it clashes with an edit that changes line a
+            if s2 <= e1 or (e2 < s2 and s2 - 1 <= e1):
+                raise EditRefused(f"two edits touch the same lines ({_span(s1, e1)} and "
+                                  f"{_span(s2, e2)}). Put them into one edit.")
+        joined.append((s2, e2, new2))
+    return joined
 
 
 def _span(s: int, e: int) -> str:
