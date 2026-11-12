@@ -1,6 +1,6 @@
 /* What Celine did with a tool. In the
    stream only what is at work shows, as one shimmering line (ToolLines), with the pictures
-   and music it makes as their blocks; everything else is in its reply's Activity: a list with one row per call (ToolGroup), the icon, the words, a
+   and music it makes as their blocks, each batch under a fold that hides it; everything else is in its reply's Activity: a list with one row per call (ToolGroup), the icon, the words, a
    count or an exit where it says more, the row's colour its state (a settled row has no
    clock; a call at work ticks); a click opens everything about the
    call in a Sheet, the call by its name, the arguments, where it looked and the complete
@@ -33,7 +33,7 @@ import { useAction } from '../lib/useAction'
 import { capital } from '../lib/name'
 import { useNow } from '../lib/useNow'
 import { PLUMBING, busy, placeCalls } from '../lib/toolPlaces'
-import { Button, EventLine, ICON, IconButton, InlineError, ListRow, Picture, Sheet, cx, sourceLabel } from '../ui'
+import { Button, EventLine, Fold, ICON, IconButton, InlineError, ListRow, Picture, Sheet, cx, sourceLabel } from '../ui'
 import { BatchGallery, GalleryContext, StopBatch, doneWords, type Made } from './Batch'
 import './ToolRow.css'
 
@@ -472,7 +472,14 @@ function ToolLine({ call }: { call: ToolCall }) {
   const v = useView(call)
   // what a batch call made, whatever the call's name: its display is the batch (read and stop show it again)
   const b = /__(read|stop)$/.test(call.name) ? null : asBatch(call.display)
-  if (b) return <div className="tool__batch"><BatchGallery batch={b} /></div>
+  // open until its head is clicked; a hidden batch stays hidden on this device
+  if (b) return (
+    <Fold className="tool__batch" defaultOpen remember={`batch:${b.id}`}
+          icon={b.kind === 'images' ? ImagePlus : Music}
+          title={count(b.items.length, b.kind === 'images' ? 'image' : 'track')}>
+      <BatchGallery batch={b} />
+    </Fold>
+  )
   const reminder = call.name === 'intercom__send' && v.tone === 'running'
   if (!reminder && v.tone !== 'running') return null
   if (PLUMBING.has(call.name) && !reminder) return null
