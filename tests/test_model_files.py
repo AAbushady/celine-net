@@ -202,7 +202,7 @@ class Stand(Helper):
                                    "requested": {"source": b["source"],
                                                  "about": look["about"],
                                                  "holder": b["holder"],
-                                                 "at": "2026-11-11T10:00:00Z"}})
+                                                 "at": 1794391200.0}})
             return httpx.Response(200, json={k: v for k, v in job.items() if k != "body"})
         if path == "/models" and method == "GET":
             return httpx.Response(200, json={"files": self.files, "free": self.free,
@@ -810,7 +810,7 @@ async def test_the_page_lists_what_came_and_what_is_on_its_way_and_removes_one(h
         [asked] = [f for f in got["files"] if f["state"] != "ready"]
         assert came == {"path": "loras/qwen2.1/Ink_Wash_v2.safetensors",
                         "id": "qwen2.1/Ink_Wash_v2", "kind": "lora", "size": 200 * MB,
-                        "at": "2026-11-11T10:00:00Z", "preset": "qwen2.1-smart",
+                        "at": "2026-11-11T10:00:00.000+00:00", "preset": "qwen2.1-smart",
                         "preset_label": "Qwen 2.1", "site": "civitai.red",
                         "title": "Ink wash, v2",
                         "address": "https://civitai.red/models/111?modelVersionId=222",

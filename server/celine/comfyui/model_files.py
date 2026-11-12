@@ -50,6 +50,7 @@ import logging
 import re
 import sqlite3
 from collections.abc import AsyncIterator
+from datetime import datetime, timezone
 from typing import Any
 
 import anyio
@@ -57,7 +58,7 @@ import anyio.abc
 import httpx
 
 from ..core.event_types import MODEL_FILE_STATE, MODEL_FILES_CHANGED
-from ..core.ids import new_id, now
+from ..core.ids import iso, new_id, now
 from ..core.statuses import MODEL_FILE_SETTLED, KeyState, ModelFileState
 from ..settings.registry import provider_headers
 from . import hubs, presets as presets_mod, server as server_mod
@@ -741,7 +742,7 @@ async def listing(app) -> dict:
             ((row["look"].get("about") or {}) if row else {})
         seen.add(f["path"])
         out.append(_entry(f["path"], row, src, about, images, size=f.get("size"),
-                          at=req.get("at") or (row or {}).get("finished_at"),
+                          at=_came(req.get("at")) or (row or {}).get("finished_at"),
                           state=S.READY, removable=True))
     for row in rows:
         if row is None or row["state"] not in OPEN or row["saved_as"] in seen:
@@ -752,6 +753,13 @@ async def listing(app) -> dict:
     out.sort(key=lambda e: str(e["at"] or ""), reverse=True)
     free = data.get("free")
     return {"files": out, "free": free if isinstance(free, int) else None}
+
+
+def _came(at: Any) -> str | None:
+    """When the helper says a file came (Unix seconds) as the tables store a time."""
+    if isinstance(at, bool) or not isinstance(at, (int, float)):
+        return None
+    return iso(datetime.fromtimestamp(at, timezone.utc))
 
 
 def _entry(path: str, row: dict | None, src: dict, about: dict, images: dict, *,
