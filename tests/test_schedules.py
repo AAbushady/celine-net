@@ -644,6 +644,22 @@ async def test_a_run_is_over_only_once_its_sub_agents_have_reported(store):
     assert await store.read(lambda c: runs_mod.finished(c, run))
 
 
+async def test_the_mentor_runs_on_its_own_role_once_that_has_a_model(store, cfg):
+    """The mentor answered on the run's own role, so a stronger mentor meant a stronger
+    model for the agent's turns too. The Mentor role, set, is the mentor's alone."""
+    from celine.schedules import run_roles
+    bound: list[str] = []
+    llm = SimpleNamespace(bind=lambda fixed, **kw: bound.append(kw["role"]))
+    sched = Scheduler(_app(store, cfg, llm=llm))
+    s = _s("reflection", reviewer="mentor.md", reviewer_prompt="Be fair.", role="chat")
+    cfg.settings.roles = {**cfg.settings.roles, "mentor": {"chain": []}}
+    sched._reviewer_backend("c", s)
+    cfg.settings.roles = {**cfg.settings.roles, "mentor": {"chain": ["or/strong"]}}
+    sched._reviewer_backend("c", s)
+    assert bound == ["chat", "mentor"]
+    assert "mentor" not in run_roles(), "a routine's own turns never run on it"
+
+
 async def test_a_run_is_over_though_it_timed_a_message_to_itself_for_another_day(store):
     """The agent sent itself a reminder for the next night into the run's conversation:
     the run waited for it until that day, with every other run behind it. A mission

@@ -44,6 +44,10 @@ ROLES: dict[str, dict[str, Any]] = {
     "tasks": {"label": "Tasks", "caps": ["chat", "tools"],
               "help": "Missions and sub-agents. Their steps move to the next model when one "
                       "fails; with this list empty, the Chat models do the work."},
+    "mentor": {"label": "Mentor", "caps": ["chat"],
+               "help": "The mentor a routine talks with, as in the nightly Reflection. Only "
+                       "the first model answers; with this list empty, the routine's own model "
+                       "plays the mentor."},
     "writer": {"label": "Writing", "caps": ["chat"],
                "help": "Posts, comments and messages written in the voice of the Persona and "
                        "Example lines. Only the first model writes; when it fails, the draft "

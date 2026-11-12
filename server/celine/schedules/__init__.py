@@ -163,9 +163,11 @@ def shown(s: Schedule) -> str:
 
 def run_roles() -> list[str]:
     """The roles a schedule can run on: every chat role but the writer (a tool's,
-    skills/writer.py) and Bastet's own (guard/small_role.py)."""
+    skills/writer.py), Bastet's own (guard/small_role.py) and the mentor (its reviewer's,
+    schedules/runs.py)."""
     from ..settings.registry import ROLES
-    return [r for r, v in ROLES.items() if "chat" in v["caps"] and r not in ("writer", "guard")]
+    return [r for r, v in ROLES.items() if "chat" in v["caps"]
+            and r not in ("writer", "guard", "mentor")]
 
 
 def _invalid(field: str, sentence: str):

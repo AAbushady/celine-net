@@ -136,6 +136,7 @@ CATCH_UP_DAYS = 7
 MAX_SLOTS = 2000             # slots made per schedule in one look
 CHECKED = "schedules.checked"
 REVIEWER_STEPS = 12          # the reviewer's tool steps before one line
+MENTOR = "mentor"            # the reviewer's own role (settings/registry.py); empty: the run's
 READS = ("notebook", "past_conversations", "chat_archive")   # the reviewer's read tools
 END = re.compile(r"\s*\bEND\s*$")
 
@@ -1178,15 +1179,17 @@ class Scheduler:
             raise RunFailed(reason or "The turn failed", code=code)
 
     def _reviewer_backend(self, cid: str, s):
-        """The reviewer's model: behind every interactive request, named by the
-        schedule's label, on the role's own model only; never its Banned words, the
-        reviewer is not it."""
+        """The reviewer's model: the Mentor role's first model, else the run's role's;
+        behind every interactive request, named by the schedule's label, on that one
+        model only; never its Banned words, the reviewer is not it."""
         d = self.app.dispatcher
         fixed = d.backend_factory() if getattr(d, "backend_factory", None) else None
         if self.app.llm is None:
             return fixed
         from ..backends.queue import Priority
-        return self.app.llm.bind(fixed, role=s.role, priority=Priority.BACKGROUND,
+        settings = getattr(self.app.cfg, "settings", None)
+        role = MENTOR if settings is not None and settings.chain(MENTOR) else s.role
+        return self.app.llm.bind(fixed, role=role, priority=Priority.BACKGROUND,
                                  conversation_id=cid, label=shown(s), fallback=False,
                                  voice=False, wait=0, run_clock=self._clock)
 
