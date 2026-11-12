@@ -511,19 +511,14 @@ async def run(comfy: Comfy, graph: dict[str, Any], note, timeout: float) -> tupl
 async def run_refs(comfy: Comfy, graph: dict[str, Any], note,
                    timeout: float) -> list[dict[str, Any]]:
     """Queue one prompt, follow it, and the references of every file it saved (each
-    fetched with comfy.output). A prompt that did not finish (a Stop, an error, the
-    timeout) is interrupted and taken out of ComfyUI's queue before this returns or
-    raises. Freeing ComfyUI's memory is the batch's, at its end."""
+    fetched with comfy.output). A prompt that did not finish (a Stop, an error, `timeout`
+    seconds without moving: _follow) is interrupted and taken out of ComfyUI's queue
+    before this returns or raises. Freeing ComfyUI's memory is the batch's, at its end."""
     prompt_id: str | None = None
     finished = False
     try:
         prompt_id = await comfy.queue(graph, uuid4().hex)
-        try:
-            with anyio.fail_after(timeout):
-                entry = await _follow(comfy, prompt_id, note)
-        except TimeoutError:
-            raise ImageError(f"ComfyUI did not finish within {timeout:.0f} s. The prompt "
-                             f"was stopped.") from None
+        entry = await _follow(comfy, prompt_id, note, timeout)
         finished = True
         status = entry.get("status") or {}
         if status.get("status_str") == "error":
@@ -567,16 +562,21 @@ def _mono() -> float:
     return time.monotonic()
 
 
-async def _follow(comfy: Comfy, prompt_id: str, note) -> dict[str, Any]:
+async def _follow(comfy: Comfy, prompt_id: str, note, limit: float) -> dict[str, Any]:
     """Until the prompt is in /history as completed or failed. Its note says where it
     stands: a wait in ComfyUI's queue, then while it is made what the comfy helper heard
     of it (doing: its steps as `steps` too). The seconds it waited in that queue, behind
     another prompt, go to `note` as `queued` once it ends (its item's time leaves them
-    out)."""
+    out). ImageError when where it stands (its place in the queue, the node at work and
+    its step) has not changed for `limit` seconds: a long clip that keeps moving runs to
+    its end. Without the helper's word on its steps, nothing changes once it runs, so the
+    limit is then on the whole run."""
     said = None
     shown: dict[str, int] | None = None
     queued, last = 0.0, _mono()
     waits = False
+    stands: tuple = ()
+    moved, heard = last, False
     while True:
         entry = await comfy.history(prompt_id)
         now_ = _mono()
@@ -591,6 +591,7 @@ async def _follow(comfy: Comfy, prompt_id: str, note) -> dict[str, Any]:
             return entry
         waits, ahead = await comfy.position(prompt_id)
         steps = None
+        got = None
         if waits:
             line = f"Waiting in the queue, {ahead} ahead" if ahead else "Waiting in the queue"
         else:
@@ -598,6 +599,14 @@ async def _follow(comfy: Comfy, prompt_id: str, note) -> dict[str, Any]:
             line, steps = doing(got) if got else ("", None)
             if not line and said and not said.startswith("Waiting"):
                 line = said             # a node that says nothing: the last words stand
+        heard = heard or bool(got)
+        here =(waits, ahead, (got or {}).get("node"), (got or {}).get("value"))
+        if here != stands:
+            stands, moved = here, now_
+        elif now_ - moved >= limit:
+            raise ImageError(
+                f"ComfyUI made no progress for {limit:.0f} s. The prompt was stopped." if heard
+                else f"ComfyUI did not finish within {limit:.0f} s. The prompt was stopped.")
         if line != said or steps != shown:
             said, shown = line, steps
             await note(line, steps=steps)

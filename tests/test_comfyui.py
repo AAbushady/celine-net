@@ -866,7 +866,7 @@ async def test_the_note_names_a_wait_in_the_queue_and_counts_it_apart(monkeypatc
     monkeypatch.setattr(server, "_mono", lambda: float(next(ticks)))
     server.POLL, poll = 0, server.POLL
     try:
-        await server._follow(Queue(), "p1", note)
+        await server._follow(Queue(), "p1", note, 600)
     finally:
         server.POLL = poll
     assert notes[:3] == ["Waiting in the queue, 2 ahead", "Waiting in the queue", ""]
@@ -901,13 +901,57 @@ async def test_while_it_is_made_the_note_says_its_steps_from_the_comfy_helper():
         notes.append((line, steps))
     server.POLL, poll = 0, server.POLL
     try:
-        await server._follow(Running(), "p1", note)
+        await server._follow(Running(), "p1", note, 600)
     finally:
         server.POLL = poll
     assert notes == [("Loading the model", None),
                      ("Step 3 of 20", {"value": 3, "max": 20}),
                      ("Step 20 of 20", {"value": 20, "max": 20}),
                      ("Decoding", None)], "a node that says nothing leaves the last words"
+
+
+@pytest.mark.parametrize("looks, said", [
+    # a long clip that keeps stepping runs past the limit to its end
+    ([{"node": "9", "value": n, "max": 40} for n in range(1, 41)], None),
+    # one stuck on a step stops after the limit without a new one
+    ([{"node": "9", "value": 3, "max": 40}] * 40,
+     "ComfyUI made no progress for 100 s. The prompt was stopped."),
+    # without the helper's word, the limit is on the whole run
+    ([None] * 40, "ComfyUI did not finish within 100 s. The prompt was stopped."),
+])
+async def test_a_prompt_stops_when_it_stops_moving_not_when_it_is_long(monkeypatch, looks,
+                                                                        said):
+    """Bug #58: a 14B clip that was still making progress was stopped at 600 s and its
+    work thrown away."""
+    from celine.comfyui import server
+
+    class Long:
+        def __init__(self):
+            self.looks = list(looks)
+
+        async def history(self, prompt_id):
+            return {"status": {"completed": True}} if not self.looks else None
+
+        async def position(self, prompt_id):
+            return False, 0
+
+        async def progress(self, prompt_id):
+            return self.looks.pop(0)
+
+    async def note(*_a, **_k):
+        pass
+    ticks = iter(range(0, 10_000, 10))          # each look 10 s after the last
+    monkeypatch.setattr(server, "_mono", lambda: float(next(ticks)))
+    server.POLL, poll = 0, server.POLL
+    try:
+        if said is None:
+            await server._follow(Long(), "p1", note, 100)      # 400 s in all, never stuck
+        else:
+            with pytest.raises(presets.ImageError) as e:
+                await server._follow(Long(), "p1", note, 100)
+            assert str(e.value) == said
+    finally:
+        server.POLL = poll
 
 
 # ---- a new ComfyUI provider ------------------------------------------------------------

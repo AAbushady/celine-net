@@ -114,7 +114,8 @@ OPTION_WORDS: dict[str, dict[str, Any]] = {
              "choices": {"": "Default", "throughput": "Throughput", "latency": "Latency",
                          "price": "Price"}},
     "timeout": {"label": "Timeout", "unit": "seconds",
-                "help": "How long one request may take before it fails."},
+                "help": "How long one request may take before it fails. For ComfyUI, how "
+                        "long a prompt may go without progress before it is stopped."},
     "max_concurrent": {"label": "Requests at once", "zero": "No limit",
                        "help": "How many requests this provider gets at the same time. 0 "
                                "means no limit."},
