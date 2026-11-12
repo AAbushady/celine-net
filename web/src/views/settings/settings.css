@@ -38,11 +38,6 @@
 .src-line { margin: 0; font-size: var(--t-md); line-height: var(--lh-body); color: var(--text-secondary); }
 .src-line a { color: var(--accent); }
 
-.facts { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--s-2) var(--s-5);
-  font-size: var(--t-md); line-height: var(--lh-body); }
-.facts dt { color: var(--text-muted); }
-.facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-
 .plain-list { margin: var(--s-2) 0 0; padding-left: var(--s-5); font-size: var(--t-md); color: var(--text-secondary); }
 
 .qr { width: 196px; height: 196px; padding: var(--s-4); margin-top: var(--s-3); background: var(--qr-bg); border-radius: var(--r-md); }
@@ -188,8 +183,6 @@ a.batches__time:hover { text-decoration: underline; }
 @media (max-width: 767px) {
   .server__meta { display: none; }
   .server__body { padding-left: var(--s-4); }
-  .facts { grid-template-columns: minmax(0, 1fr); gap: 0 var(--s-5); }
-  .facts dd { margin-bottom: var(--s-2); }
 }
 
 /* a narrow page (a phone, or a tablet beside the settings list): the 16 px gutter, the
