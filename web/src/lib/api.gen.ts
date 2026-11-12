@@ -58,6 +58,8 @@ export type BatchItem = {
   provider?: string | null
   attachment?: MadeFile | null
   seconds?: number | null
+  /** the seconds it waited in ComfyUI's queue */
+  queued?: number | null
   /** why it failed */
   error?: string | null
   /** what a running item does now */

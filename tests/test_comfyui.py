@@ -871,6 +871,8 @@ async def test_the_note_says_only_a_wait_in_the_queue_never_what_the_block_shows
     assert queued == [20.0], "the two looks it waited in line, nothing after"
     assert took({"seconds": 59.4, "queued": 26.6}) == "59 s, after 27 s in ComfyUI's queue"
     assert took({"seconds": 29.1, "queued": 0.4}) == "29 s"
+    item = {"index": 0, "state": "done", "seed": 1, "seconds": 59.4, "queued": 26.6}
+    assert comfy_api.BatchItem.model_validate(item).queued == 26.6, "its answer says it"
 
 
 # ---- a new ComfyUI provider ------------------------------------------------------------

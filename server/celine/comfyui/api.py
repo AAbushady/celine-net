@@ -90,6 +90,8 @@ class BatchItem(Answer):
     provider: str | None = None
     attachment: MadeFile | None = None
     seconds: float | None = None
+    queued: float | None = Field(default=None,
+                                 description="the seconds it waited in ComfyUI's queue")
     error: str | None = Field(default=None, description="why it failed")
     note: str | None = Field(default=None, description="what a running item does now")
     warnings: list[str] | None = None
