@@ -765,11 +765,17 @@ class Batches:
         item["state"] = "running"
         await _save(store, b)
 
-        async def note(line: str, queued: float | None = None, **_) -> None:
+        async def note(line: str, queued: float | None = None,
+                       steps: dict[str, int] | None = None, **_) -> None:
             if queued is not None:          # its seconds in ComfyUI's queue (server._follow)
                 item["queued"] = round(item.get("queued", 0.0) + queued, 1)
-            if item.get("note") != line:
-                item["note"] = line
+            changed = item.get("note") != line or item.get("steps") != steps
+            item["note"] = line
+            if steps:
+                item["steps"] = steps
+            else:
+                item.pop("steps", None)
+            if changed:
                 await _save(store, b)
 
         started = clock()
@@ -801,6 +807,7 @@ class Batches:
         # its own time: the wait for the GPU and in ComfyUI's queue are not the item's
         item["seconds"] = round(max(0.0, clock() - started - item.get("queued", 0.0)), 1)
         item.pop("note", None)
+        item.pop("steps", None)
         await _save(store, b)
 
     def _preset(self, kind: str, item: dict) -> presets_mod.Preset:

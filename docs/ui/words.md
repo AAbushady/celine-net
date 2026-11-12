@@ -133,7 +133,8 @@ block at the end of this file lists the words no UI string uses.
 | Model | which model answers | everyone |
 | load: | a note's head line, as the note writes it, in the Context tab's why ("load: off") | Obsidian properties |
 | Load automatically, Notes that match each message | the Context tab's switch and its tooltip: each new message brings up the sections of its notes it matches | |
-| Waiting for the GPU., Waiting for the GPU, {n} ahead. {why} | an image or music batch waits for its GPU (the lease); behind a ComfyUI that starts on demand, the leases ahead of it and the helper's sentence why follow | ComfyUI, Stable Diffusion WebUI "Waiting" |
+| Waiting for the GPU., Waiting for the GPU, {n} ahead. {why} | an image, music or video batch waits for its GPU (the lease); behind a ComfyUI that starts on demand, the leases ahead of it and the helper's sentence why follow | ComfyUI, Stable Diffusion WebUI "Waiting" |
+| Waiting in the queue, Waiting in the queue, {n} ahead, Loading the model, Step {n} of {m}, Decoding, Saving | an item in ComfyUI: behind other prompts in its queue, then what the comfy helper heard while it is made, with a bar while its steps are counted | ComfyUI "Queue"; Stable Diffusion WebUI's step counter |
 | Stopped., Stopped at the tool round limit., The reply reached the length limit., Interrupted., The reply failed. | how a reply ended, where the next line appears: you stopped it, it reached Tool rounds per turn, it reached its length, the server restarted, it failed; a stopped image says Stopped. too | |
 | Cleared {time}, Temporary, Kept | how long an image or track that was created stays, the server's words: Cleared and when, in the place of one past its days, with what made it and Retry; Temporary and Kept are its other states | Chrome, iOS "Clear" (history, caches) |
 

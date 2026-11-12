@@ -1,7 +1,7 @@
 /* The inline picture block of the chat: ONE block for the whole life of a
    picture (one block). While it is made its shape breathes with the prompt in
    it ("Creating image" while the prompt is still being written, the server's line above
-   it while it waits) and Stop; when it failed, the same shape, still, with the server's
+   it while it waits or is made, with a bar while its steps are counted) and Stop; when it failed, the same shape, still, with the server's
    line in plain words and Retry, the item made again as it was asked (Open Settings too
    when it needs the user; stopped, "Stopped." and Retry); done, the
    picture fills it and a click opens the Viewer, titled by what it shows, its prompt under
@@ -19,7 +19,7 @@ const BLOCK = 640     // the widest a picture block is (.picture-block--wide)
 import { useNav } from '../lib/nav'
 import { madeWords, needsOwner, titleOf, type PictureState } from '../lib/pictures'
 import { useAction } from '../lib/useAction'
-import { Button, IconButton, InlineError, MenuButton, Notice, Picture, cx, toast, type MenuItem } from '../ui'
+import { Button, IconButton, InlineError, MenuButton, Notice, Picture, Progress, cx, toast, type MenuItem } from '../ui'
 import { GalleryContext } from './Batch'
 import { madeMenu } from './PhotoViewer'
 import { settingOf } from './Status'
@@ -87,6 +87,9 @@ export function PictureBlock({ pic, onStop, onRetry, onKeep, className }: {
             {failed && pic.line && !stopped
               ? <Notice compact tone="error">{pic.line}</Notice>
               : pic.line && <span className="picture-block__line" role="status">{pic.line}</span>}
+            {making && pic.steps && (
+              <span className="picture-block__steps"><Progress value={pic.steps.value} max={pic.steps.max} label={pic.line ?? undefined} /></span>
+            )}
             {(making || pic.prompt) && (
               <p className="picture-block__prompt" role={making ? 'status' : undefined}>{pic.prompt || 'Creating image'}</p>
             )}

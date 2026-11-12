@@ -104,6 +104,22 @@ class Comfy:
         ids = [item[1] for item in pending]
         return (True, ids.index(prompt_id)) if prompt_id in ids else (False, 0)
 
+    async def progress(self, prompt_id: str) -> dict[str, Any] | None:
+        """Where a running prompt stands, from the comfy helper (GET /progress/<id>: the node
+        at work, its class, its steps), or None: a ComfyUI without the helper, a prompt it
+        did not see, or no answer. Never a reason to fail the prompt."""
+        try:
+            r = await self.client.get(f"{self.url}/progress/{prompt_id}")
+        except httpx.HTTPError:
+            return None
+        if r.status_code != 200:
+            return None
+        try:
+            got = r.json()
+        except ValueError:
+            return None
+        return got if isinstance(got, dict) else None
+
     async def output(self, ref: dict[str, Any]) -> tuple[bytes, str]:
         r = await self.client.get(f"{self.url}/view", params={
             "filename": ref["filename"], "subfolder": ref.get("subfolder", ""),
@@ -526,17 +542,39 @@ async def run_refs(comfy: Comfy, graph: dict[str, Any], note,
                         "event": "comfyui.stop_failed", "error": type(e).__name__})
 
 
+# what a node that counts no steps is doing, by its class (the comfy helper names it)
+_DOING = (("VAEDecode", "Decoding"), ("Save", "Saving"), ("CreateVideo", "Saving"))
+
+
+def doing(p: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
+    """A prompt's progress from the helper as (words, steps): "Step 12 of 20" and its steps
+    while a node counts them, else what its node does ("Loading the model", "Decoding",
+    "Saving"), else ("", None)."""
+    value, most = p.get("value"), p.get("max")
+    if isinstance(value, int) and isinstance(most, int) and most > 1:
+        return f"Step {value} of {most}", {"value": value, "max": most}
+    cls = str(p.get("class") or "")
+    if "Loader" in cls:
+        return "Loading the model", None
+    for start, words in _DOING:
+        if cls.startswith(start):
+            return words, None
+    return "", None
+
+
 def _mono() -> float:
     """Seconds on a clock that only goes forward (the tests set their own)."""
     return time.monotonic()
 
 
 async def _follow(comfy: Comfy, prompt_id: str, note) -> dict[str, Any]:
-    """Until the prompt is in /history as completed or failed. Its note says only what
-    the user cannot see: a wait in ComfyUI's queue; nothing while it is being made (the
-    picture block shows that). The seconds it waited in that queue, behind another
-    prompt, go to `note` as `queued` once it ends (its item's time leaves them out)."""
+    """Until the prompt is in /history as completed or failed. Its note says where it
+    stands: a wait in ComfyUI's queue, then while it is made what the comfy helper heard
+    of it (doing: its steps as `steps` too). The seconds it waited in that queue, behind
+    another prompt, go to `note` as `queued` once it ends (its item's time leaves them
+    out)."""
     said = None
+    shown: dict[str, int] | None = None
     queued, last = 0.0, _mono()
     waits = False
     while True:
@@ -552,11 +590,17 @@ async def _follow(comfy: Comfy, prompt_id: str, note) -> dict[str, Any]:
                 await note(said or "", queued=round(queued, 1))
             return entry
         waits, ahead = await comfy.position(prompt_id)
-        line = ("" if not waits else
-                f"Waiting in the queue, {ahead} ahead" if ahead else "Waiting in the queue")
-        if line != said:
-            said = line
-            await note(line)
+        steps = None
+        if waits:
+            line = f"Waiting in the queue, {ahead} ahead" if ahead else "Waiting in the queue"
+        else:
+            got = await comfy.progress(prompt_id)
+            line, steps = doing(got) if got else ("", None)
+            if not line and said and not said.startswith("Waiting"):
+                line = said             # a node that says nothing: the last words stand
+        if line != said or steps != shown:
+            said, shown = line, steps
+            await note(line, steps=steps)
         await anyio.sleep(POLL)
 
 

@@ -12,7 +12,7 @@ import { TILE, asBatch, clearedFile, fileUrl, madeFile, mediaApi, tileUrl, type 
 import { clearedLine, madeWords, pictureOf, retryItem } from '../lib/pictures'
 import { useAction } from '../lib/useAction'
 import { useOnline } from '../lib/socket'
-import { Button, IconButton, InlineError, cx } from '../ui'
+import { Button, IconButton, InlineError, Progress, cx } from '../ui'
 import { PictureBlock } from './PictureBlock'
 import './Batch.css'
 
@@ -159,7 +159,8 @@ function ClipPlayer({ item: i, src }: { item: BatchItem; src: string }) {
 }
 
 /* a track or a clip: its title (a clip's prompt), player and Keep once done; the server's
-   words while it waits or runs, why it failed, or when it was cleared with its title and Retry */
+   words while it waits or runs (a bar while its steps are counted), why it failed, or when
+   it was cleared with its title and Retry */
 function Track({ batch, item: i, onRetry }: { batch: Batch; item: BatchItem; onRetry?: () => Promise<unknown> }) {
   const retry = useAction(async () => { await onRetry?.() })
   const file = madeFile(i)
@@ -182,6 +183,9 @@ function Track({ batch, item: i, onRetry }: { batch: Batch; item: BatchItem; onR
       ) : (
         <span className="batch__say">
           <span className="batch__words">{cleared ? clearedLine(i) : i.state === 'failed' ? i.error : i.state === 'stopped' ? 'Stopped' : i.note}</span>
+          {i.state === 'running' && i.steps && (
+            <span className="batch__steps"><Progress value={i.steps.value} max={i.steps.max} label={i.note ?? undefined} /></span>
+          )}
           {cleared && <span className="batch__title" title={about ?? undefined}>{title ?? cleared.filename}</span>}
           {again && <Button size="sm" variant="secondary" icon={RefreshCw} loading={retry.busy} onClick={() => void retry.run()}>Retry</Button>}
           {retry.error && <InlineError compact message={retry.error} />}

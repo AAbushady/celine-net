@@ -29,6 +29,8 @@ export type PictureState = {
   seed?: number | null
   /** done: kept from clearing (the server's) */
   kept?: boolean
+  /** while it is made: the steps of the node at work, when it counts them (the server's) */
+  steps?: { value: number; max: number } | null
 }
 
 /** what an item made that was cleared, as a line: the server's word and when */
@@ -47,6 +49,7 @@ export function pictureOf(i: BatchItem): PictureState {
     line: cleared ?? (i.state === 'stopped' ? 'Stopped.' : i.state === 'failed' ? i.error ?? null : i.note ?? null),
     preset: i.preset ?? null, width: i.attachment?.width ?? i.width ?? null, height: i.attachment?.height ?? i.height ?? null,
     seed: i.seed ?? null, kept: file?.life?.state === 'kept',
+    steps: i.state === 'running' ? i.steps ?? null : null,
   }
 }
 

@@ -81,6 +81,12 @@ class SourceImage(Answer):
     media_type: str
 
 
+class Steps(Answer):
+    """Where a running item's node is: step `value` of `max`."""
+    value: int
+    max: int
+
+
 class BatchItem(Answer):
     """One slot of a batch: the request and what became of it."""
     index: int
@@ -94,6 +100,8 @@ class BatchItem(Answer):
                                  description="the seconds it waited in ComfyUI's queue")
     error: str | None = Field(default=None, description="why it failed")
     note: str | None = Field(default=None, description="what a running item does now")
+    steps: Steps | None = Field(default=None,
+                                description="a running item's steps, while its node counts them")
     warnings: list[str] | None = None
     # images
     prompt: str | None = None

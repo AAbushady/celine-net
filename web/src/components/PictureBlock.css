@@ -19,6 +19,8 @@
   font-family: var(--font-sans); font-size: var(--t-md); line-height: var(--lh-body); color: var(--text-secondary); text-align: center;
 }
 .picture-block__line { color: var(--text-muted); }
+.picture-block__steps { display: flex; justify-self: stretch; }
+.picture-block__box.is-making .picture-block__say { width: 100%; }
 .picture-block__made { color: var(--text-muted); overflow-wrap: anywhere; }
 .picture-block__prompt { margin: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5; }
 .picture-block__box:not(.is-making) .picture-block__prompt { color: var(--text-muted); -webkit-line-clamp: 3; }

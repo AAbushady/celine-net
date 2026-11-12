@@ -837,8 +837,7 @@ async def test_a_batch_call_while_the_batches_are_down_is_an_error_result():
     assert (got.is_error, got.content) == (True, "Music is off.")
 
 
-async def test_the_note_says_only_a_wait_in_the_queue_never_what_the_block_shows(
-        monkeypatch):
+async def test_the_note_names_a_wait_in_the_queue_and_counts_it_apart(monkeypatch):
     """A render that waited behind another prompt counted that wait as its own time
     ("86 s"), and nothing named it."""
     from celine.comfyui import server
@@ -853,6 +852,9 @@ async def test_the_note_says_only_a_wait_in_the_queue_never_what_the_block_shows
 
         async def position(self, prompt_id):
             return self.looks.pop(0)
+
+        async def progress(self, prompt_id):
+            return None                     # a ComfyUI without the comfy helper
     notes: list[str] = []
     queued: list[float] = []
 
@@ -872,7 +874,40 @@ async def test_the_note_says_only_a_wait_in_the_queue_never_what_the_block_shows
     assert took({"seconds": 59.4, "queued": 26.6}) == "59 s, after 27 s in ComfyUI's queue"
     assert took({"seconds": 29.1, "queued": 0.4}) == "29 s"
     item = {"index": 0, "state": "done", "seed": 1, "seconds": 59.4, "queued": 26.6}
+    assert comfy_api.BatchItem.model_validate(
+        {**item, "state": "running", "steps": {"value": 3, "max": 20}}).steps.value == 3
     assert comfy_api.BatchItem.model_validate(item).queued == 26.6, "its answer says it"
+
+
+async def test_while_it_is_made_the_note_says_its_steps_from_the_comfy_helper():
+    from celine.comfyui import server
+
+    heard = [{"class": "UNETLoader"}, {"class": "KSampler", "value": 3, "max": 20},
+             {"class": "KSampler", "value": 20, "max": 20}, {"class": "VAEDecode"},
+             {"class": "ImageFromBatch"}]
+
+    class Running:
+        async def history(self, prompt_id):
+            return {"status": {"completed": True}} if not heard else None
+
+        async def position(self, prompt_id):
+            return False, 0
+
+        async def progress(self, prompt_id):
+            return heard.pop(0)
+    notes: list[tuple[str, dict | None]] = []
+
+    async def note(line, steps=None, **_):
+        notes.append((line, steps))
+    server.POLL, poll = 0, server.POLL
+    try:
+        await server._follow(Running(), "p1", note)
+    finally:
+        server.POLL = poll
+    assert notes == [("Loading the model", None),
+                     ("Step 3 of 20", {"value": 3, "max": 20}),
+                     ("Step 20 of 20", {"value": 20, "max": 20}),
+                     ("Decoding", None)], "a node that says nothing leaves the last words"
 
 
 # ---- a new ComfyUI provider ------------------------------------------------------------

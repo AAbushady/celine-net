@@ -64,6 +64,8 @@ export type BatchItem = {
   error?: string | null
   /** what a running item does now */
   note?: string | null
+  /** a running item's steps, while its node counts them */
+  steps?: Steps | null
   warnings?: string[] | null
   prompt?: string | null
   negative?: string | null
@@ -580,6 +582,12 @@ export type StepIn = {
   state?: string
   checkpoint?: string
   model?: string | null
+}
+
+/** Where a running item's node is: step `value` of `max`. */
+export type Steps = {
+  value: number
+  max: number
 }
 
 /** A frame a clip's preset saved beside it: what its look shows. */

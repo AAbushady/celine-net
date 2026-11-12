@@ -18,6 +18,8 @@
 .batch__say { display: grid; justify-items: center; gap: var(--s-1); padding: var(--s-2) var(--s-3); min-width: 0; }
 .batch__say .batch__words { padding: 0; }
 .batch__say .batch__title { max-width: 100%; color: var(--text-muted); }
+.batch__steps { display: flex; justify-self: stretch; }
+.batch__tile--running .batch__say { width: 100%; }
 
 .batch__words {
   padding: var(--s-2) var(--s-3); font-size: var(--t-xs); line-height: var(--lh-ui); text-align: center;
