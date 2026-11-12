@@ -139,6 +139,35 @@ def test_a_value_of_another_type_is_named_and_never_converted():
     assert mistyped({"what": "find"}, look) == "what is one of view, locate"
 
 
+def test_a_field_written_beside_its_parameter_is_told_where_it_goes(cfg):
+    """A name that is no parameter but a field of the items of a list parameter, or of an
+    object parameter, is told where it goes, from the schema, in place of a guess."""
+    from celine.skills import derive_schema
+    from celine.skills.images import ImageGenerator
+    from celine.turns.tools import _invalid
+    generate = SimpleNamespace(schema=derive_schema(ImageGenerator.generate))
+    # the call Celine made: the item's preset, width and height beside items
+    said = {"items": [{"prompt": "a fox in the snow"}], "preset": "krea2-turbo",
+            "width": 1024, "height": 1536, "wait": True}
+    assert _invalid(said, None, generate, cfg) == \
+        "height, preset and width go inside each item of items"
+    assert _invalid({"prompt": "a fox", "width": 1024}, None, generate, cfg).endswith(
+        "; prompt and width go inside each item of items")
+    assert _invalid({"items": [], "seed": 4, "style": "ink"}, None, generate, cfg) == \
+        "style is not a parameter; seed goes inside each item of items"
+    assert _invalid({"q": "x", "wiat": True}, None, SimpleNamespace(schema={"properties": {
+        "q": {"type": "string"}, "wait": {"type": "boolean"}}}), cfg) == \
+        "wiat is not a parameter, did you mean wait?", "no home: the guess as before"
+    nested = SimpleNamespace(schema={"properties": {
+        "q": {"type": "string"},
+        "options": {"type": "object", "properties": {"depth": {"type": "integer"}}},
+        "tags": {"anyOf": [{"type": "array", "items": {
+            "type": "object", "properties": {"name": {"type": "string"}}}},
+            {"type": "null"}]}}})
+    assert _invalid({"q": "x", "depth": 2, "name": "a"}, None, nested, cfg) == \
+        "depth goes inside options; name goes inside each item of tags"
+
+
 async def test_a_call_that_sends_the_apps_shortening_mark_back_is_refused(store, cfg, registry,
                                                                         tmp_path):
     import json

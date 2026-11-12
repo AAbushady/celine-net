@@ -338,11 +338,38 @@ def _invalid(args: dict | None, arguments: str | None, spec, cfg) -> str | None:
             desc = (props.get(m) or {}).get("description", "")
             hint = f" (one of {', '.join(map(str, opts))})" if opts else ""
             parts.append(f"missing {m}{hint}" + (f": {cfg.substitute(desc)}" if desc else ""))
+        homes = _homes(props)
+        housed: dict[str, list[str]] = {}       # where they go -> the names that go there
         for u in sorted(unknown):
+            if u in homes:
+                housed.setdefault(homes[u], []).append(u)
+                continue
             near = _meant(u, sorted(missing), list(props))
             parts.append(f"{u} is not a parameter" + (f", did you mean {near}?" if near else ""))
+        for where, names in housed.items():
+            them = ", ".join(names[:-1]) + " and " + names[-1] if len(names) > 1 else names[0]
+            parts.append(f"{them} {'go' if len(names) > 1 else 'goes'} inside {where}")
         return "; ".join(parts)
     return mistyped(args, spec.schema) or _marked(args)
+
+
+def _homes(props: dict) -> dict[str, str]:
+    """Where a name that is no parameter goes, when it is a field inside one: the fields
+    of the items of a list parameter ("each item of items") and of an object parameter
+    ("values"), the first parameter that has it."""
+    out: dict[str, str] = {}
+    for name, prop in props.items():
+        for shape in (prop, *(prop.get("anyOf") or ())):     # an MCP server's `X | None`
+            items = shape.get("items") if isinstance(shape, dict) else None
+            if isinstance(items, dict) and isinstance(items.get("properties"), dict):
+                fields, where = items["properties"], f"each item of {name}"
+            elif isinstance(shape, dict) and isinstance(shape.get("properties"), dict):
+                fields, where = shape["properties"], name
+            else:
+                continue
+            for field in fields:
+                out.setdefault(field, where)
+    return out
 
 
 def _marked(args: dict) -> str | None:
