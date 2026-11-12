@@ -134,7 +134,7 @@ async def test_a_read_back_of_a_call_that_went_on_as_a_job_says_how_the_job_ende
     title = await store.read(lambda c: c.execute(
         "SELECT coalesce(nullif(title, ''), 'Untitled') FROM conversations WHERE id=?",
         (cid,)).fetchone()[0])
-    assert got == f"- {DRAW}: 1 failed.\n  - once: ComfyUI is offline In: {title} {cid[:8]}."
+    assert got == f"- {DRAW}: 1 failed of 1 call (100%).\n  - once: ComfyUI is offline In: {title} {cid[:8]}."
 
 
 async def test_a_conversation_cannot_be_deleted_while_its_job_runs(store, cfg):

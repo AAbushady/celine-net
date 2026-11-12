@@ -108,7 +108,8 @@ async def on_mind(app) -> str:
 
 def tool_failures(c: sqlite3.Connection, night: date, tz) -> str:
     """The failed calls of `night` (12:00 the day before to 12:00 on its date): a line
-    per tool, the most failures first, and under it a line per error (its first
+    per tool with how many of its calls that night failed, the most failures first, and
+    under it a line per error (its first
     ERROR_CHARS, the most frequent ERRORS_SHOWN) with the conversations it happened in,
     each by title and its short id as past_conversations takes it; none of a locked
     conversation (conversations/store.locked). The error of a call that went on as a job is
@@ -124,6 +125,12 @@ def tool_failures(c: sqlite3.Connection, night: date, tz) -> str:
         "LEFT JOIN jobs j ON j.id = tc.job_id "
         "WHERE tc.state = 'error' AND tc.started_at >= ? AND tc.started_at < ? "
         f"AND NOT {locked_sql('cv')} ORDER BY tc.started_at", (iso(lo), iso(lo + timedelta(days=1)))).fetchall()
+    # every call of the night per tool, failed or not: the count a failure rate is of
+    calls = dict(c.execute(
+        "SELECT tc.name, count(*) FROM tool_calls tc JOIN messages m ON m.id = tc.message_id "
+        "JOIN conversations cv ON cv.id = m.conversation_id WHERE tc.started_at >= ? AND "
+        f"tc.started_at < ? AND NOT {locked_sql('cv')} GROUP BY tc.name",
+        (iso(lo), iso(lo + timedelta(days=1)))).fetchall())
     # tool -> error -> [count, {conversation: its label}], in the order first seen
     tools: dict[str, dict[str, list]] = defaultdict(dict)
     for r in rows:
@@ -138,7 +145,9 @@ def tool_failures(c: sqlite3.Connection, night: date, tz) -> str:
         return sum(n for n, _ in errors.values())
     out = []
     for name, errors in sorted(tools.items(), key=lambda x: -count(x[1])):
-        out.append(f"- {name}: {count(errors)} failed.")
+        n, of = count(errors), calls.get(name) or count(errors)
+        out.append(f"- {name}: {n} failed of {of} call{'' if of == 1 else 's'} "
+                   f"({round(100 * n / of)}%).")
         ranked = sorted(errors.items(), key=lambda x: -x[1][0])
         for error, (n, where) in ranked[:ERRORS_SHOWN]:
             times = "once" if n == 1 else f"{n} times"

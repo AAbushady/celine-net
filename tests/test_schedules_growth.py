@@ -291,15 +291,15 @@ async def test_tool_failures_say_each_error_and_the_conversations_it_happened_in
     got = await store.read(lambda c: tool_failures(c, date(2026, 10, 16), UTC))
     a, b = f"Searching {first[:8]}", f"Searching {second[:8]}"
     assert got == (
-        "- notebook__read: 5 failed.\n"
+        "- notebook__read: 5 failed of 5 calls (100%).\n"
         f"  - once: n0.md does not exist In: {a}.\n"
         f"  - once: n1.md does not exist In: {a}.\n"
         f"  - once: n2.md does not exist In: {a}.\n"
         "  - 2 more failed with 2 other errors.\n"
-        "- web__search: 3 failed.\n"
+        "- web__search: 3 failed of 4 calls (75%).\n"
         f"  - 2 times: SearXNG is down In: {a}, {b}.\n"
         f"  - once: bad query In: {b}.\n"
-        "- shell__run: 1 failed.\n"
+        "- shell__run: 1 failed of 1 call (100%).\n"
         f"  - once: exit 1 In: {a}.")
     assert await store.read(lambda c: tool_failures(c, date(2026, 10, 1), UTC)) == \
         runs_mod.NONE
