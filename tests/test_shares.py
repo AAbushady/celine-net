@@ -366,7 +366,8 @@ def test_the_agents_tools_share_list_and_end(app, web, clock):
     assert anyio.run(lambda: shell.list_shares(ctx)).content == \
         f"- {t}: \"Panel\", port {web}, answers, ends {when(ends, tz)}"
     assert anyio.run(lambda: shell.share(ctx, title="x")).is_error
-    assert anyio.run(lambda: shell.unshare(ctx, id=t)).content == f"Ended share {t}."
+    assert anyio.run(lambda: shell.unshare(ctx, id=t)).content == \
+        f"Ended share {t}: its link no longer opens."
     assert anyio.run(lambda: shell.unshare(ctx, id=t)).is_error
     assert anyio.run(lambda: shell.list_shares(ctx)).content == \
         f"- {t}: \"Panel\", port {web}, ended {when(shares.iso(clock.t), tz)}"

@@ -224,7 +224,20 @@ class SubAgents:
         if refusal:
             return refusal
         await self.stop_agent(sub["id"])
-        return ToolResult(content=f"Stopped {sub['name']}.",
+        from ..activity import busy
+
+        def held(c) -> tuple[bool, int]:            # what of it is left, read back
+            return busy(c, sub["id"]), c.execute(
+                "SELECT count(*) FROM intercom WHERE from_addr=? AND due_at IS NOT NULL AND "
+                "cancelled_at IS NULL AND id IN (SELECT intercom_id FROM intercom_deliveries "
+                "WHERE state='pending')", (f"agent:{sub['id']}",)).fetchone()[0]
+        live, waiting = await ctx.store.read(held)
+        said = f"Stopped {sub['name']}." + (" Its turn is ending." if live else
+                                            " Nothing of it runs now.")
+        if waiting:
+            said += (f" {waiting} message{'s' if waiting > 1 else ''} it scheduled still "
+                     f"wait{'' if waiting > 1 else 's'}.")
+        return ToolResult(content=said,
                           display={"name": sub["name"], "conversation_id": sub["id"],
                                    "link": sub["link"]})
 

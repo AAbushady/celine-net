@@ -373,7 +373,17 @@ class Missions:
         if artifact:
             await missions.update(ctx.store, ctx.conversation_id, {"artifact": artifact})
         await record(self.app, ctx.store, ctx.conversation_id, word, note)
-        return ToolResult(content=f"Recorded: {status.lower()}.",
+        held = await missions.get(ctx.store, ctx.conversation_id)  # as stored, read back
+        if held is None or held["status"] != word:
+            return ToolResult(content=f"{status} was written, and the mission reads "
+                                      f"{WORDS.get((held or {}).get('status'), 'nothing')} "
+                                      f"now.", is_error=True)
+        said = f"Recorded: the mission is {self.cfg.substitute(WORDS[held['status']])}"
+        if held.get("note"):
+            said += f", note \"{held['note']}\""
+        if held.get("artifact"):
+            said += f", delivered {held['artifact']}"
+        return ToolResult(content=said + ".",
                           display={"status": word, "note": note,
                                    "artifact": artifact})
 
@@ -407,9 +417,20 @@ class Missions:
                 "due_at IS NOT NULL AND json_extract(data, '$.wait')",
                 (f"agent:{cid}",))]):
             await self.app.intercom.cancel(iid)        # one that landed stays as it is
-        await self.app.intercom.send(f"agent:{cid}", f"agent:{cid}", why, due_at=iso(due),
-                                     data={"mission": cid, "wait": True})
+        sent = await self.app.intercom.send(f"agent:{cid}", f"agent:{cid}", why,
+                                            due_at=iso(due), data={"mission": cid, "wait": True})
+        # the wake as stored, read back, and that no other wait of it is left
+        waits = await ctx.store.read(lambda c: [tuple(r) for r in c.execute(
+            "SELECT id, due_at FROM intercom WHERE to_addr=? AND cancelled_at IS NULL AND "
+            "due_at IS NOT NULL AND json_extract(data, '$.wait')", (f"agent:{cid}",))])
+        mine = [d for i, d in waits if i == sent["intercom_id"]]
+        if not mine:
+            return ToolResult(content="The wake was written, and no wake of yours is stored "
+                                      "now.", is_error=True)
+        due = datetime.fromisoformat(mine[0])
         said = f"You wake {clock(due, self.tz, now_)}."
+        if (n := len(waits) - 1) > 0:
+            said += f" {n} earlier wait{'s are' if n > 1 else ' is'} still set."
         if row["wake_id"] and (limit := await ctx.store.read(lambda c: c.execute(
                 "SELECT due_at FROM intercom WHERE id=? AND cancelled_at IS NULL",
                 (int(row["wake_id"]),)).fetchone())) and limit[0] < iso(due):

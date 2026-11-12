@@ -433,6 +433,16 @@ class UserDocuments:
         except ValueError as e:
             return ToolResult(content=str(e), is_error=True)
         it = out["item"]
-        return ToolResult(content=f"Wrote {out['path']} ({len(content):,} characters), "
-                                  f"document {it['id'] if it else '?'}.",
-                          display={"path": out["path"], "item": it["id"] if it else None})
+        try:                                        # what the file holds now, read back
+            stored = await anyio.to_thread.run_sync(
+                lambda: k.resolve(out["path"], must_exist=True).read_text(errors="replace"))
+        except (OSError, ValueError):
+            return ToolResult(content=f"{out['path']} was written, and no file is there now.",
+                              is_error=True)
+        if it is None:
+            return ToolResult(content=f"Wrote {out['path']} ({len(stored):,} characters), "
+                                      f"and Documents has not listed it yet.",
+                              display={"path": out["path"], "item": None})
+        return ToolResult(content=f"Wrote {out['path']} ({len(stored):,} characters), "
+                                  f"document {it['id']}.",
+                          display={"path": out["path"], "item": it["id"]})

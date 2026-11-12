@@ -222,13 +222,16 @@ class IntercomSkill:
         iid = out["intercom_id"]
         tid, stored = await ctx.store.read(lambda c: tuple(c.execute(
             "SELECT thread, to_addr FROM intercom WHERE id=?", (iid,)).fetchone()))
+        # who it went to, as stored: what `to` resolved to
+        went = await ctx.store.read(lambda c: _named(c, stored, ctx.conversation_id,
+                                                     self.cfg.user))
         if GUARD in stored.split(", "):
             from ..guard import talk         # Bastet answers, as background work
             await talk.heard(self.app, iid, ctx.conversation_id,
                              (due - now_).total_seconds() if due else None)
         where = "a new thread" if tid == iid else f"thread #{tid}"
-        said = f"Sent #{iid} in {where}." if due is None else \
-            f"#{iid} lands {clock(due, self.tz, now_)}, in {where}."
+        said = f"Sent #{iid} to {went} in {where}." if due is None else \
+            f"#{iid} to {went} lands {clock(due, self.tz, now_)}, in {where}."
         return ToolResult(content=said, display={
             "id": iid, "to": to, "text": text, "due_at": iso(due) if due else None})
 
@@ -438,10 +441,19 @@ class IntercomSkill:
                    f"reply:{new}")
             ctx.store.global_event(c, WAITS_CHANGED, {})    # it waits for them (waits.py)
         await ctx.store.write(first)
+        # the chat and its first message as stored, read back
+        held = await ctx.store.read(lambda c: c.execute(
+            "SELECT cv.title, (SELECT count(*) FROM messages m WHERE m.conversation_id = cv.id "
+            "AND m.role = 'assistant' AND m.content <> '') FROM conversations cv WHERE "
+            "cv.id = ?", (new,)).fetchone())
+        if held is None or not held[1]:
+            return ToolResult(content=f"The chat {new} was made, and your message is not in "
+                                      f"it.", is_error=True, display={"chat": new})
         listed = (f"\nIn the last 24 h {self.cfg.user} also got this from here:\n- "
                   + "\n- ".join(has)) if has else ""
-        return ToolResult(content=f"Started the chat \"{title}\" (/chat/{new}); it waits "
-                                  f"there for {self.cfg.user}.{listed}",
+        return ToolResult(content=f"Started the chat \"{held[0]}\" (/chat/{new}) with your "
+                                  f"message in it; it waits there for {self.cfg.user}."
+                                  f"{listed}",
                           display={"chat": new})
 
     @tool(read_only=False, destructive=True)
@@ -455,7 +467,31 @@ class IntercomSkill:
         if not await self.app.intercom.cancel(id):
             return ToolResult(content=f"#{id} is not a scheduled message that is still "
                                       "waiting.", is_error=True)
-        return ToolResult(content=f"Cancelled #{id}.", display={"cancelled": id})
+        at = await ctx.store.read(lambda c: (c.execute(       # as stored, read back
+            "SELECT cancelled_at FROM intercom WHERE id=?", (id,)).fetchone() or [None])[0])
+        if not at:
+            return ToolResult(content=f"#{id} was cancelled, and it reads as waiting still.",
+                              is_error=True)
+        return ToolResult(content=f"Cancelled #{id}: it will not land.",
+                          display={"cancelled": id})
+
+
+def _named(c, stored: str, here: str, user: str) -> str:
+    """The stored `to_addr` ("user, agent:<id>") in words: the user by name, this
+    conversation as itself, another by its title and short id, anything else as stored."""
+    out = []
+    for addr in (a.strip() for a in stored.split(",") if a.strip()):
+        if addr == "user":
+            out.append(user)
+        elif addr == f"agent:{here}":
+            out.append("this conversation")
+        elif addr.startswith("agent:"):
+            r = c.execute("SELECT coalesce(nullif(title, ''), 'Untitled') FROM conversations "
+                          "WHERE id=?", (addr[6:],)).fetchone()
+            out.append(f"\"{r[0]}\" {addr[6:14]}" if r else addr)
+        else:
+            out.append(addr)
+    return ", ".join(out)
 
 
 def _here(c, cid: str, turn: str | None) -> dict | None:

@@ -871,7 +871,11 @@ class Shell:
     ) -> ToolResult:
         """End a share: its link stops working at once."""
         if await shares.end(ctx.store, id.strip()):
-            return ToolResult(content=f"Ended share {id.strip()}.")
+            row = await shares.get(ctx.store, id.strip())       # as stored, read back
+            if row is None or shares.running(row):
+                return ToolResult(content=f"Share {id.strip()} was ended, and it reads as "
+                                          f"running still.", is_error=True)
+            return ToolResult(content=f"Ended share {id.strip()}: its link no longer opens.")
         return ToolResult(content=f"No running share {id.strip()}; shell__list_shares lists them.",
                           is_error=True)
 
