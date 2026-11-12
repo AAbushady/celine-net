@@ -367,9 +367,9 @@ TOOLS: dict[str, dict[str, str]] = {
                                        "summary": "Looks at up to four example pictures "
                                                   "of a model, with their prompts."},
     "image_generator__request_model": {"label": "Image generation: request a model file",
-                                       "summary": "Asks you to download a LoRA or a model "
-                                                  "for a preset; it comes once you "
-                                                  "approve it."},
+                                       "summary": "Asks you to download a LoRA, a model, a "
+                                                  "VAE or a text encoder for a preset; it "
+                                                  "comes once you approve it."},
     "image_generator__read_preset": {"label": "Image generation: read a preset",
                                      "summary": "Reads an image preset as its editor has "
                                                 "it, with its workflow."},
@@ -406,6 +406,10 @@ TOOLS: dict[str, dict[str, str]] = {
     "video_generator__look_up_node": {"label": "Video generation: look up a node",
                                       "summary": "Reads what ComfyUI says of one node, or "
                                                  "finds nodes by words."},
+    "video_generator__request_model": {"label": "Video generation: request a model file",
+                                       "summary": "Asks you to download a file a video "
+                                                  "preset needs; it comes once you approve "
+                                                  "it."},
     "video_generator__propose_preset": {"label": "Video generation: propose a preset",
                                         "summary": "Proposes a video preset of "
                                                    "{{name}}'s own; it is saved once you "

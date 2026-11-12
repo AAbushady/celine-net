@@ -200,7 +200,7 @@ def role_presets(cfg, role: str) -> list[presets_mod.Preset]:
 
 
 # while the media runner is down (both switches off, or between its stop and start)
-OFF = {"images": "Images are off.", "music": "Music is off."}
+OFF = {"images": "Images are off.", "music": "Music is off.", "video": "Video is off."}
 
 
 async def batch_generate(app, ctx: ToolContext, role: str, items, count: int, wait: bool,
@@ -334,6 +334,23 @@ VALUES = ("The editor's values, by the keys read_preset shows (family, good_at, 
           "Empty: none.")
 REPLACES = "The id of a preset you proposed before, to replace it. Empty: a new preset."
 PROPOSE_WHY = "Why, in one sentence, shown to {{username}} with the preset."
+MODEL_KIND = ("lora: a LoRA. model: a diffusion model. vae: a VAE. text_encoder: a text "
+              "encoder. A LoRA or model of the preset's own folder is given later in loras or "
+              "model; a file the preset's workflow names is used by the preset itself.")
+MODEL_FILE = ("Which file: the file value search_models or read_model printed "
+              "(civitai:<version>, civitai:<version>/<file>, hf:<owner>/<name>/<path>), a "
+              "Civitai page address with modelVersionId, or a Hugging Face file's address.")
+MODEL_WHY = "Why, in one sentence, shown to {{username}} with the request."
+
+
+async def model_request(app, ctx: ToolContext, preset: str, kind: str, file: str,
+                        why: str) -> ToolResult:
+    """A model file asked of the user for a preset (comfyui/model_files.py)."""
+    files = getattr(app, "model_files", None)
+    if files is None:
+        return ToolResult(content="Images and Video are off.", is_error=True)
+    text, bad, display = await files.request(ctx, preset=preset, kind=kind, file=file, why=why)
+    return ToolResult(content=text, is_error=bad, display=display)
 
 
 class Generator:
@@ -754,21 +771,17 @@ class ImageGenerator(Generator):
     async def request_model(
         self,
         ctx: ToolContext,
-        preset: Annotated[str, "The image preset the file is for, by its id from "
-                               "list_presets."],
-        kind: Annotated[Literal["lora", "model"], "lora: a LoRA, given later in loras. "
-                        "model: a diffusion model, given later in model."],
-        file: Annotated[str, "Which file: the file value search_models or read_model "
-                             "printed (civitai:<version>, civitai:<version>/<file>, "
-                             "hf:<owner>/<name>/<path>), a Civitai page address with "
-                             "modelVersionId, or a Hugging Face file's address."],
-        why: Annotated[str, "Why, in one sentence, shown to {{username}} with the "
-                            "request."],
+        preset: Annotated[str, "The preset the file is for, by its id from list_presets (a "
+                               "video preset's from video_generator__read_preset)."],
+        kind: Annotated[Literal["lora", "model", "vae", "text_encoder"], MODEL_KIND],
+        file: Annotated[str, MODEL_FILE],
+        why: Annotated[str, MODEL_WHY],
     ) -> ToolResult:
-        """Ask {{username}} to download a LoRA or a diffusion model for a preset, from
-        Civitai or Hugging Face, through the comfy helper. Checked at once: the preset
-        takes such files, the helper finds the file and takes it, and it is not there
-        yet. Then it waits for {{username}}'s approval; the call returns at once and your
+        """Ask {{username}} to download a LoRA, a diffusion model, a VAE or a text encoder
+        for a preset, from Civitai or Hugging Face, through the comfy helper. A file the
+        preset's workflow names (one ComfyUI lacks) goes where it names it; another LoRA or
+        model goes to the preset's own folder. Checked at once: the preset has a place for
+        the file, the helper finds the file and takes it, and it is not there yet. Then it waits for {{username}}'s approval; the call returns at once and your
         turn goes on. A message from the app says when the file is ready, with the id to
         give in loras or model and its trigger words, or why it did not come.
         Example: image_generator__request_model(preset="qwen2.1-smart", kind="lora",
@@ -778,12 +791,7 @@ class ImageGenerator(Generator):
         file="hf:Comfy-Org/Krea-2/diffusion_models/krea2_raw_fp8_scaled.safetensors",
         why="The full Krea 2 model for a slower, finer picture.").
         Returns: what was asked for, or why nothing was."""
-        files = getattr(self.app, "model_files", None)
-        if files is None:
-            return ToolResult(content=OFF["images"], is_error=True)
-        text, bad, display = await files.request(ctx, preset=preset, kind=kind, file=file,
-                                                 why=why)
-        return ToolResult(content=text, is_error=bad, display=display)
+        return await model_request(self.app, ctx, preset, kind, file, why)
 
     # ---- presets of its own (comfyui/proposals.py) ---------------------------------------
 

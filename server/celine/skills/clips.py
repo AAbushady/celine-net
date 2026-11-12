@@ -10,15 +10,15 @@ look shows a picture, with no copy kept.
 """
 from __future__ import annotations
 
-from typing import Annotated, Required, TypedDict
+from typing import Annotated, Literal, Required, TypedDict
 
 from .. import attachments, vision
 from ..comfyui import batches as batches_mod, life, presets as presets_mod
 from . import ToolContext, ToolResult, guide, tool, described
-from .images import (LABEL, NODE, NODE_SEARCH, PRESET_PART, PROPOSE_WHY, REPLACES, REPORTS,
-                     VALUES, WAIT, WORKFLOW, Generator, batch_generate, batch_keep,
-                     batch_read, batch_stop, node_look_up, preset_propose, preset_read,
-                     settled_head, took)
+from .images import (LABEL, MODEL_FILE, MODEL_KIND, MODEL_WHY, NODE, NODE_SEARCH, PRESET_PART,
+                     PROPOSE_WHY, REPLACES, REPORTS, VALUES, WAIT, WORKFLOW, Generator,
+                     batch_generate, batch_keep, batch_read, batch_stop, model_request,
+                     node_look_up, preset_propose, preset_read, settled_head, took)
 
 SHORT = batches_mod.SHORT
 
@@ -234,6 +234,30 @@ class VideoGenerator(Generator):
             return ToolResult(content="\n".join(lines), is_error=True)
         return ToolResult(content="\n".join(lines),
                           display={"count": len(shown), **({"see": shown} if sees else {})})
+
+    # ---- model files (comfyui/model_files.py) --------------------------------------------
+
+    @tool(read_only=False, destructive=False, open_world=True)
+    async def request_model(
+        self,
+        ctx: ToolContext,
+        preset: Annotated[str, "The video preset the file is for, by its id, like a preset of "
+                               "yours that names files ComfyUI lacks."],
+        kind: Annotated[Literal["lora", "model", "vae", "text_encoder"], MODEL_KIND],
+        file: Annotated[str, MODEL_FILE],
+        why: Annotated[str, MODEL_WHY],
+    ) -> ToolResult:
+        """Ask {{username}} to download a file a video preset needs, from Hugging Face or
+        Civitai, through the comfy helper: a diffusion model, a LoRA, a VAE or a text
+        encoder the preset's workflow names and ComfyUI lacks goes where the workflow names
+        it. image_generator__search_models and read_model find the file. Then it waits for
+        {{username}}'s approval; the call returns at once. A message from the app says when
+        the file is ready, or why it did not come. Example:
+        video_generator__request_model(preset="wan2.2-14b-i2v", kind="vae",
+        file="hf:Comfy-Org/Wan_2.2_ComfyUI_Repackaged/split_files/vae/wan_2.1_vae.safetensors",
+        why="The VAE the 14B image-to-video preset decodes with.").
+        Returns: what was asked for, or why nothing was."""
+        return await model_request(self.app, ctx, preset, kind, file, why)
 
     # ---- presets of its own (comfyui/proposals.py) ---------------------------------------
 

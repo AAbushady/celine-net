@@ -173,7 +173,7 @@ class Services:
     # member of them through here
     connectors: Any = None          # kb/connectors.py Connectors
     batches: Any = None             # comfyui/batches.py Batches, while images or music are on
-    model_files: Any = None         # comfyui/model_files.py ModelFiles, while images is on
+    model_files: Any = None         # comfyui/model_files.py ModelFiles, while images or video is on
     # None while Routines is off (__main__.py): its users ask first
     triggers: Triggers | None = None
     schedules: Schedules | None = None

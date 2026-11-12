@@ -51,7 +51,7 @@ export function Media() {
         {comfy?.provider.options?.on_demand === true && <CivitaiKey />}
         {roles.data ? <>
           {imagesOn && <Presets kind="images" providers={list} roles={roles.data} onChanged={reload} />}
-          {imagesOn && comfy?.provider.options?.on_demand === true && <ModelFiles />}
+          {(imagesOn || videoOn) && comfy?.provider.options?.on_demand === true && <ModelFiles />}
           {musicOn && <Presets kind="music" providers={list} roles={roles.data} onChanged={reload} />}
           {videoOn && <Presets kind="video" providers={list} roles={roles.data} onChanged={reload} />}
         </> : <Section><Loaded res={roles} /></Section>}

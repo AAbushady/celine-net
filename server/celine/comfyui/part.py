@@ -1,5 +1,6 @@
-"""Images and music as the start-up sees them (core/parts.py): the routes, the batches
-while either is on, and the model files the agent asked for while Images is on."""
+"""Images, music and video as the start-up sees them (core/parts.py): the routes, the
+batches while any is on, and the model files the agent asked for while Images or Video is
+on."""
 from __future__ import annotations
 
 import anyio
@@ -29,7 +30,7 @@ def _runs(services: Services) -> dict[str, Run]:
             finally:
                 services.model_files = None
     return {"media": Run(run, features=("images", "music", "video"), early=True),
-            "model_files": Run(files, features=("images",))}
+            "model_files": Run(files, features=("images", "video"))}
 
 
 part = Part(name="comfyui", routes=(api.router,), runs=_runs)

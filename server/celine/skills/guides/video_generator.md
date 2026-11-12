@@ -42,4 +42,12 @@ with its placeholders, `video_generator__look_up_node` what ComfyUI says of a no
 `video_generator__propose_preset` sends yours to {{username}}, checked at once; approved,
 it is at the end of the list. It replaces only a preset you proposed before.
 
+Another video model comes as a preset of yours whose workflow names its files: propose
+it even when ComfyUI does not have them yet (the request says which). Once it is approved,
+find each file with `image_generator__search_models` and `image_generator__read_model`,
+and ask for it with `video_generator__request_model(preset=..., kind=..., file=...,
+why=...)`, its `kind` the loader's (`model`, `lora`, `vae` or `text_encoder`). Each goes
+where the workflow names it, after {{username}} approves; a message from the app says when
+it is ready.
+
 The presets, with how each takes a prompt and an example, come at the end of this guide.

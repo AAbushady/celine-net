@@ -397,7 +397,8 @@ def _model_file(a, d, r):
     """A request for a model file: what it asked for, and where it stands now (its
     display, which follows the request: comfyui/model_files.py)."""
     m = _dict(d.get("model_file"))
-    what = "model" if (m.get("kind") or a.get("kind")) == "model" else "LoRA"
+    what = {"model": "model", "vae": "VAE", "text_encoder": "text encoder"}.get(
+        _str(m.get("kind") or a.get("kind")), "LoRA")
     said = " ".join(x for x in (f"Asked for the {what}", _str(m.get("file"))) if x)
     words = _str(_dict(m.get("display")).get("words"))
     if not words:
@@ -450,7 +451,7 @@ def _look_clips(a: Args, d: dict, r: str) -> str:
 
 
 VIDEO_GENERATOR: dict[str, Sentence] = {"keep": _keep("clip"), "look": _look_clips,
-                                        **PRESETS}
+                                        "request_model": _model_file, **PRESETS}
 
 
 def _terminal(a: Args, d: dict) -> str | None:

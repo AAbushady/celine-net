@@ -37,7 +37,8 @@ PUBLIC_TOOLS = {"image_generator__search_models", "image_generator__read_model",
 PUBLIC_ARGS = {"image_generator__search_models": ("query", "base", "tag"),
                "image_generator__read_model": ("model",),
                "image_generator__look_examples": ("model",),
-               "image_generator__request_model": ("file",)}
+               "image_generator__request_model": ("file",),
+               "video_generator__request_model": ("file",)}
 SENDS = ("public", "people", "house")
 
 

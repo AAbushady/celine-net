@@ -1,5 +1,5 @@
-"""Model files the agent finds and asks for: LoRAs and diffusion models from Civitai or
-Hugging Face, downloaded by the comfy helper of a ComfyUI that starts on demand
+"""Model files the agent finds and asks for: LoRAs, diffusion models, VAEs and text encoders
+from Civitai or Hugging Face, downloaded by the comfy helper of a ComfyUI that starts on demand
 (comfyui/server.py; its routes /models/search, /models/read, /models/picture,
 /models/look, /models, /models/jobs/<id>, /models/files/<path>). The value that names one
 file is comfyui/hubs.py's.
@@ -9,12 +9,15 @@ read_model, look_examples); what comes back is text and pictures from outside, m
 the guard as web results are (guard/sources.py OUTSIDE_TOOLS, class public, nsfw where the
 hub marks it mature). A request (`ModelFiles.request`, image_generator__request_model):
 
-1. Checked at once, with no card on a refusal: the preset is an image preset that takes
-   files of that kind (its catalog names a folder for them), its ComfyUI starts on demand,
-   the value names a file, the helper's look finds it and takes it, Civitai's type fits the
-   kind (a LoRA, LoCon or DoRA where LoRAs go, a checkpoint where models go), and nothing is
-   there or asked for already under its name.
-2. The file goes under the preset's first catalog folder for its kind (`place`):
+1. Checked at once, with no card on a refusal: the preset is an image or a video preset,
+   its ComfyUI starts on demand, the value names a file, the helper's look finds it and
+   takes it, Civitai's type fits the kind (a LoRA, LoCon or DoRA where LoRAs go, a
+   checkpoint where models go, a VAE where VAEs go), the preset has a place for it, and
+   nothing is there or asked for already under its name.
+2. A file the preset's workflow names in a loader (`named`: a diffusion model, a LoRA, a
+   VAE or a text encoder, by the file's name) goes where the workflow names it, so a preset
+   the agent proposed with files ComfyUI lacks gets them one by one. Any other LoRA or
+   model goes under the preset's first catalog folder for its kind (`place`):
    loras/<prefix><name> or diffusion_models/<prefix><name>, its name made plain. The id
    the agent then gives in `loras` or `model` is that place without its folder and
    extension, as image_catalog lists it.
@@ -70,11 +73,17 @@ log = logging.getLogger("celine.comfyui")
 S = ModelFileState
 ASK_FOR = 24 * 3600.0       # seconds the user's card waits for an answer
 FOLLOW = 5.0                # seconds between looks at a download
-FOLDERS = {"lora": "loras/", "model": "diffusion_models/"}
-WHAT = {"lora": "LoRA", "model": "model"}
+FOLDERS = {"lora": "loras/", "model": "diffusion_models/", "vae": "vae/",
+           "text_encoder": "text_encoders/"}
+WHAT = {"lora": "LoRA", "model": "model", "vae": "VAE", "text_encoder": "text encoder"}
 FIELD = {"lora": "loras", "model": "model"}      # the generate field that takes its id
+SEARCH = ("lora", "model")                       # what a hub search looks for
 LORA_TYPES = {"lora", "locon", "dora"}           # Civitai's types a LoRA loader takes
 MODEL_TYPES = {"checkpoint"}
+VAE_TYPES = {"vae"}
+# a loader's input that names a file, and the kind of file it takes
+NAMED = {"unet_name": "model", "lora_name": "lora", "vae_name": "vae", "clip_name": "text_encoder",
+         "clip_name1": "text_encoder", "clip_name2": "text_encoder", "clip_name3": "text_encoder"}
 KEY_SAID = {                # the helper's refusals about the Civitai key, by their code
     "civitai_key_missing": "This file needs a Civitai key, which {user} sets in Settings, "
                            "Media.",
@@ -167,6 +176,29 @@ def place(p: presets_mod.Preset, kind: str, name: str) -> str:
     return f"{FOLDERS[kind]}{prefix}{stem[:120] or 'model'}.safetensors"
 
 
+def named(p: presets_mod.Preset, name: str) -> tuple[str, str] | None:
+    """A file the preset's workflow names in a loader by `name` (its last part, any case):
+    (its kind, its place under the models folder), or None. A plain .safetensors path only,
+    the kind the helper takes."""
+    want = name.strip().lower()
+    for node in p.workflow.values():
+        for key, value in (node.get("inputs") or {}).items():
+            if key not in NAMED or not isinstance(value, str):
+                continue
+            if value.rsplit("/", 1)[-1].lower() != want or ".." in value or \
+                    not re.fullmatch(r"[A-Za-z0-9._/-]+\.safetensors", value):
+                continue
+            kind = NAMED[key]
+            return kind, f"{FOLDERS[kind]}{value}"
+    return None
+
+
+def preset_of(pid: str) -> presets_mod.Preset | None:
+    """An image or video preset by its id: the presets a model file can be for."""
+    pid = (pid or "").strip()
+    return presets_mod.of("images").get(pid) or presets_mod.of("video").get(pid)
+
+
 def file_id(saved_as: str) -> str:
     """The id the agent gives in `loras` or `model`: the place without its folder and
     extension (image_catalog.Resource.id)."""
@@ -194,14 +226,14 @@ def _type_problem(kind: str, look: dict) -> str | None:
         return None
     t = str((look.get("about") or {}).get("type") or "").strip()
     low = t.casefold()
-    is_kind = "lora" if low in LORA_TYPES else "model" if low in MODEL_TYPES else None
+    is_kind = "lora" if low in LORA_TYPES else "model" if low in MODEL_TYPES else \
+        "vae" if low in VAE_TYPES else None
     if is_kind is None:
-        return (f"Civitai lists this file as {t or 'no type'}: only a LoRA or a checkpoint "
-                f"is taken.")
+        return (f"Civitai lists this file as {t or 'no type'}: only a LoRA, a checkpoint or "
+                f"a VAE is taken.")
     if is_kind != kind:
         return (f"Civitai lists this file as a {t}, so it goes where a preset takes "
-                f"{'LoRAs' if is_kind == 'lora' else 'models'}: ask with "
-                f"kind=\"{is_kind}\".")
+                f"{WHAT[is_kind]}s: ask with kind=\"{is_kind}\".")
     return None
 
 
@@ -310,15 +342,12 @@ class ModelFiles:
         is a refusal, the call's display)."""
         app, user = self.app, self.app.cfg.user
         if kind not in FOLDERS:
-            return "kind is lora or model.", True, None
-        p = presets_mod.of("images").get((preset or "").strip())
+            return "kind is lora, model, vae or text_encoder.", True, None
+        p = preset_of(preset)
         if p is None:
-            return (f"There is no image preset {preset!r}: list_presets lists them.", True,
-                    None)
-        if kind == "lora" and not p.loras:
-            return f"{p.label} takes no LoRAs.", True, None
-        if kind == "model" and not p.models:
-            return f"{p.label} takes no model choice.", True, None
+            return (f"There is no image or video preset {preset!r}: "
+                    f"image_generator__list_presets and video_generator__read_preset name "
+                    f"them.", True, None)
         if len((why or "").strip()) < 10:
             return (f"Nothing was asked: say why in `why`, one real sentence {user} can judge "
                     f"(what the file is for).", True, None)
@@ -342,7 +371,20 @@ class ModelFiles:
                             f"{found}, not to model {model} of the address.", True, None)
                 if why_not := _type_problem(kind, look):
                     return why_not, True, None
-                saved_as = place(p, kind, look["name"])
+                # a file the preset's workflow names goes where it names it; else the
+                # preset's catalog folder for its kind
+                hit = named(p, look["name"])
+                if hit is not None and hit[0] != kind:
+                    return (f"{p.label} names {look['name']} as its {WHAT[hit[0]]}: ask with "
+                            f"kind=\"{hit[0]}\".", True, None)
+                if hit is not None:
+                    saved_as = hit[1]
+                elif kind in SEARCH and (p.loras if kind == "lora" else p.models):
+                    saved_as = place(p, kind, look["name"])
+                else:
+                    return (f"{p.label} names no file called {look['name']} and takes no "
+                            f"{WHAT[kind]} of its own choice: propose a preset whose workflow "
+                            f"names it, then ask for it for that preset.", True, None)
                 listed = await comfy.model_files()
         except HelperRefused as e:
             return refused(e, user), True, None
@@ -353,8 +395,9 @@ class ModelFiles:
         fid = file_id(saved_as)
         if any(isinstance(f, dict) and f.get("path") == saved_as
                for f in listed.get("files") or []):
-            return (f"{saved_as} is there already: give {fid} in {FIELD[kind]} with the preset "
-                    f"{p.id}.", True, None)
+            return (f"{saved_as} is there already: " + (
+                f"the preset {p.id} has it." if hit is not None else
+                f"give {fid} in {FIELD[kind]} with the preset {p.id}."), True, None)
         asked = await app.store.read(lambda c: c.execute(
             "SELECT state FROM model_requests WHERE saved_as=? AND state IN (?, ?, ?)",
             (saved_as, *OPEN)).fetchone())
@@ -520,13 +563,17 @@ class ModelFiles:
             self._fresh_catalog(row["provider"])
             words = _words(row["look"])
             fid = file_id(row["saved_as"])
-            label = getattr(presets_mod.of("images").get(row["preset"]), "label",
-                            row["preset"])
-            await self._notice(row, f"The {WHAT[row['kind']]} {fid} for {label} is ready: "
-                                    f"give {fid} in {FIELD[row['kind']]}, as list_presets now "
-                                    f"lists it" + (f", and write its trigger words "
-                                                   f"{', '.join(words)} into the prompt"
-                                                   if words else "") + ".")
+            p = preset_of(row["preset"])
+            label = p.label if p else row["preset"]
+            if p is not None and named(p, row["look"]["name"]) == (row["kind"], row["saved_as"]):
+                text = (f"The {WHAT[row['kind']]} {fid} for {label} is ready: the preset "
+                        f"{row['preset']} has it now.")
+            else:
+                text = (f"The {WHAT[row['kind']]} {fid} for {label} is ready: give {fid} in "
+                        f"{FIELD[row['kind']]}, as list_presets now lists it" +
+                        (f", and write its trigger words {', '.join(words)} into the prompt"
+                         if words else "") + ".")
+            await self._notice(row, text)
             return True
         return False
 
@@ -572,7 +619,7 @@ async def search(app, *, hub: str, kind: str, query: str = "", preset: str = "",
     refusal, the call's display)."""
     if hub not in hubs.HUBS:
         return "hub is civitai or huggingface.", True, {}
-    if kind not in FOLDERS:
+    if kind not in SEARCH:
         return "kind is lora or model.", True, {}
     if sort and sort not in hubs.SORTS:
         return f"sort is {', '.join(hubs.SORTS)}.", True, {}
@@ -729,7 +776,6 @@ async def listing(app) -> dict:
     rows = await app.store.read(lambda c: [_row(r) for r in c.execute(
         "SELECT * FROM model_requests ORDER BY created_at DESC")])
     by_id = {r["id"]: r for r in rows if r is not None}
-    images = presets_mod.of("images")
     out, seen = [], set()
     for f in data.get("files") or []:
         req = f.get("requested") if isinstance(f, dict) else None
@@ -741,14 +787,14 @@ async def listing(app) -> dict:
         about: dict = req["about"] if isinstance(req.get("about"), dict) else \
             ((row["look"].get("about") or {}) if row else {})
         seen.add(f["path"])
-        out.append(_entry(f["path"], row, src, about, images, size=f.get("size"),
+        out.append(_entry(f["path"], row, src, about, size=f.get("size"),
                           at=_came(req.get("at")) or (row or {}).get("finished_at"),
                           state=S.READY, removable=True))
     for row in rows:
         if row is None or row["state"] not in OPEN or row["saved_as"] in seen:
             continue
         out.append(_entry(row["saved_as"], row, row["look"]["source"],
-                          row["look"].get("about") or {}, images, size=row["size"],
+                          row["look"].get("about") or {}, size=row["size"],
                           at=row["created_at"], state=S(row["state"]), removable=False))
     out.sort(key=lambda e: str(e["at"] or ""), reverse=True)
     free = data.get("free")
@@ -762,9 +808,9 @@ def _came(at: Any) -> str | None:
     return iso(datetime.fromtimestamp(at, timezone.utc))
 
 
-def _entry(path: str, row: dict | None, src: dict, about: dict, images: dict, *,
+def _entry(path: str, row: dict | None, src: dict, about: dict, *,
            size: Any, at: Any, state: ModelFileState, removable: bool) -> dict:
-    p = images.get(row["preset"]) if row else None
+    p = preset_of(row["preset"]) if row else None
     address = hubs.page(src) if src else None
     hf = src.get("hub") == "huggingface"
     return {"path": path, "id": file_id(path), "kind": (row or {}).get("kind") or kind_of(path),

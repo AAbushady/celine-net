@@ -68,6 +68,10 @@ LOOKS = {
           "name": "vae.safetensors", "size": 300 * MB, "sha256": "d" * 64, "license": None,
           "about": {"title": "A VAE", "type": "VAE", "base": "Qwen", "words": [],
                     "mature": False}},
+    558: {"source": {"hub": "civitai", "model": 114, "version": 558, "file": 559},
+          "name": "wan2.2_vae.safetensors", "size": 1 * GB, "sha256": "e" * 64, "license": None,
+          "about": {"title": "Wan VAE", "type": "VAE", "base": "Wan", "words": [],
+                    "mature": False}},
 }
 RESULT = {"source": {"hub": "civitai", "version": 222}, "name": "Ink Wash v2.safetensors",
           "size": 200 * MB, "title": "Ink wash", "type": "LORA", "base": "Qwen",
@@ -306,8 +310,12 @@ async def _notice_for(app, cid: str) -> str:
 # ---- a request, refused at once ---------------------------------------------------------
 
 @pytest.mark.parametrize("args, said", [
-    ({"preset": "anima-turbo"}, "Anima turbo takes no LoRAs."),
-    ({"preset": "nope"}, "There is no image preset 'nope': list_presets lists them."),
+    ({"preset": "anima-turbo"}, "Anima turbo names no file called Ink Wash v2.safetensors and "
+                                "takes no LoRA of its own choice: propose a preset whose "
+                                "workflow names it, then ask for it for that preset."),
+    ({"preset": "nope"}, "There is no image or video preset 'nope': "
+                         "image_generator__list_presets and video_generator__read_preset name "
+                         "them."),
     ({"file": "hf:MicksHF/Anime"}, "hf:MicksHF/Anime names a repo and no file: add the file's "
                                    "path in it, like hf:MicksHF/Anime/name.safetensors."),
     ({"file": "hf:MicksHF/Anime/other.safetensors"}, "There is no such file."),
@@ -321,8 +329,8 @@ async def _notice_for(app, cid: str) -> str:
                               "Media."),
     ({"file": "civitai:667"}, "Civitai refused the key set in Settings, Media for "
                               "this file."),
-    ({"file": "civitai:555"}, "Civitai lists this file as VAE: only a LoRA or a checkpoint "
-                              "is taken."),
+    ({"file": "civitai:555"}, "Civitai lists this file as a VAE, so it goes where a preset "
+                              "takes VAEs: ask with kind=\"vae\"."),
     ({"file": "civitai:444"}, "Civitai lists this file as a Checkpoint, so it goes where a "
                               "preset takes models: ask with kind=\"model\"."),
     ({"file": "https://civitai.com/models/999?modelVersionId=222"},
@@ -355,6 +363,46 @@ async def test_a_file_that_is_there_or_asked_for_already_makes_no_second_card(hu
                                              kind="lora", file=HF_VALUE, why=WHY)
     assert again.content == "qwen2.1/fusal was asked for already and waits for sam."
     assert len(hub.approvals.waiting) == 1
+
+
+async def test_a_file_a_video_presets_workflow_names_goes_where_it_names_it(hub):
+    """Bug #57: a video preset had no way to get a file; one its workflow names, of any
+    loader, goes where the workflow names it."""
+    from celine.skills.clips import VideoGenerator
+    skill = VideoGenerator(hub.cfg)
+    skill.app = hub
+    ctx = await _ctx(hub, "video_generator__request_model")
+    r = await skill.request_model(ctx, preset="wan2.2-5b", kind="model", file="civitai:558",
+                                  why=WHY)
+    assert r.content == ('Civitai lists this file as a VAE, so it goes where a preset takes VAEs: '
+                         'ask with kind="vae".')
+    wan = presets.of("video")["wan2.2-5b"]
+    assert model_files.named(wan, "WAN2.2_VAE.safetensors") == \
+        ("vae", "vae/wan2.2/wan2.2_vae.safetensors")
+    assert model_files.named(wan, "umt5_xxl_fp8_e4m3fn_scaled.safetensors") == \
+        ("text_encoder", "text_encoders/wan/umt5_xxl_fp8_e4m3fn_scaled.safetensors")
+    assert model_files.named(wan, "other.safetensors") is None
+    r = await skill.request_model(ctx, preset="wan2.2-5b", kind="lora", file="civitai:222",
+                                  why=WHY)
+    assert r.content == ("Wan 2.2 5B names no file called Ink Wash v2.safetensors and takes no "
+                         "LoRA of its own choice: propose a preset whose workflow names it, then "
+                         "ask for it for that preset.")
+    r = await skill.request_model(ctx, preset="wan2.2-5b", kind="vae", file="civitai:558",
+                                  why=WHY)
+    assert not r.is_error, r.content
+    assert r.content.startswith("Asked sam for the VAE wan2.2/wan2.2_vae for Wan 2.2 5B:")
+    row = await _row(hub)
+    assert (row["kind"], row["saved_as"], row["preset"]) == \
+        ("vae", "vae/wan2.2/wan2.2_vae.safetensors", "wan2.2-5b")
+    await _card(hub)
+    _answer(hub, True)
+    assert await _notice_for(hub, ctx.conversation_id) == \
+        "The VAE wan2.2/wan2.2_vae for Wan 2.2 5B is ready: the preset wan2.2-5b has it now."
+    assert hub.helper.posts[-1]["saved_as"] == "vae/wan2.2/wan2.2_vae.safetensors"
+    async with client(_web(hub)) as c:
+        got = (await c.get("/api/model-files")).json()
+    [vae] = [x for x in got["files"] if x["path"] == "vae/wan2.2/wan2.2_vae.safetensors"]
+    assert (vae["kind"], vae["preset_label"]) == ("vae", "Wan 2.2 5B")
 
 
 async def test_a_comfyui_that_is_not_on_demand_takes_no_model_files(tmp_path, monkeypatch,

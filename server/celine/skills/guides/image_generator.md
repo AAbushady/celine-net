@@ -122,4 +122,7 @@ New models and LoRAs, found by you (only a ComfyUI that starts on demand takes t
 A preset of your own: `image_generator__read_preset` shows a preset's values and workflow
 with its placeholders, `image_generator__look_up_node` what ComfyUI says of a node, and
 `image_generator__propose_preset` sends yours to {{username}}, checked at once; approved,
-it is on at the end of the list. It replaces only a preset you proposed before.
+it is on at the end of the list. It replaces only a preset you proposed before. Its workflow
+may name files ComfyUI does not have yet (the request says which): once it is approved,
+ask for each with `image_generator__request_model`, its `kind` the loader's (`model`,
+`lora`, `vae` or `text_encoder`); each goes where the workflow names it.

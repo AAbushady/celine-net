@@ -24,7 +24,7 @@ NEVER = ("image_generator__", "music_generator__", "video_generator__", "vault__
 LOOKED = frozenset({"image_generator__search_models", "image_generator__read_model",
                     "image_generator__look_examples", "image_generator__request_model",
                     "image_generator__propose_preset", "music_generator__propose_preset",
-                    "video_generator__propose_preset"})
+                    "video_generator__propose_preset", "video_generator__request_model"})
 # skills whose results hold text someone else wrote. Shell output counts only when
 # plain code finds a reason (network, a file from outside, text aimed at an AI);
 # every other MCP server counts too (its display names the server), but one whose

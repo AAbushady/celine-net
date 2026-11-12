@@ -418,7 +418,7 @@ export type ModelFile = {
   path: string
   /** what a batch's loras or model takes */
   id: string
-  kind: ("lora" | "model") | null
+  kind: ("lora" | "model" | "vae" | "text_encoder") | null
   /** bytes */
   size: number | null
   /** when it came, or when it was asked for */
