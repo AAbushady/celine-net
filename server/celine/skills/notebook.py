@@ -255,7 +255,8 @@ class Notebook:
         and do not end your reply with only a line that you wrote it. You cannot write
         {{username}}'s notes. Head lines right under the first line steer a note:
         `keys: ram, laptop` loads it when one comes up, `load: always`, `class:
-        public, informal, nsfw or sensitive`."""
+        public, informal, nsfw or sensitive`. Returns: how many lines the note has now,
+        and how many it had before when it was there already."""
         try:
             p, path = self._place(path, await folder_of(ctx))
         except ToolRefused as e:
@@ -267,12 +268,16 @@ class Notebook:
                 f"{path} is {{{{username}}}}'s, not yours to change. You can read it. "
                 f"Write your own version somewhere else if you want one."), is_error=True)
         p.parent.mkdir(parents=True, exist_ok=True)
-        body = stamped(p.read_text() + content if mode == "append" and p.exists()
+        old = p.read_text() if p.is_file() else None
+        body = stamped(old + content if mode == "append" and old is not None
                        else content, self.cfg)
         keep_version(self.root, p, path)
         p.write_text(body)
         await notebook_index.upsert(ctx.store, path, summary, len(body), body)
-        return ToolResult(content=f"Saved {path}.",
+        n = _lines(body)
+        said = (f"Saved {path}, a new note of {n}." if old is None
+                else f"Saved {path}. {n} now, was {len(lines_of(old)[0])}.")
+        return ToolResult(content=said,
                           display={"path": path, "bytes": len(body), "mode": mode})
 
     @tool()
@@ -818,6 +823,12 @@ def _near_names(p: Path, path: str) -> str:
         return ""
     where = path.rsplit("/", 1)[0] + "/" if "/" in path else ""
     return f" {where or 'Your notebook'} has: {', '.join(where + n for n in names)}."
+
+
+def _lines(text: str) -> str:
+    """How many lines notebook__read shows of `text`, as "12 lines"."""
+    n = len(lines_of(text)[0])
+    return f"{n} line" if n == 1 else f"{n} lines"
 
 
 def _folder(path: str) -> ToolResult:

@@ -353,12 +353,27 @@ async def test_a_write_says_where_it_saved_and_the_list_has_dates(store, cfg):
     cid = await conversations.create(store)
     ctx = ToolContext(cid, "t", "x", store, cfg, None)  # type: ignore[arg-type]
     out = await nb.write(ctx, "diary/x.md", "a day", "my day")
-    assert out.content == "Saved diary/x.md."
+    assert out.content == "Saved diary/x.md, a new note of 2 lines."
     await store.write(lambda c: c.execute(
         "UPDATE notebook_index SET touched_at='2026-10-16T05:00:00.000+00:00' "
         "WHERE path='diary/x.md'"))
     listed = (await nb.list(ctx)).content
     assert "diary/x.md (16 Oct) - my day" in listed
+
+
+async def test_a_write_over_a_note_says_its_lines_before_and_now(store, cfg):
+    """A whole-note replace that dropped a block said only "Saved", so the shrink went
+    unseen until the next read (bug 51)."""
+    nb = Notebook(cfg)
+    cid = await conversations.create(store)
+    ctx = ToolContext(cid, "t", "x", store, cfg, None)  # type: ignore[arg-type]
+    await nb.write(ctx, "diary/y.md", "one\ntwo\nthree\nfour", "a day")
+    out = await nb.write(ctx, "diary/y.md", "one", "a day")
+    assert out.content == "Saved diary/y.md. 2 lines now, was 5."
+    out = await nb.write(ctx, "diary/y.md", "\nfive", "a day", mode="append")
+    assert out.content == "Saved diary/y.md. 3 lines now, was 2."
+    read = (await nb.read(ctx, "diary/y.md")).content.splitlines()
+    assert len(read) == 3
 
 
 async def test_a_web_citation_the_agent_writes_down_is_stored_as_written(store, cfg):
