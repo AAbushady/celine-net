@@ -95,6 +95,15 @@ def _label_size(i: dict) -> tuple[str, str]:
             f"{att.get('width', i.get('width'))}x{att.get('height', i.get('height'))}")
 
 
+def took(i: dict) -> str:
+    """How long a made slot took, "59 s", and its wait in ComfyUI's queue behind another
+    prompt when it had one, "59 s, after 27 s in ComfyUI's queue"."""
+    line = f"{i.get('seconds') or 0:.0f} s"
+    if (i.get("queued") or 0) >= 1:
+        line += f", after {i['queued']:.0f} s in ComfyUI's queue"
+    return line
+
+
 def made_line(i: dict, cfg, lives: bool = False) -> str:
     """A made slot after its number: its image's short id, preset, size and seed, how it
     was made, and with `lives` when it is cleared or that it is kept (life.words)."""
@@ -102,7 +111,7 @@ def made_line(i: dict, cfg, lives: bool = False) -> str:
     att = i.get("attachment") or {}
     line = f"image {short(att['id'])}: {label}, {size}, seed {i['seed']}"
     if i.get("seconds") is not None:
-        line += f", {i['seconds']:.0f} s"
+        line += f", {took(i)}"
     line += "."
     if i.get("source"):
         line += f" Edited from {_sources(i)}."

@@ -97,13 +97,12 @@ class Comfy:
         return (r.json() or {}).get(prompt_id)
 
     async def position(self, prompt_id: str) -> tuple[bool, int]:
-        """(running now, prompts ahead of it in ComfyUI's own queue)."""
+        """(it waits in ComfyUI's own queue, the prompts ahead of it there); one that runs,
+        or has just ended, does not wait."""
         q = _ok(await self.client.get(f"{self.url}/queue")).json() or {}
-        if any(item[1] == prompt_id for item in q.get("queue_running") or []):
-            return True, 0
         pending = sorted(q.get("queue_pending") or [], key=lambda item: item[0])
         ids = [item[1] for item in pending]
-        return False, ids.index(prompt_id) if prompt_id in ids else 0
+        return (True, ids.index(prompt_id)) if prompt_id in ids else (False, 0)
 
     async def output(self, ref: dict[str, Any]) -> tuple[bytes, str]:
         r = await self.client.get(f"{self.url}/view", params={
@@ -509,19 +508,33 @@ async def run(comfy: Comfy, graph: dict[str, Any], note, timeout: float) -> tupl
                         "event": "comfyui.stop_failed", "error": type(e).__name__})
 
 
+def _mono() -> float:
+    """Seconds on a clock that only goes forward (the tests set their own)."""
+    return time.monotonic()
+
+
 async def _follow(comfy: Comfy, prompt_id: str, note) -> dict[str, Any]:
     """Until the prompt is in /history as completed or failed. Its note says only what
     the user cannot see: a wait in ComfyUI's queue; nothing while it is being made (the
-    picture block shows that)."""
+    picture block shows that). The seconds it waited in that queue, behind another
+    prompt, go to `note` as `queued` once it ends (its item's time leaves them out)."""
     said = None
+    queued, last = 0.0, _mono()
+    waits = False
     while True:
         entry = await comfy.history(prompt_id)
+        now_ = _mono()
+        if waits:
+            queued += now_ - last
+        last = now_
         status = (entry or {}).get("status") or {}
         if entry is not None and (status.get("completed")
                                   or status.get("status_str") == "error"):
+            if queued:
+                await note(said or "", queued=round(queued, 1))
             return entry
-        running, ahead = await comfy.position(prompt_id)
-        line = ("" if running else
+        waits, ahead = await comfy.position(prompt_id)
+        line = ("" if not waits else
                 f"Waiting in the queue, {ahead} ahead" if ahead else "Waiting in the queue")
         if line != said:
             said = line

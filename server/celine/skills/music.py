@@ -14,7 +14,7 @@ from ..comfyui import batches as batches_mod, life, presets as presets_mod
 from . import ToolContext, ToolResult, guide, tool, described
 from .images import (LABEL, NODE, NODE_SEARCH, PRESET_PART, PROPOSE_WHY, REPLACES, REPORTS,
                      VALUES, WAIT, WORKFLOW, Generator, batch_generate, batch_keep,
-                     batch_read, batch_stop, node_look_up, preset_propose, preset_read,
+                     batch_read, batch_stop, node_look_up, preset_propose, preset_read, took,
                      settled_head)
 
 SHORT = batches_mod.SHORT
@@ -45,7 +45,7 @@ def item_line(i: dict, cfg, lives: bool = False) -> str:
         return f"{n}. {i['title']} ({what}), seed {i['seed']}: {i.get('note') or i['state']}."
     lived = life.words(cfg, i["attachment"].get("life")) if lives else ""
     return (f"{n}. track {i['attachment']['id'][:SHORT]}: {i['title']} ({what}), seed "
-            f"{i['seed']}, {i.get('seconds', 0):.0f} s." + (f" {lived}" if lived else ""))
+            f"{i['seed']}, {took(i)}." + (f" {lived}" if lived else ""))
 
 
 def batch_text(b: dict, cfg, *, started: bool, chat: bool = True,
@@ -57,8 +57,8 @@ def batch_text(b: dict, cfg, *, started: bool, chat: bool = True,
         hears = f" {cfg.user} hears each one in this conversation when it is done." if chat \
             else ""
         head = (f"Batch {b['id'][:SHORT]} started: {len(items)} track"
-                f"{'s' if len(items) != 1 else ''}, made one after the other, a few "
-                f"minutes each.{hears} {REPORTS} music_generator__read shows the batch.")
+                f"{'s' if len(items) != 1 else ''}, made one after the other.{hears} "
+                f"{REPORTS} music_generator__read shows the batch.")
     else:
         head = settled_head(b, waited)
     return "\n".join([head] + [item_line(i, cfg, lives) for i in items])
@@ -92,8 +92,8 @@ class MusicGenerator(Generator):
     ) -> ToolResult:
         """Make music with ComfyUI: instrumental tracks, or songs with lyrics. Load the
         guide first: it has the style rules. The call returns at once with the batch id
-        and one slot per track. The tracks are made one after the other, a few minutes
-        each, and appear in this conversation as each is done; in a chat {{username}}
+        and one slot per track. The tracks are made one after the other and appear in
+        this conversation as each is done; in a chat {{username}}
         hears them there. When the batch is done, one message from the app says what
         was made (none when wait=true already returned it done). music_generator__read
         shows a batch,

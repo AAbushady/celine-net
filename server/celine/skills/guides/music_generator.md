@@ -6,15 +6,17 @@ description: Makes songs and instrumental tracks with ComfyUI, in batches. Use i
 `music_generator__generate` makes a batch: a list of items, each one track. An item has
 a `style`; a song also has `lyrics` and `instrumental=false`. `count` makes that many
 tracks of each item, each with its own seed. The call returns at once with the batch
-id and one slot per track. The tracks are made one after the other, a few minutes
-each, and each appears in this conversation when it is done, where {{username}} hears
-it. It is also saved in the music folder of the data folder. What you make is cleared
+id and one slot per track. The tracks are made one after the other, and each appears in
+this conversation when it is done, where {{username}} hears it; its line says how long
+it took. It is also saved in the music folder of the data folder. What you make is cleared
 after the number of days set in Settings unless `music_generator__keep` keeps it.
 
 The GPU is shared. While it is in use, a batch waits in line until it is free, as long
 as that takes, and its slots say "Waiting for the GPU" and why. A batch reports back
-once: when it is done, a message from the app says what was made and, when it had to
-wait for the GPU, how long. That message comes by itself, so answer now and do not poll
+once: when it is done, a message from the app says what was made, each track with how
+long it took and how long it waited in ComfyUI's queue behind another, and, when the
+batch had to wait for the GPU, how long. That message comes by itself, so answer now
+and do not poll
 `music_generator__read` for it. It shows
 a batch at any time, when there is a reason to look; `music_generator__stop` stops one;
 what was made stays. With `wait=true` your turn waits until the batch is done, as long

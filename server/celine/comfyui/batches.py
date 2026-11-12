@@ -639,7 +639,7 @@ class Batches:
             if it is not item and (it["state"] not in ("failed", "stopped")
                                    or "preset" not in it):
                 continue
-            for k in ("error", "seconds", "note", "attachment"):
+            for k in ("error", "seconds", "queued", "note", "attachment"):
                 it.pop(k, None)
             it["state"] = "waiting"
         b.update(state="running", finished_at=None)
@@ -684,7 +684,9 @@ class Batches:
         item["state"] = "running"
         await _save(store, b)
 
-        async def note(line: str, **_) -> None:
+        async def note(line: str, queued: float | None = None, **_) -> None:
+            if queued is not None:          # its seconds in ComfyUI's queue (server._follow)
+                item["queued"] = round(item.get("queued", 0.0) + queued, 1)
             if item.get("note") != line:
                 item["note"] = line
                 await _save(store, b)
@@ -713,7 +715,8 @@ class Batches:
             log.exception("item failed", extra={"event": "comfyui.item_failed",
                                                 "batch": b["id"]})
             item.update(state="failed", error=f"It failed: {type(e).__name__}: {e}")
-        item["seconds"] = round(clock() - started, 1)
+        # its own time: the wait for the GPU and in ComfyUI's queue are not the item's
+        item["seconds"] = round(max(0.0, clock() - started - item.get("queued", 0.0)), 1)
         item.pop("note", None)
         await _save(store, b)
 

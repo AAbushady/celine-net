@@ -768,12 +768,16 @@ async def test_a_batch_call_while_the_batches_are_down_is_an_error_result():
     assert (got.is_error, got.content) == (True, "Music is off.")
 
 
-async def test_the_note_says_only_a_wait_in_the_queue_never_what_the_block_shows():
+async def test_the_note_says_only_a_wait_in_the_queue_never_what_the_block_shows(
+        monkeypatch):
+    """A render that waited behind another prompt counted that wait as its own time
+    ("86 s"), and nothing named it."""
     from celine.comfyui import server
+    from celine.skills.images import took
 
     class Queue:
         def __init__(self):
-            self.looks = [(False, 2), (False, 0), (True, 0)]
+            self.looks = [(True, 2), (True, 0), (False, 0)]     # (waits, ahead)
 
         async def history(self, prompt_id):
             return {"status": {"completed": True}} if not self.looks else None
@@ -781,15 +785,23 @@ async def test_the_note_says_only_a_wait_in_the_queue_never_what_the_block_shows
         async def position(self, prompt_id):
             return self.looks.pop(0)
     notes: list[str] = []
+    queued: list[float] = []
 
-    async def note(line, **_):
+    async def note(line, **kw):
         notes.append(line)
+        if "queued" in kw:
+            queued.append(kw["queued"])
+    ticks = iter(range(0, 1000, 10))
+    monkeypatch.setattr(server, "_mono", lambda: float(next(ticks)))
     server.POLL, poll = 0, server.POLL
     try:
         await server._follow(Queue(), "p1", note)
     finally:
         server.POLL = poll
-    assert notes == ["Waiting in the queue, 2 ahead", "Waiting in the queue", ""]
+    assert notes[:3] == ["Waiting in the queue, 2 ahead", "Waiting in the queue", ""]
+    assert queued == [20.0], "the two looks it waited in line, nothing after"
+    assert took({"seconds": 59.4, "queued": 26.6}) == "59 s, after 27 s in ComfyUI's queue"
+    assert took({"seconds": 29.1, "queued": 0.4}) == "29 s"
 
 
 # ---- a new ComfyUI provider ------------------------------------------------------------
