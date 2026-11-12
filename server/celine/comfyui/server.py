@@ -104,6 +104,12 @@ class Comfy:
         ids = [item[1] for item in pending]
         return (True, ids.index(prompt_id)) if prompt_id in ids else (False, 0)
 
+    async def running(self) -> str | None:
+        """The id of the prompt ComfyUI is making now, or None."""
+        q = _ok(await self.client.get(f"{self.url}/queue")).json() or {}
+        now = q.get("queue_running") or []
+        return str(now[0][1]) if now and len(now[0]) > 1 else None
+
     async def progress(self, prompt_id: str) -> dict[str, Any] | None:
         """Where a running prompt stands, from the comfy helper (GET /progress/<id>: the node
         at work, its class, its steps), or None: a ComfyUI without the helper, a prompt it
@@ -567,10 +573,12 @@ async def _follow(comfy: Comfy, prompt_id: str, note, limit: float) -> dict[str,
     stands: a wait in ComfyUI's queue, then while it is made what the comfy helper heard
     of it (doing: its steps as `steps` too). The seconds it waited in that queue, behind
     another prompt, go to `note` as `queued` once it ends (its item's time leaves them
-    out). ImageError when where it stands (its place in the queue, the node at work and
-    its step) has not changed for `limit` seconds: a long clip that keeps moving runs to
-    its end. Without the helper's word on its steps, nothing changes once it runs, so the
-    limit is then on the whole run."""
+    out). ImageError when where it stands has not changed for `limit` seconds: while it
+    runs, the node at work and its step; while it waits in ComfyUI's queue, its place and
+    the prompt that runs ahead of it, with that one's node and step. So a long clip that
+    keeps moving runs to its end, and a prompt waiting behind it waits as long. Without
+    the helper's word on steps, nothing changes once it runs, so the limit is then on the
+    whole run."""
     said = None
     shown: dict[str, int] | None = None
     queued, last = 0.0, _mono()
@@ -594,13 +602,17 @@ async def _follow(comfy: Comfy, prompt_id: str, note, limit: float) -> dict[str,
         got = None
         if waits:
             line = f"Waiting in the queue, {ahead} ahead" if ahead else "Waiting in the queue"
+            first = await comfy.running()
+            there = (await comfy.progress(first) if first else None) or {}
+            here: tuple = (True, ahead, first, there.get("node"), there.get("value"))
+            heard = heard or bool(there)
         else:
             got = await comfy.progress(prompt_id)
             line, steps = doing(got) if got else ("", None)
             if not line and said and not said.startswith("Waiting"):
                 line = said             # a node that says nothing: the last words stand
-        heard = heard or bool(got)
-        here =(waits, ahead, (got or {}).get("node"), (got or {}).get("value"))
+            here = (False, 0, None, (got or {}).get("node"), (got or {}).get("value"))
+            heard = heard or bool(got)
         if here != stands:
             stands, moved = here, now_
         elif now_ - moved >= limit:

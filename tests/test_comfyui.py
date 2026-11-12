@@ -853,6 +853,9 @@ async def test_the_note_names_a_wait_in_the_queue_and_counts_it_apart(monkeypatc
         async def position(self, prompt_id):
             return self.looks.pop(0)
 
+        async def running(self):
+            return None
+
         async def progress(self, prompt_id):
             return None                     # a ComfyUI without the comfy helper
     notes: list[str] = []
@@ -949,6 +952,52 @@ async def test_a_prompt_stops_when_it_stops_moving_not_when_it_is_long(monkeypat
         else:
             with pytest.raises(presets.ImageError) as e:
                 await server._follow(Long(), "p1", note, 100)
+            assert str(e.value) == said
+    finally:
+        server.POLL = poll
+
+
+@pytest.mark.parametrize("ahead, said", [
+    # the clip ahead keeps stepping: this one waits as long as it takes
+    ([{"node": "9", "value": n, "max": 40} for n in range(1, 41)], None),
+    # the one ahead is stuck: this one stops too
+    ([{"node": "9", "value": 3, "max": 40}] * 40,
+     "ComfyUI made no progress for 100 s. The prompt was stopped."),
+])
+async def test_a_wait_in_the_queue_behind_a_prompt_that_moves_is_no_stall(monkeypatch, ahead,
+                                                                          said):
+    """A clip waited in ComfyUI's queue behind another that was still making progress, and
+    was stopped at the limit before it ever ran."""
+    from celine.comfyui import server
+
+    class Behind:
+        def __init__(self):
+            self.ahead = list(ahead)
+
+        async def history(self, prompt_id):
+            return {"status": {"completed": True}} if not self.ahead else None
+
+        async def position(self, prompt_id):
+            return True, 0
+
+        async def running(self):
+            return "other"
+
+        async def progress(self, prompt_id):
+            assert prompt_id == "other", "it looks at the prompt ahead of it"
+            return self.ahead.pop(0)
+
+    async def note(*_a, **_k):
+        pass
+    ticks = iter(range(0, 10_000, 10))
+    monkeypatch.setattr(server, "_mono", lambda: float(next(ticks)))
+    server.POLL, poll = 0, server.POLL
+    try:
+        if said is None:
+            await server._follow(Behind(), "p1", note, 100)
+        else:
+            with pytest.raises(presets.ImageError) as e:
+                await server._follow(Behind(), "p1", note, 100)
             assert str(e.value) == said
     finally:
         server.POLL = poll
