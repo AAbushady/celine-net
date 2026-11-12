@@ -229,6 +229,9 @@ def _pass(r, cfg) -> dict:
 
 def _work(r, cfg) -> dict:
     word, tone = _WORK_STATE.get(r["state"], ("Running", RUNNING))
+    if r["emotion"]:
+        return {"title": f"Felt {r['emotion']}", "outcome": word, "tone": tone,
+                "detail": _first(r["why"] or "")}
     return {"title": _WORK.get(r["kind"], r["kind"]), "outcome": word, "tone": tone,
             "detail": _first(r["error"]) if r["error"] else ""}
 
@@ -307,10 +310,14 @@ SOURCES = {s.kind: s for s in (
            "SELECT 'pass:' || p.id AS id, p.created_at AS at, 0 AS failed, "
            "p.conversation_id AS cid, NULL AS mid, NULL AS tid, 'guard' AS tab, p.rule, p.until, p.why "
            "FROM guard_passes p", _pass),
+    # an appraisal that is done shows only when it set a mood (its mood row, on its turn's reply)
     Source("work", "Titles and moods",
            "SELECT 'work:' || w.id AS id, w.created_at AS at, w.state = 'failed' AS failed, "
            "w.conversation_id AS cid, NULL AS mid, NULL AS tid, 'background' AS tab, w.kind, w.state, w.error, "
-           "w.finished_at FROM work w", _work),
+           "w.finished_at, mo.emotion, mo.why FROM work w "
+           "LEFT JOIN moods mo ON w.kind = 'appraisal' AND mo.by = 'appraisal' AND mo.message_id IN "
+           "(SELECT m.id FROM messages m WHERE m.turn_id = json_extract(w.payload, '$.turn_id')) "
+           "WHERE w.kind <> 'appraisal' OR w.state <> 'done' OR mo.id IS NOT NULL", _work),
     Source("agent", "Persona",
            "SELECT 'agent:' || v.id AS id, v.created_at AS at, 0 AS failed, NULL AS cid, "
            "NULL AS mid, NULL AS tid, 'agent' AS tab, v.of, v.change FROM text_versions v "

@@ -77,6 +77,14 @@ async def _rows(store) -> tuple[str, str]:
                   "VALUES('leak', ?, ?, 'user', ?)", (cid, _at("11:13"), _at("10:13")))
         c.execute("INSERT INTO work(kind, state, error, conversation_id, created_at) "
                   "VALUES('title', 'failed', 'no model answered', ?, ?)", (cid, _at("10:14")))
+        # two appraisals: one set a mood on t1's reply, one changed nothing and is not shown
+        for turn, at in (("t1", _at("10:16")), ("t2", _at("10:17"))):
+            c.execute("INSERT INTO work(kind, state, payload, conversation_id, created_at) "
+                      "VALUES('appraisal', 'done', ?, ?, ?)",
+                      (f'{{"conversation_id": "{cid}", "turn_id": "{turn}"}}', cid, at))
+        c.execute("INSERT INTO moods(at, emotion, strength, why, by, message_id) "
+                  "VALUES(?, 'curious', 0.4, 'a new project', 'appraisal', ?)",
+                  (_at("10:16"), m["id"]))
         return m["id"]
 
     return cid, await store.write(fn)
@@ -112,7 +120,7 @@ async def test_events_list_every_kind_newest_first_and_filter_and_page(store, mo
         assert got["tabs"] == [
             {"id": "guard", "label": "Guard", "total": 5, "failed": 1},
             {"id": "agent", "label": "Celine", "total": 8, "failed": 2},
-            {"id": "background", "label": "Background tasks", "total": 3, "failed": 2}]
+            {"id": "background", "label": "Background tasks", "total": 4, "failed": 2}]
         guard = await get(tab="guard")
         assert [(e["kind"], e["title"], e["outcome"]) for e in guard["events"]] == [
             ("freeze", "Unfreeze", "Done"),
@@ -123,7 +131,8 @@ async def test_events_list_every_kind_newest_first_and_filter_and_page(store, mo
         ]
         back = await get(tab="background")
         assert [(e["kind"], e["title"]) for e in back["events"]] == [
-            ("work", "Title"), ("job", "Image generation: make images"), ("run", "World news")]
+            ("work", "Felt curious"), ("work", "Title"), ("job", "Image generation: make images"),
+            ("run", "World news")]
         every = got["events"] + guard["events"] + back["events"]
         by = {e["id"]: e for e in every}
         assert by["turn:t1"]["detail"] == "chat-model, 12 s"
