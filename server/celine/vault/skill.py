@@ -140,14 +140,18 @@ class VaultSkill:
                                       ("Sites", ", ".join(vault.origins(it)) or "None")],
                                      why):
                 return no
+            secret = ((it.get("login") or {}).get("password") or "").encode()
             try:
-                await box_files.put(self.cfg, ((it.get("login") or {}).get("password") or "").encode(),
-                                    f".vault/{name}/password")
+                put = await box_files.put(self.cfg, secret, f".vault/{name}/password")
             except httpx.HTTPError:
                 return self._bad("The shellbox is not reachable; the file was not written.")
             except RuntimeError as e:
                 return self._bad(f"The shellbox did not write the file: {e}")
-            lines.append(f"For a script: ~/.vault/{name}/password")
+            # the box's own count of what it wrote, read back (the size is never shown)
+            if put.get("bytes") != len(secret):
+                return self._bad(f"The shellbox wrote ~/.vault/{name}/password short: a "
+                                 f"script would read part of the password.")
+            lines.append(f"For a script: ~/.vault/{name}/password (written whole)")
         return ToolResult(content="\n".join(lines), display={"entry": name})
 
     @tool(read_only=False, destructive=False, open_world=True)
@@ -197,12 +201,23 @@ class VaultSkill:
                     ("Entry", it["name"]),
                     ("Sites", ", ".join(vault.origins(it)) or "None")], why):
                 return no
-            await self.app.vault.rotate(it)
+            got = await self.app.vault.rotate(it)
         except VaultError as e:
             return self._refused(e)
         name = it["name"]
+        # the entry as the vault holds it now, read back (its passwords are compared, never
+        # shown): a new password, and the one before kept as its previous
+        old = (it.get("login") or {}).get("password")
+        new = (got.get("login") or {}).get("password")
+        history = got.get("passwordHistory") or []
+        if not new or new == old:
+            return self._bad(f"{name} was asked for a new password, and the vault holds the "
+                             f"old one still.")
+        kept = not old or (history and history[0].get("password") == old)
         return ToolResult(content="\n".join([
-            f"{name} has a new password.", *_twins(it, others),
+            f"{name} has a new password, as the vault holds it now" +
+            ("." if kept else ", and the vault kept no copy of the old one."),
+            *_twins(it, others),
             f"The old one: {step(name, 'previous')}",
             f"The new one: {step(name)}",
             f"A script reads the new one once "

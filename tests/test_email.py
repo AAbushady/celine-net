@@ -138,7 +138,9 @@ class FakeIMAP(socketserver.StreamRequestHandler):
                     uids, _, rest = args.partition(" ")
                     want = {int(u) for u in uids.split(",")}
                     hit = [m for m in current if m[0] in want]
-                    if sub.upper() == "STORE":
+                    if sub.upper() == "STORE" and FakeIMAP.ignores_store:
+                        pass                    # says OK and changes nothing
+                    elif sub.upper() == "STORE":
                         how, _, flags = rest.partition(" ")
                         for m in hit:
                             for f in flags.strip("()").split():
@@ -161,7 +163,12 @@ class FakeIMAP(socketserver.StreamRequestHandler):
         text = " ".join([str(msg["from"]), str(msg["subject"])] + [
             p.get_content() for p in msg.walk() if p.get_content_maintype() == "text"]).lower()
         if hit := re.match(r"UID ([\d,]+)", args):
-            return m[0] in {int(u) for u in hit.group(1).split(",")}
+            if m[0] not in {int(u) for u in hit.group(1).split(",")}:
+                return False
+            keys = args[hit.end():].split()          # a flag after the set: the mark read back
+            return all({"SEEN": "\\Seen" in m[1], "UNSEEN": "\\Seen" not in m[1],
+                        "FLAGGED": "\\Flagged" in m[1],
+                        "UNFLAGGED": "\\Flagged" not in m[1]}.get(k, True) for k in keys)
         for key, value in re.findall(r'(TEXT|FROM) "([^"]*)"', args):
             if value.lower() not in text:
                 return False
@@ -174,6 +181,7 @@ class FakeIMAP(socketserver.StreamRequestHandler):
 def imap(monkeypatch):
     FakeIMAP.box, FakeIMAP.log = mailbox(), []
     FakeIMAP.caps = "IMAP4rev1 AUTH=PLAIN MOVE UIDPLUS"
+    FakeIMAP.ignores_store = False
     server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), FakeIMAP)
     server.daemon_threads = True
     threading.Thread(target=server.serve_forever, args=(0.01,), daemon=True).start()
@@ -330,6 +338,12 @@ async def test_the_agent_marks_moves_and_deletes(api, caps):
     assert inbox()[9] == {"\\Flagged"}
     assert (await skill.mark(ctx, ["INBOX:9"], "eaten")).is_error
     assert (await skill.prompt_fragment(ctx)).endswith("1 unread.")    # not a stale count
+    # a server that says OK and changes nothing: the mark is read back, never assumed
+    FakeIMAP.ignores_store = True
+    r = await skill.mark(ctx, ["INBOX:7"], "flagged")
+    assert r.is_error and r.content == ("0 messages marked flagged. The server shows these "
+                                        "unchanged after it: INBOX:7.")
+    FakeIMAP.ignores_store = False
 
     r = await skill.move(ctx, ["INBOX:9"], "Rechnungen")
     assert r.content == "1 message moved to Rechnungen: INBOX:9. The folder Rechnungen is new."

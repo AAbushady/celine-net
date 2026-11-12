@@ -34,6 +34,8 @@ TIMEOUT = 30            # seconds: the connection and each command of one call
 FRAGMENT_TIMEOUT = 5    # the unread count in its prompt must not hold up a turn
 UNREAD_TTL = 60         # seconds the unread count is kept
 LIST_DEFAULT, LIST_MAX = 20, 100
+# email__mark's states as IMAP SEARCH keys: what reads back a mark as it took
+MARKED = {"read": "SEEN", "unread": "UNSEEN", "flagged": "FLAGGED", "unflagged": "UNFLAGGED"}
 _MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov",
            "Dec")
 _HEADERS = "BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE CONTENT-TYPE)]"
@@ -646,36 +648,43 @@ class Email:
                           display={"id": f"{folder}:{uid}", "part": k, "parts": total,
                                    "attachments": len(files)})
 
-    async def _change(self, ids: list[str], each: Callable[[imaplib.IMAP4, str, list[int]], None]
-                      ) -> tuple[list[str], list[str]]:
-        """Run each(imap, folder, uids) on the messages still there, folder by folder.
-        Returns (the ids changed, the ids not there anymore)."""
+    async def _change(self, ids: list[str],
+                      each: Callable[[imaplib.IMAP4, str, list[int]], list[int] | None]
+                      ) -> tuple[list[str], list[str], list[str]]:
+        """Run each(imap, folder, uids) on the messages still there, folder by folder;
+        `each` returns the uids the server shows unchanged after it (read back). Returns
+        (the ids changed, the ids not there anymore, the ids the change did not take)."""
         groups = _by_folder(ids)
 
         def run(m):
-            done, gone = [], []
+            done, gone, failed = [], [], []
             for folder, uids in groups.items():
                 _select(m, folder)
                 here = _present(m, uids)
-                if here:
-                    each(m, folder, here)
-                done += [f"{folder}:{u}" for u in here]
+                bad = (each(m, folder, here) or []) if here else []
+                done += [f"{folder}:{u}" for u in here if u not in bad]
+                failed += [f"{folder}:{u}" for u in bad]
                 gone += [f"{folder}:{u}" for u in uids if u not in here]
-            return done, gone
-        done, gone = await self._run(run)
+            return done, gone, failed
+        done, gone, failed = await self._run(run)
         _unread.clear()
-        return done, gone
+        return done, gone, failed
 
     @staticmethod
-    def _said(what: str, done: list[str], gone: list[str]) -> ToolResult:
-        """"2 messages marked read: INBOX:3, INBOX:9." and the ids that were gone."""
+    def _said(what: str, done: list[str], gone: list[str],
+              failed: list[str] | None = None) -> ToolResult:
+        """"2 messages marked read: INBOX:3, INBOX:9.", the ids that were gone, and the ids
+        the server shows unchanged after it."""
         n = len(done)
         line = f"{n} message{'' if n == 1 else 's'} {what}" + (f": {', '.join(done)}." if done
                                                                else ".")
         if gone:
             line += f" Not there anymore: {', '.join(gone)}."
-        return ToolResult(content=line, is_error=not done,
-                          display={"messages": n, "missing": len(gone)})
+        if failed:
+            line += f" The server shows these unchanged after it: {', '.join(failed)}."
+        return ToolResult(content=line, is_error=not done or bool(failed),
+                          display={"messages": n, "missing": len(gone),
+                                   "unchanged": len(failed)})
 
     @tool(read_only=False, open_world=True)
     async def mark(self, ctx: ToolContext,
@@ -690,13 +699,17 @@ class Email:
                               is_error=True)
 
         def each(m, folder, uids):
-            _ok(m.uid("STORE", ",".join(map(str, uids)), f"{flag[0]}FLAGS.SILENT",
-                      f"({flag[1]})"), f"marking in {folder}")
+            s = ",".join(map(str, uids))
+            _ok(m.uid("STORE", s, f"{flag[0]}FLAGS.SILENT", f"({flag[1]})"),
+                f"marking in {folder}")
+            # the flags as the server holds them now, read back
+            now = set(_uids(m, ["UID", s, MARKED[state]]))
+            return [u for u in uids if u not in now]
         try:
-            done, gone = await self._change(ids, each)
+            done, gone, failed = await self._change(ids, each)
         except MailError as e:
             return ToolResult(content=str(e), is_error=True)
-        return self._said(f"marked {state}", done, gone)
+        return self._said(f"marked {state}", done, gone, failed)
 
     @tool(read_only=False, open_world=True)
     async def move(self, ctx: ToolContext,
@@ -715,11 +728,12 @@ class Email:
                 _ok(m.create(_q(_encode_folder(to))), f"making the folder {to}")
                 made.append(to)
             _move(m, uids, to)
+            return _present(m, uids)        # still in the folder they left: did not move
         try:
-            done, gone = await self._change(ids, each)
+            done, gone, failed = await self._change(ids, each)
         except MailError as e:
             return ToolResult(content=str(e), is_error=True)
-        out = self._said(f"moved to {to}", done, gone)
+        out = self._said(f"moved to {to}", done, gone, failed)
         if made:
             out.content += f" The folder {to} is new."
         return out
@@ -739,14 +753,15 @@ class Email:
                 raise MailError("This account has no trash folder.")
             if folder == trash:
                 kept.extend(f"{folder}:{u}" for u in uids)
-            else:
-                _move(m, uids, trash)
+                return []
+            _move(m, uids, trash)
+            return _present(m, uids)        # still in the folder they left: did not move
         try:
-            done, gone = await self._change(ids, each)
+            done, gone, failed = await self._change(ids, each)
         except MailError as e:
             return ToolResult(content=str(e), is_error=True)
         moved = [d for d in done if d not in kept]
-        out = self._said(f"moved to {where[0]}", moved, gone)
+        out = self._said(f"moved to {where[0]}", moved, gone, failed)
         if kept:
             out.content += f" Already in {where[0]}: {', '.join(kept)}."
         return out

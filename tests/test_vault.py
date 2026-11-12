@@ -122,7 +122,8 @@ async def test_set_get_and_rotate_and_the_agent_never_sees_a_password(vault_app,
     monkeypatch.setattr(box_files, "put", put)
     got = await skill.get(ctx, name="example-shop", shell=True, why="the order script logs in")
     assert written == [(first.encode(), ".vault/example-shop/password")]
-    assert first not in got.content and got.content.endswith("For a script: ~/.vault/example-shop/password")
+    assert first not in got.content and got.content.endswith(
+        "For a script: ~/.vault/example-shop/password (written whole)")
 
     out = await skill.rotate(ctx, name="example-shop", why="it was sent to the model")
     [item] = bw.state()["items"]
@@ -164,7 +165,7 @@ async def test_any_name_an_entry_has_is_taken_and_one_that_differs_by_case_is_na
     got = await skill.get(ctx, name="my bank", shell=True)
     assert got.content.splitlines()[0] == "My Bank: user2, https://bank.example"
     got = await skill.get(ctx, name="work/mail", shell=True)
-    assert got.content.endswith("For a script: ~/.vault/work/mail/password")
+    assert got.content.endswith("For a script: ~/.vault/work/mail/password (written whole)")
     got = await skill.get(ctx, name="../up", shell=True)
     assert got.is_error and got.content == (
         '../up cannot be a folder in ~/.vault; the file was not written. A form takes it as '
@@ -175,7 +176,7 @@ async def test_any_name_an_entry_has_is_taken_and_one_that_differs_by_case_is_na
     assert (await skill.set(ctx, name="github")).content == \
         "GitHub exists: vault__rotate(name) changes it."
     out = await skill.rotate(ctx, name="my bank")
-    assert out.content.splitlines()[0] == "My Bank has a new password."
+    assert out.content.splitlines()[0] == "My Bank has a new password, as the vault holds it now."
     assert 'vault__get(name="My Bank", shell=true)' in out.content
     bank = next(it for it in vault_app.bw.state()["items"] if it["name"] == "My Bank")
     assert bank["passwordHistory"][0]["password"] == "test-hand-made-0002"
