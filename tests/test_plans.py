@@ -159,6 +159,13 @@ async def test_the_agents_routine_writes_and_runs_are_its_own(tmp_path, monkeypa
                                                "07:30, on."
     bad = await skill.write(ctx, name="morning", label="Morning", prompt="x", time="25:00")
     assert bad.is_error and bad.content == "Not saved (time): The time is HH:MM, such as 02:00."
+    # saved, and the app did not load it: said so, never "Saved ... on" from what was asked
+    from celine import reload
+    with monkeypatch.context() as m:
+        m.setattr(reload, "apply", lambda app: False)
+        gone = await skill.write(ctx, name="noon", label="Noon", prompt="Lunch.",
+                                 time="12:00")
+    assert gone.is_error and gone.content.startswith("Saved noon, but the app did not load it")
     by = await store.read(lambda c: c.execute(
         "SELECT by FROM text_versions WHERE of='routine:morning:prompt'").fetchone()[0])
     assert by == "agent", "its change is its own in the routine's history"

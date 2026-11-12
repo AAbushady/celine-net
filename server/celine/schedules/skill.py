@@ -203,11 +203,18 @@ class Routines:
             body.pop("cron", None)
             body.update({k: v for k, v in (("time", time), ("cron", cron)) if v})
         try:
-            s, _ = await save(self.app, name, body, "agent")
+            s, applied = await save(self.app, name, body, "agent")
         except Invalid as e:
             return ToolResult(content=f"Not saved ({e.field}): {e.message}", is_error=True)
         except CelineError as e:
             return ToolResult(content=f"Not saved: {e.message}", is_error=True)
+        # the routine as the running app holds it after the save, read back
+        if applied is False or name not in self._every():
+            why = "; ".join(p.message for p in self.app.cfg.problems if p.fatal) or \
+                "it is not among the routines it runs"
+            return ToolResult(content=f"Saved {name}, but the app did not load it: {why}.",
+                              is_error=True, display={"routine": name, "new": old is None})
+        s = self._every()[name]
         if old is not None and old.on and not s.on and self.app.intercom is not None:
             await self.app.intercom.send("system:app", "user",
                                          f"Routine {shown(s)} was switched off by "

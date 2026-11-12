@@ -513,6 +513,25 @@ class Settings:
             return ToolResult(content=f"Saved {t.label} ({text}), but the app refused to "
                                       f"load it and keeps its last good settings: {why}.",
                               is_error=True, display={"target": t.id, "changes": rows})
+        # the values as the app holds them after the save, read back
+        held = target_of(self.app, t.id)
+        if not isinstance(held, str):
+            now_by = {f["key"]: f for f in held.fields}
+            off = []
+            for k, v in values.items():
+                f = now_by.get(k)
+                # a number or a switch, where a value dropped or clamped is the risk; a text
+                # or a list is held as its save tidies it (an address gets its scheme)
+                if f is None or f.get("value") is None or k == "cloud" or \
+                        not isinstance(v, (bool, int, float)):
+                    continue
+                want, got = shown(by_key[k], _after(by_key[k], v)), shown(f, f["value"])
+                if want != got:
+                    off.append(f"{f['label']}: asked {want}, holds {got}")
+            if off:
+                return ToolResult(content=f"Saved {t.label} ({text}), and the app holds "
+                                          f"other values than asked: {'; '.join(off)}.",
+                                  is_error=True, display={"target": t.id, "changes": rows})
         now = ""
         if t.id == "features":      # what a feature switched on finds: its probe, fresh
             for k in (k for k, v in values.items() if v is True and not by_key[k]["value"]):

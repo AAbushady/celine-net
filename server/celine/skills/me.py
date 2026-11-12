@@ -112,6 +112,15 @@ def edited(cfg, what: str, old: str, new: str, add: list[str],
             f"Your {what}: {len(add)} added, {len(remove)} removed, {len(items)} now.")
 
 
+def _kept(cfg, what: str) -> str | list[str]:
+    """What the app holds of `what` now: the persona or the talk as text, a list as its
+    entries."""
+    h = cfg.agent
+    if what in ("persona", "talk"):
+        return h.talk_text if what == "talk" else h.persona
+    return list(h.voice[LISTS[what]])
+
+
 def feature_words(p: dict) -> str:
     """A feature's probe as the agent reads it: the probe's own words for it (`why`),
     its detail while it is ready, else its state; a page's detail tells the user what
@@ -249,6 +258,7 @@ class Me:
         if no := await self._approved(ctx, what, old, new, list(add or []),
                                       list(remove or [])):
             return ToolResult(content=no, is_error=True)
+        before = _kept(cfg, what)
 
         def fn(c) -> None:
             agent.write_sync(c, cfg, body, "agent")
@@ -259,6 +269,24 @@ class Me:
             return ToolResult(content=str(e), is_error=True)
         await agent.refresh(store, cfg)
         store.emit_global({"type": AGENT_CHANGED})
+        after = _kept(cfg, what)                    # as the app holds it now, read back
+        wrote = body["voice"][LISTS[what]] if "voice" in body else body[what]
+        if (after if isinstance(after, list) else after.strip()) != \
+                (wrote if isinstance(wrote, list) else wrote.strip()):
+            return ToolResult(content=f"Your {what} was written, and the app reads back "
+                                      f"another one than was written.", is_error=True)
+        if isinstance(after, list) and isinstance(before, list):
+            added = [x for x in after if x not in before]
+            gone = [x for x in before if x not in after]
+            there = [x for x in add or [] if x in before]
+            said = (f"Your {what}: {len(added)} added, {len(gone)} removed, {len(after)} "
+                    f"now." + (f" Already there: {', '.join(repr(x) for x in there)}."
+                               if there else ""))
+        else:
+            tell = f" Tell {cfg.user} in one line." if what == "persona" else ""
+            said = (f"{said.removesuffix(tell)} Your {what} is "
+                    f"{len(str(after).splitlines())} lines now, was "
+                    f"{len(str(before).splitlines())}.{tell}")
         return ToolResult(content=said, display={"what": what})
 
     async def _approved(self, ctx: ToolContext, what: str, old: str, new: str,

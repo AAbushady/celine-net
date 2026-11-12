@@ -107,9 +107,14 @@ async def test_the_agent_reads_itself_and_edits_its_talk_and_slop_list(store, cf
     read = (await me.read(_ctx(store, cfg))).content
     assert "## persona" in read and "## talk" in read and "## slop list" in read
     assert "Joe" in read and "{{" not in read
-    got = await me.edit(_ctx(store, cfg), what="phrases", add=["my call was right"])
-    assert not got.is_error and "1 added" in got.content
-    assert "my call was right" in cfg.agent.voice["phrases"], "cfg follows the row"
+    got = await me.edit(_ctx(store, cfg), what="phrases", add=["as fate would have it"])
+    n = len(cfg.agent.voice["phrases"])
+    assert not got.is_error and got.content == f"Your phrases: 1 added, 0 removed, {n} now."
+    assert "as fate would have it" in cfg.agent.voice["phrases"], "cfg follows the row"
+    # one it has already: the answer is the list as stored, not what was asked
+    got = await me.edit(_ctx(store, cfg), what="phrases", add=["as fate would have it"])
+    assert got.content == (f"Your phrases: 0 added, 0 removed, {n} now. Already there: "
+                           f"'as fate would have it'.")
     placeholders = cfg.agent.talk_text.count("{{username}}")
     got = await me.edit(_ctx(store, cfg), what="talk", old="write to Joe,",
                         new="write to Joe, plainly,")
@@ -119,8 +124,12 @@ async def test_the_agent_reads_itself_and_edits_its_talk_and_slop_list(store, cf
         "only the edited one is gone; the rest stay placeholders"
     got = await me.edit(_ctx(store, cfg), what="talk", new="## how I sound\nshort.")
     assert cfg.agent.talk.rstrip().endswith("## how I sound\nshort.")
+    was = len(cfg.agent.persona.splitlines())
     got = await me.edit(_ctx(store, cfg), what="persona", new="I keep a balcony garden.")
-    assert not got.is_error and got.content == "Added to your persona. Tell Joe in one line."
+    now = len(cfg.agent.persona.splitlines())
+    assert not got.is_error and got.content == (
+        f"Added to your persona. Your persona is {now} lines now, was {was}. Tell Joe in "
+        f"one line.")
     assert cfg.agent.persona.rstrip().endswith("I keep a balcony garden.")
     assert [b for b, _ in await _versions(store, "agent:persona")] == ["", "agent"]
     assert {"type": "agent.changed"} in seen
