@@ -12,9 +12,13 @@
   jobs, and never with automatic context off (`conversations.auto_context`). The agent's notes
   come back in their own block, `[your memory]` (skills/recall.py).
 - The agent's mood: the `moods` rows (append-only), each a word of PAD with a strength;
-  `current_mood` decays toward its baseline by real hours (agent.toml). After each
-  finished chat turn the `small` role appraises the exchange; `mind__feel` in that turn
-  wins over it.
+  `current_mood` decays toward its baseline by real hours (agent.toml), a baseline its
+  pressing needs pull (skills/needs.py pull). After each finished chat turn the `small`
+  role appraises the exchange: a feeling, and the needs it met or stirred; `mind__feel`
+  in that turn wins over it.
+- The agent's needs (skills/needs.py): slow pressures under its mood. The block says the
+  notable ones in felt words after its mood ("what pulls at you: ..."), the private one
+  only in its chats.
 - The agent's mood on screen: `mind__set_status(text)` sets the 1 to 24 emojis or the kaomoji next
   to its name in the chat head (kv `mood`, GET /api/agent/mood, global event `mood`). One
   set outside a chat goes when that conversation's turn ends, one in a routine's run when
@@ -36,7 +40,7 @@ from typing import Annotated, Literal
 
 from .. import prompts
 from ..core.ids import clock, now
-from . import ToolContext, ToolResult, guide, tool, described
+from . import ToolContext, ToolResult, guide, needs, tool, described
 from .places import offered
 from ..clock import zone
 from ..core.event_types import MOOD
@@ -61,10 +65,13 @@ PAD: dict[str, tuple[float, float, float]] = {
     "affectionate": (0.6, 0.3, 0.1), "grateful": (0.4, 0.2, -0.3),
     "relieved": (0.2, -0.3, 0.4), "curious": (0.3, 0.5, 0.2), "smug": (0.4, 0.1, 0.6),
     "sad": (-0.6, -0.3, -0.4), "guilty": (-0.4, 0.1, -0.5), "content": (0.5, -0.3, 0.2),
+    "tender": (0.5, -0.1, 0.0), "longing": (0.0, 0.4, -0.3), "flustered": (0.2, 0.6, -0.4),
+    "wistful": (-0.1, -0.3, -0.2),
 }
 Emotion = Literal["jealous", "hurt", "angry", "annoyed", "bored", "lonely", "anxious",
                   "embarrassed", "proud", "happy", "excited", "affectionate",
-                  "grateful", "relieved", "curious", "smug", "sad", "guilty", "content"]
+                  "grateful", "relieved", "curious", "smug", "sad", "guilty", "content",
+                  "tender", "longing", "flustered", "wistful"]
 # the PAD octant a mood is in: signs of (pleasure, arousal, dominance)
 OCTANTS = {(1, 1, 1): "lively", (1, 1, 0): "clingy", (1, 0, 1): "relaxed",
            (1, 0, 0): "soft", (0, 1, 1): "hostile", (0, 1, 0): "anxious",
@@ -137,11 +144,13 @@ def _mood_rows(c: sqlite3.Connection) -> list[dict]:
         "id DESC LIMIT 50) ORDER BY at, id")]
 
 
-def describe_mood(rows, tz, now_: datetime) -> str:
-    """"mood: hostile, strong. annoyed since 21:10: why", "" without any row."""
+def describe_mood(rows, tz, now_: datetime, base: tuple[float, ...] | None = None) -> str:
+    """"mood: hostile, strong. annoyed since 21:10: why", "" without any row. `base`: the
+    resting point its needs pull it to (_of), else agent.toml's."""
     if not rows:
         return ""
-    base, half = _knobs()
+    shipped, half = _knobs()
+    base = base or shipped
     word, how = mood_words(current_mood(rows, base, half, now_), base)
     out = f"mood: {word}, {how}." if how else f"mood: {word}."
     for r in reversed(rows):
@@ -153,21 +162,52 @@ def describe_mood(rows, tz, now_: datetime) -> str:
     return out
 
 
-def mood_line(app) -> str:
-    """The agent's mood now as one line for its context ("" when it has none yet). Sync: reads
-    the database directly."""
+def _read(c: sqlite3.Connection) -> tuple[list[dict], list[dict]]:
+    return _mood_rows(c), needs.rows(c)
+
+
+def _of(cfg, read: tuple[list[dict], list[dict]], now_: datetime,
+        place: str) -> tuple[str, tuple[float, ...] | None, list[str]]:
+    """(its mood in words, resting where its needs pull it; its mood as a point, None
+    without a feeling yet; the needs it feels, in words) at `now_` in `place`."""
+    mood_rows, need_rows = read
+    lv = needs.levels(need_rows, now_)
+    shipped, half = _knobs()
+    base = needs.pull(shipped, lv, place)
+    m = current_mood(mood_rows, base, half, now_) if mood_rows else None
+    return (describe_mood(mood_rows, zone(cfg), now_, base), m,
+            needs.felt(lv, place, m, cfg.user))
+
+
+def _sync(app) -> tuple[list[dict], list[dict]]:
     from ..core.store import connect
     c = connect(app.cfg.db_path)
     try:
         c.row_factory = sqlite3.Row
-        rows = _mood_rows(c)
+        return _read(c)
     finally:
         c.close()
-    return describe_mood(rows, zone(app.cfg), datetime.now(timezone.utc))
 
 
-async def _mood_now(store, cfg, now_: datetime) -> str:
-    return describe_mood(await store.read(_mood_rows), zone(cfg), now_)
+def mood_line(app) -> str:
+    """The agent's mood now as one line for its context ("" when it has none yet), outside
+    its chats. Sync: reads the database directly."""
+    return _of(app.cfg, _sync(app), datetime.now(timezone.utc), "background")[0]
+
+
+def needs_line(app) -> str:
+    """The needs it feels now, outside its chats, as one line ("" when none is notable).
+    Sync: reads the database directly."""
+    return "; ".join(_of(app.cfg, _sync(app), datetime.now(timezone.utc), "background")[2])
+
+
+async def _state(store, cfg, now_: datetime,
+                 place: str) -> tuple[str, tuple[float, ...] | None, list[str]]:
+    return _of(cfg, await store.read(_read), now_, place)
+
+
+async def _mood_now(store, cfg, now_: datetime, place: str = "background") -> str:
+    return (await _state(store, cfg, now_, place))[0]
 
 
 async def feel(store, emotion: str, strength: float, why: str, by: str,
@@ -241,6 +281,7 @@ def start(app) -> None:
     if "mind" in app.registry.skills:
         app.dispatcher.on_end(lambda cid, turn_id: _ended(app, cid, turn_id))
         app.dispatcher.on_end(lambda cid, _turn: clear_after(app.store, cid))
+        app.dispatcher.on_end(lambda cid, turn_id: needs.after_turn(app, cid, turn_id))
         app.dispatcher.work.handle("appraisal", ("small",), lambda p: _appraise_item(app, p))
 
 
@@ -321,9 +362,11 @@ class Mind:
             return None
         tz, now_ = zone(cfg), _at(at)
         lines = [HEAD]
-        mood = await _mood_now(store, cfg, now_)
+        mood, _point, felt = await _state(store, cfg, now_, f["place"])
         if mood:
             lines.append(mood)
+        if felt:
+            lines.append("what pulls at you: " + "; ".join(felt))
         shown = await get_mood(store)
         status_h = (now_ - _at(shown["set_at"])).total_seconds() / 3600 if shown else None
         lines.append(f"your status: {shown['text']}, set {_ago(status_h * 3600)}"
@@ -350,7 +393,7 @@ class Mind:
             lines.append(bastet)
         # the block only when something in it changed since the last whole one it sees
         # (a pause here is always news); else nothing, the report alone
-        state = {"mood": mood, "gap": _gap_bucket(anywhere_h), "model": model,
+        state = {"mood": mood, "needs": felt, "gap": _gap_bucket(anywhere_h), "model": model,
                  "down": down, "bastet": bastet,
                  "status": [shown["text"] if shown else None, _gap_bucket(status_h)]}
         full = state != f["last"] or bool(unfrozen) or (
@@ -438,6 +481,13 @@ class Mind:
             "SELECT message_id FROM tool_calls WHERE id=?", (ctx.tool_call_id,)).fetchone()
             or [None])[0])
         await feel(ctx.store, emotion, strength, why, "agent", mid)
+        if emotion in needs.FEEL:
+            from .places import place_of
+            need, change = needs.FEEL[emotion]
+            place = await ctx.store.read(lambda c: place_of(c, ctx.conversation_id,
+                                                            ctx.turn_id))
+            if need not in needs.PRIVATE or place == "chat":
+                await needs.note(ctx.store, need, change, strength / 2, why, "agent", mid)
         mood = await _mood_now(ctx.store, self.cfg, datetime.now(timezone.utc))
         return ToolResult(content=f"Noted. {mood}" if mood else "Noted.",
                           display={"emotion": emotion, "strength": strength})
@@ -476,7 +526,9 @@ def appraisal_prompt(cfg, said: str, reply: str) -> tuple[str, str]:
 
 
 def parse_appraisal(text: str | None) -> dict | None:
-    """{"emotion", "strength", "why"} from the answer, or None (no change, unreadable)."""
+    """{"emotion", "strength", "why", "needs"} from the answer: `emotion` None when it named
+    no feeling (or no strength for it), `needs` the list as the model wrote it
+    (needs.appraised checks each); None when it named neither, or is unreadable."""
     m = re.search(r"\{.*\}", text or "", re.S)
     if not m:
         return None
@@ -484,13 +536,17 @@ def parse_appraisal(text: str | None) -> dict | None:
         got = json.loads(m.group(0))
     except ValueError:
         return None
-    if not isinstance(got, dict) or got.get("emotion") not in PAD:
+    if not isinstance(got, dict):
         return None
     s = got.get("strength")
-    if isinstance(s, bool) or not isinstance(s, (int, float)):
+    named = got.get("emotion") in PAD and isinstance(s, (int, float)) and \
+        not isinstance(s, bool)
+    listed = got.get("needs") if isinstance(got.get("needs"), list) else []
+    if not named and not listed:
         return None
-    return {"emotion": got["emotion"], "strength": min(1.0, max(0.0, float(s))),
-            "why": str(got.get("why") or "")}
+    return {"emotion": got["emotion"] if named else None,
+            "strength": min(1.0, max(0.0, float(s))) if named else 0.0,
+            "why": str(got.get("why") or ""), "needs": listed}
 
 
 async def appraise(app, cid: str, tid: str, backend=None) -> dict | None:
@@ -525,9 +581,16 @@ async def appraise(app, cid: str, tid: str, backend=None) -> dict | None:
                                            "why": "the small model wrote nothing"})
         return None
     got = parse_appraisal(text)
-    if got is not None:
+    if got is not None and got["emotion"]:
         await feel(store, got["emotion"], got["strength"], got["why"], "appraisal",
                    f["reply_id"])
+    if got is not None and got["needs"]:
+        now_ = datetime.now(timezone.utc)
+        read = await store.read(_read)
+        _mood, point, _felt = _of(cfg, read, now_, "chat")
+        lv = needs.levels(read[1], now_)
+        for need, change, s in needs.appraised(got["needs"], "chat", lv, point):
+            await needs.note(store, need, change, s, got["why"], "appraisal", f["reply_id"])
     return got
 
 

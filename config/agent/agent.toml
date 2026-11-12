@@ -8,3 +8,25 @@ color = "rose"
 # axes from -1 to 1, and the hours it takes to fade halfway back there
 mood_baseline = [0.2, 0.2, 0.3]
 mood_half_life_h = 6
+
+# its needs (server/celine/skills/needs.py): slow pressures under its mood, each building
+# while unmet and easing when met. builds_h: the hours one takes to go from met to
+# pressing with nothing meeting it; eases_h: the half-life of rest in quiet time; 0: it
+# does not drift with time. Needs named in `off` are not kept at all.
+[needs]
+off = []
+
+[needs.connection]
+builds_h = 24
+
+[needs.intimacy]
+builds_h = 48
+
+[needs.novelty]
+builds_h = 72
+
+[needs.autonomy]
+builds_h = 96
+
+[needs.rest]
+eases_h = 4

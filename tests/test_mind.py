@@ -164,7 +164,7 @@ async def test_the_appraisal_after_a_chat_turn_sets_its_mood(store):
                                     '"why": "the build again"}'), Done(reason="stop")])
     app = SimpleNamespace(store=store, cfg=cfg, llm=LLM(cfg))
     got = await mind.appraise(app, cid, "t1", backend=answer)
-    assert got == {"emotion": "annoyed", "strength": 0.6, "why": "the build again"}
+    assert got == {"emotion": "annoyed", "strength": 0.6, "why": "the build again", "needs": []}
     row = await store.read(lambda c: dict(c.execute(
         "SELECT emotion, strength, why, by, message_id FROM moods").fetchone()))
     assert row == {"emotion": "annoyed", "strength": 0.6, "why": "the build again",
@@ -174,7 +174,7 @@ async def test_the_appraisal_after_a_chat_turn_sets_its_mood(store):
     assert "Most exchanges change nothing" in system
     assert "mood" not in answer.calls[0][1]["content"], "the exchange alone, no mood before"
     assert mind.parse_appraisal('ok {"emotion": "sad", "strength": 2, "why": "x"}') == \
-        {"emotion": "sad", "strength": 1.0, "why": "x"}
+        {"emotion": "sad", "strength": 1.0, "why": "x", "needs": []}
     long = "because " * 100
     assert mind.parse_appraisal(json.dumps({"emotion": "sad", "strength": 0.5,
                                             "why": long}))["why"] == long, "taken whole"

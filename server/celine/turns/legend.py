@@ -28,8 +28,8 @@ LINES = (
     "[Notice from ...], [Job ...]: an intercom message. The name says who wrote the "
     "text under it; the app wrote the line.",
     "- [your mind] at the end of a message: your own state, from the app: your mood, "
-    "your status and when you set it, how long since you talked, a new model, what is "
-    "down, a freeze lifted.",
+    "what pulls at you, your status and when you set it, how long since you talked, a new "
+    "model, what is down, a freeze lifted.",
     "- [your memory] at the end of a message: sections of your notes whose keys came up, "
     "the best match first, each with its path, heading, similarity and date. A note you "
     "changed in this chat says so and when: what it says about this chat is your own "
