@@ -12,7 +12,7 @@ from ..core.event_types import INTERCOM_STATE
 
 SEVERITIES = ("high", "medium", "low")
 WORDS = {"high": "High", "medium": "Medium", "low": "Low"}
-TITLE_MAX = 120
+TITLE_MAX = 160         # the file tool's title says this number too
 TEXT_MAX = 4000
 
 

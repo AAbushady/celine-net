@@ -148,8 +148,10 @@ async def test_a_report_outlives_the_chat_that_filed_it_purged_from_the_trash(st
 
 async def test_a_field_over_its_limit_is_refused_and_names_it_never_cut(store, cfg):
     cid = await conversations.create(store, "x")
-    r = await _file(store, cfg, cid, title="t" * 121)
-    assert r.is_error and "at most 120 characters" in r.content
+    r = await _file(store, cfg, cid, title="t" * 161)
+    assert r.is_error and "at most 160 characters" in r.content
+    r = await _file(store, cfg, cid, title="t" * 150)
+    assert not r.is_error, "her titles ran to 150 and were refused at 120"
     r = await _file(store, cfg, cid, wish="w" * 4001)
     assert r.is_error and "at most 4,000 characters" in r.content
     r = await _file(store, cfg, cid, what="w" * 4000)

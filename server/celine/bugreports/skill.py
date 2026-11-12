@@ -32,8 +32,8 @@ class BugReport:
     async def file(
         self,
         ctx: ToolContext,
-        title: Annotated[str, "The problem in a few words, like: past_conversations__read "
-                              "cuts long tool results."],
+        title: Annotated[str, "The problem in a few words, at most 160 characters, like: "
+                              "past_conversations__read cuts long tool results."],
         severity: Annotated[Literal["high", "medium", "low"],
                             "high: it stops your work. medium: you work around it. low: "
                             "a small thing."],
