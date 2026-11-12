@@ -128,8 +128,10 @@ async def test_a_batch_is_every_image_it_made_and_a_repeat_collapses(app, store,
 
     out = await ImageGenerator(app.cfg).look(look, batch="feedbeef")
     assert out.is_error and out.content == "There is no batch feedbeef."
-    out = await ImageGenerator(app.cfg).look(look)
-    assert out.is_error and out.content == "Give images, by their short ids, or a batch id."
+    for nothing in ({}, {"images": None, "batch": None}):       # a null is its default
+        out = await ImageGenerator(app.cfg).look(look, **nothing)
+        assert out.is_error and \
+            out.content == "Give images, by their short ids, or a batch id."
 
 
 async def test_images_it_made_anywhere_and_yours_here_but_never_yours_elsewhere(

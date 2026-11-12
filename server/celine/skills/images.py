@@ -579,11 +579,10 @@ class ImageGenerator(Generator):
         image in order (its short id, preset, size and seed, and when it is cleared or
         that it is kept) and the pictures in that order, or their descriptions when your
         model cannot see images."""
-        # a list written as one string ("f5ef648c, 0d1e2f3a") reads as its ids
-        refs = images.replace(",", " ").split() if isinstance(images, str) else \
-            [str(r).strip() for r in images or () if str(r).strip()]
+        refs = [str(r).strip() for r in images or () if str(r).strip()]
         lines: list[str] = []
-        if batch.strip():
+        batch = (batch or "").strip()       # a null for it is its default
+        if batch:
             try:
                 b = await batches_mod.find(ctx.store, "images", batch)
             except presets_mod.ImageError as e:
