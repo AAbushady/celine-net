@@ -309,7 +309,7 @@ type Role = 'user' | 'assistant' | 'tool' | 'system'
 export type Attachment = {
   id: string
   filename: string
-  kind: 'image' | 'audio' | 'text' | 'binary'
+  kind: 'image' | 'audio' | 'video' | 'text' | 'binary'
   sha256: string
   bytes: number
   media_type: string

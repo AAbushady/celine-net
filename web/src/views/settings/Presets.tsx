@@ -1,4 +1,4 @@
-/* Images and music on Images & Music (Media.tsx): one card per preset (comfyui/presets.py,
+/* Images, music and video on Images & Music (Media.tsx): one card per preset (comfyui/presets.py,
    GET /api/generation-presets?kind=), shipped and the user's own. The presets it uses come
    first, in its order, which up and down change (the Image generation or Music generation
    role; the first of a task is its default); its switch takes a preset in or out. A card
@@ -26,7 +26,8 @@ import { BatchGallery, KeepButton, RetryItem, StopBatch, doneWords, madeImages, 
 import { Button, Card, CardGrid, Choice, ConfirmDialog, Dialog, Field, FileButton, Form, IconButton, InlineError, Input, ListRow, LoadingRow, NumberField, Picks, Player, Section, StateWord, Step, SubHead, Switch, TextArea } from '../../ui'
 import './settings.css'
 
-const TASK: Record<Preset['task'], string> = { generate: 'new images', edit: 'edits', music: 'music' }
+const TASK: Record<Preset['task'], string> = { generate: 'new images', edit: 'edits', music: 'music', video: 'clips' }
+const TITLE: Record<Kind, string> = { images: 'Images', music: 'Music', video: 'Video' }
 
 export function Presets({ kind, providers, roles, onChanged }: {
   kind: Kind; providers: ProviderView[]; roles: Record<string, RoleView>; onChanged: () => void
@@ -56,7 +57,7 @@ export function Presets({ kind, providers, roles, onChanged }: {
   const changed = (p: Preset) => { list.set(d => d && { presets: d.presets.map(x => (x.id === p.id ? p : x)) }); onChanged() }
 
   return (
-    <Section title={kind === 'images' ? 'Images' : 'Music'}
+    <Section title={TITLE[kind]}
              action={<FileButton icon={Upload} accept=".json,application/json" disabled={!online} onFiles={([f]) => { if (f) setFile(f) }}>Upload workflow</FileButton>}>
       {probe.data && probe.data.state !== 'none' && <StateWord tone={probe.data.state === 'missing' ? 'error' : 'muted'}>{probe.data.detail}</StateWord>}
       {list.error && !list.data ? <InlineError message={list.error} onRetry={list.reload} />
@@ -170,7 +171,7 @@ function useRecent(kind: Kind) {
 }
 
 /* the newest few, then Show more: the page stays a settings page, not a gallery */
-const STEP = { images: 4, music: 8 } as const
+const STEP = { images: 4, music: 8, video: 4 } as const
 
 function Recent({ kind, batches, error, reload }: { kind: Kind; batches?: Batch[]; error: string | null; reload: () => void }) {
   const [playing, setPlaying] = useState<{ src: string; title: string; detail: string } | null>(null)
@@ -262,13 +263,21 @@ function Generate({ preset: p, sources, onStarted }: { preset: Preset; sources: 
   const [loras, setLoras] = useState('')
   const [picked, setPicked] = useState<string[]>([])
   const [uploaded, setUploaded] = useState<Made[]>([])
+  const [seconds, setSeconds] = useState('')
   const set = (k: string, v: string | boolean) => setValues(x => ({ ...x, [k]: v }))
-  const shown = p.parameters.filter(prm => prm.name !== 'model' || p.catalog?.models)
-  const main = p.kind === 'images' ? 'prompt' : 'style'
+  // a clip takes its length in seconds; the server turns them into frames at the preset's rate
+  const shown = p.parameters.filter(prm => (prm.name !== 'model' || p.catalog?.models)
+                                           && (p.kind !== 'video' || (prm.name !== 'length' && prm.name !== 'fps')))
+  const main = p.kind === 'music' ? 'style' : 'prompt'
   const ready = String(values[main] ?? '').trim() !== '' && (p.task !== 'edit' || picked.length > 0)
+  // an edit needs its images; a clip may start from a picture
+  const given = (name: string) => Number(p.parameters.find(prm => prm.name === name)?.default)
+  const presetSeconds = given('length') / given('fps')
+  const pick = p.task === 'edit' ? 'Image' : p.kind === 'video' && (p.images ?? 0) > 0 ? 'Start image' : null
 
   const go = useAction(async () => {
-    const item: Record<string, unknown> = p.kind === 'images' ? { preset: p.id } : {}
+    const item: Record<string, unknown> = p.kind === 'music' ? {} : { preset: p.id }
+    if (p.kind === 'video' && seconds) item.seconds = Number(seconds)
     for (const prm of shown) {
       const v = values[prm.name]
       if (v === '' || v === undefined) continue
@@ -288,12 +297,12 @@ function Generate({ preset: p, sources, onStarted }: { preset: Preset; sources: 
   const field = (prm: Param) => <ParamField key={prm.name} prm={prm} value={values[prm.name]!} onChange={v => set(prm.name, v)} />
   return (
     <form className="generate" noValidate onSubmit={e => { e.preventDefault(); if (ready) void go.run() }}>
-      {p.task === 'edit' && (
-        <Field label="Image" error={upload.error} group>
+      {pick && (
+        <Field label={pick} error={upload.error} group>
           <div className="generate__sources">
             <FileButton icon={Upload} label="Upload" accept="image/*" disabled={upload.busy}
                         onFiles={([f]) => { if (f) void upload.run(f) }} />
-            <Picks label="Image" values={picked} onChange={setPicked} max={p.images ?? 1}
+            <Picks label={pick} values={picked} onChange={setPicked} max={p.images ?? 1}
                    options={[...uploaded, ...sources].map(img => ({ value: img.id, label: img.filename, picture: tileUrl(img, PICK) }))} />
           </div>
         </Field>
@@ -306,6 +315,8 @@ function Generate({ preset: p, sources, onStarted }: { preset: Preset; sources: 
       )}
       <div className="generate__numbers">
         {shown.filter(prm => NUMBER.has(prm.type)).map(field)}
+        {p.kind === 'video' && <NumberField label="Seconds" min={0.5} step={0.5} value={seconds} onChange={setSeconds}
+                                               placeholder={Number.isFinite(presetSeconds) ? String(Math.round(presetSeconds * 10) / 10) : undefined} />}
         <NumberField label="How many" min={1} value={count} onChange={setCount} />
       </div>
       <div className="generate__go">

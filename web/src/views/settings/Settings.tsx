@@ -59,7 +59,7 @@ const PAGES: { id: PageId; label: string; icon: LucideIcon }[] = [
 // Prompts opens from Advanced, so it is a page without a row of its own
 const KNOWN = new Set<string>(['sources', 'prompts', ...PAGES.map(p => p.id)])
 /** the Settings pages whose every owner is off (`catalog[].pages`, GET /status `features`):
-    a page leaves the list (Images & Music stays while Images or Music is on), a source as
+    a page leaves the list (Images & Music stays while Images, Music or Video is on), a source as
     "source:<platform>" */
 const offPages = (status: ConfigStatus | null) => {
   const catalog = status?.catalog ?? []

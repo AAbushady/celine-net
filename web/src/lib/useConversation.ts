@@ -298,7 +298,8 @@ function apply(s: State, ev: Frame): State {
     // a batch changed: every call that shows it (the one that started it, a read, a stop)
     // shows it as the server has it now
     case 'images.batch':
-    case 'music.batch': {
+    case 'music.batch':
+    case 'video.batch': {
       const b = asBatch(ev.batch)
       if (!b) return s
       return mapCalls(s, c => c.id === b.tool_call_id || asBatch(c.display)?.id === b.id, c => ({ ...c, display: b }))

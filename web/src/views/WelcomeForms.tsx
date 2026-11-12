@@ -1,6 +1,6 @@
 /* The setup forms, one per `setup` id of the feature catalog (Welcome.tsx and Settings,
-   Features pick them by it): comfyui (one address for Images and Music: the saved ComfyUI
-   provider's to start with; Music says "Music uses the same ComfyUI as Images." once Images has one), email
+   Features pick them by it): comfyui (one address for Images, Music and Video: the saved ComfyUI
+   provider's to start with; Music and Video say "Music uses the same ComfyUI as Images." once Images has one), email
    (the account, Check email logs in), vault (the server fields and the client secret), search
    (what an embedding and a reranker model give and how to run one, then the Topic search and
    Reranking models out of what the saved providers offer, a pick saves at once), guard (Bastet's
@@ -182,7 +182,7 @@ function ComfyuiForm({ feature, value, onChange, saveRef, reprobe }: FormProps<C
   saveRef.current = save
   const check = useAction(async () => { await save(); await reprobe() })
   if (!d) return providers.error ? <InlineError compact message={providers.error} onRetry={providers.reload} /> : <LoadingRow label="Loading" />
-  if (feature.id === 'music' && d.base_url.trim()) return <p className="onb__line">Music uses the same ComfyUI as Images.</p>
+  if (feature.id !== 'images' && d.base_url.trim()) return <p className="onb__line">{feature.label} uses the same ComfyUI as Images.</p>
   return (
     <>
       <Field label="Address">

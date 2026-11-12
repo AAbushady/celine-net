@@ -23,7 +23,7 @@ import { formOf, type SaveRef } from '../WelcomeForms'
 import { Page } from './parts'
 import './settings.css'
 
-const MEDIA = new Set(['images', 'music'])
+const MEDIA = new Set(['images', 'music', 'video'])
 
 /** the probes of the catalog's features (or `only` those ids), asked now; the catalog with the answers */
 export async function reprobe(catalog: Feature[], only?: string[]): Promise<Feature[]> {

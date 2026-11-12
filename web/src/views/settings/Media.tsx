@@ -1,4 +1,4 @@
-/* Images & Music (/settings/media), listed while the Images or the Music feature is on:
+/* Images & Music (/settings/media), listed while the Images, Music or Video feature is on:
    the ComfyUI server (its Address, saved when the field is left; its key; its options,
    each saved on change; Check provider; Remove this provider), then the presets of each
    kind that is on (Presets.tsx), and while Images is on and the ComfyUI starts on demand,
@@ -29,6 +29,7 @@ export function Media() {
   const roles = useResource(() => settingsApi.roles().then(r => r.roles), [], { events: SETTINGS_EVENTS })
   const imagesOn = useFeatureOn('images')
   const musicOn = useFeatureOn('music')
+  const videoOn = useFeatureOn('video')
   const [removing, setRemoving] = useState(false)
   const reload = () => { providers.reload(); roles.reload() }
   const list = providers.data?.providers ?? []
@@ -52,6 +53,7 @@ export function Media() {
           {imagesOn && <Presets kind="images" providers={list} roles={roles.data} onChanged={reload} />}
           {imagesOn && comfy?.provider.options?.on_demand === true && <ModelFiles />}
           {musicOn && <Presets kind="music" providers={list} roles={roles.data} onChanged={reload} />}
+          {videoOn && <Presets kind="video" providers={list} roles={roles.data} onChanged={reload} />}
         </> : <Section><Loaded res={roles} /></Section>}
       </>}
       {removing && comfy && (

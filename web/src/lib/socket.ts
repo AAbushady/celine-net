@@ -106,7 +106,7 @@ export type Frame =
   | ({ type: 'tool.done' | 'tool.gated'; tool_call_id: string; state?: ToolCall['state']; ok?: boolean; display?: ToolCall['display']; words?: ToolWords
        result?: string | null; job_id?: string | null; finished_at?: string | null; runs?: TurnRuns | null; place?: Place } & Of)
   | ({ type: 'tool.detached'; tool_call_id: string; job_id: string; name: string; place?: Place } & Of)
-  | ({ type: 'images.batch' | 'music.batch'; batch: unknown } & Of)
+  | ({ type: 'images.batch' | 'music.batch' | 'video.batch'; batch: unknown } & Of)
   | ({ type: 'model_file.state'; tool_call_id: string; display: ToolCall['display']; words: ToolWords } & Of)
   | ({ type: 'tool.progress'; tool_call_id: string; note: string } & Of)
   | ({ type: 'tool.reset'; tool_call_id: string; runs?: TurnRuns | null } & Of)

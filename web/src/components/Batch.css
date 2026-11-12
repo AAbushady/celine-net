@@ -1,7 +1,7 @@
-/* A batch (Batch.tsx): its pictures (each a PictureBlock) or its tracks, in the batch's
+/* A batch (Batch.tsx): its pictures (each a PictureBlock), its tracks or its clips, in the batch's
    order, one gap; a track's colour is its item's state, its words what the server says. */
 .batch { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: flex-start; }
-.batch--music { display: grid; grid-template-columns: minmax(0, 30rem); }
+.batch--music, .batch--video { display: grid; grid-template-columns: minmax(0, 30rem); }
 
 .batch__tile {
   position: relative; display: flex; align-items: center; justify-content: center; min-height: var(--row-lg);
@@ -32,6 +32,7 @@
 .batch__head .batch__title { flex: 1; min-width: 0; }
 .btn.batch__keep.is-on { color: var(--accent); }
 .batch__track audio { width: 100%; height: var(--h-md); }
+.batch__clip { display: block; width: 100%; max-height: 60vh; border-radius: var(--r-sm); background: var(--surface-2); }
 
 @media (prefers-reduced-motion: reduce) {
   .batch__tile--running .batch__words { animation: none; }

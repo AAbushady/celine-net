@@ -1,13 +1,14 @@
-/* A batch of images or music, in the batch's order, which never changes. An image is the
-   one picture block (PictureBlock) from the prompt while it is made to the picture or the
-   sentence why it failed; a track its title and player, or the server's words. What an
+/* A batch of images, music or video, in the batch's order, which never changes. An image is
+   the one picture block (PictureBlock) from the prompt while it is made to the picture or
+   the sentence why it failed; a track its title and player, a clip its prompt and player
+   with its first still as the poster, or the server's words. What an
    item made can be kept (Keep, Unkeep); a cleared one shows when, what made it and Retry.
    Used in its replies (ToolRow ToolLines) and the Generate surface on the Models page;
    both follow the batch's events and never guess an item's state. */
 import { createContext, useState } from 'react'
 import { Bookmark, RefreshCw } from 'lucide-react'
 import type { Message, ToolCall } from '../lib/api'
-import { asBatch, clearedFile, fileUrl, madeFile, mediaApi, type Batch, type BatchItem } from '../lib/media'
+import { TILE, asBatch, clearedFile, fileUrl, madeFile, mediaApi, tileUrl, type Batch, type BatchItem } from '../lib/media'
 import { clearedLine, madeWords, pictureOf, retryItem } from '../lib/pictures'
 import { useAction } from '../lib/useAction'
 import { useOnline } from '../lib/socket'
@@ -140,7 +141,7 @@ export function BatchGallery({ batch: shown }: { batch: Batch }) {
     )
   }
   return (
-    <div className="batch batch--music">
+    <div className={`batch batch--${batch.kind}`}>
       {batch.items.map(i => (
         <Track key={i.index} batch={batch} item={i}
                onRetry={batch.state !== 'running' ? () => handleRetry(i.index) : undefined} />
@@ -149,28 +150,39 @@ export function BatchGallery({ batch: shown }: { batch: Batch }) {
   )
 }
 
-/* a track: its title, player and Keep once done; the server's words while it waits or
-   runs, why it failed, or when it was cleared with its title and Retry */
+/** a clip's player: its first still is the poster until it plays */
+function ClipPlayer({ item: i, src }: { item: BatchItem; src: string }) {
+  const first = i.frames?.[0]
+  const shape = i.width && i.height ? { aspectRatio: `${i.width} / ${i.height}` } : undefined
+  return <video className="batch__clip" controls preload="metadata" src={src} style={shape}
+                poster={first ? tileUrl(first, TILE * 2) : undefined} />
+}
+
+/* a track or a clip: its title (a clip's prompt), player and Keep once done; the server's
+   words while it waits or runs, why it failed, or when it was cleared with its title and Retry */
 function Track({ batch, item: i, onRetry }: { batch: Batch; item: BatchItem; onRetry?: () => Promise<unknown> }) {
   const retry = useAction(async () => { await onRetry?.() })
   const file = madeFile(i)
   const cleared = clearedFile(i)
   const state = cleared ? 'cleared' : i.state
   const again = onRetry && (cleared || i.state === 'failed' || i.state === 'stopped')
+  const clip = batch.kind === 'video'
+  const title = clip ? i.prompt : i.title
+  const about = clip ? i.prompt : i.style
   return (
     <div className={`batch__tile batch__tile--${state}`}>
       {file ? (
         <div className="batch__track">
           <span className="batch__head">
-            <span className="batch__title" title={i.style ?? undefined}>{i.title ?? file.filename}</span>
+            <span className="batch__title" title={about ?? undefined}>{title ?? file.filename}</span>
             <KeepButton batch={batch} item={i} />
           </span>
-          <audio controls preload="metadata" src={fileUrl(file)} />
+          {clip ? <ClipPlayer item={i} src={fileUrl(file)} /> : <audio controls preload="metadata" src={fileUrl(file)} />}
         </div>
       ) : (
         <span className="batch__say">
           <span className="batch__words">{cleared ? clearedLine(i) : i.state === 'failed' ? i.error : i.state === 'stopped' ? 'Stopped' : i.note}</span>
-          {cleared && <span className="batch__title" title={i.style ?? undefined}>{i.title ?? cleared.filename}</span>}
+          {cleared && <span className="batch__title" title={about ?? undefined}>{title ?? cleared.filename}</span>}
           {again && <Button size="sm" variant="secondary" icon={RefreshCw} loading={retry.busy} onClick={() => void retry.run()}>Retry</Button>}
           {retry.error && <InlineError compact message={retry.error} />}
         </span>

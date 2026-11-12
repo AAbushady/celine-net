@@ -1,6 +1,6 @@
-/* Images and music (server/celine/comfyui/api.py): the presets, and batches, the one way
+/* Images, music and video (server/celine/comfyui/api.py): the presets, and batches, the one way
    anything is made. A batch has one slot per item, in order; the server fills them and
-   says so with `images.batch` / `music.batch` ({batch}) on the conversation's stream
+   says so with `images.batch`, `music.batch` or `video.batch` ({batch}) on the conversation's stream
    and the global feed. The agent's calls carry the same batch as their display. What an
    item made has its life (temporary, kept, cleared), the server's; Keep and Unkeep ask
    for a change and the batch's event brings it. */
@@ -11,7 +11,7 @@ import type { FormField } from '../ui'
 
 export type { Batch, BatchItem, MadeFile, ModelFile, ModelFileList } from './api.gen'
 
-export type Kind = 'images' | 'music'
+export type Kind = 'images' | 'music' | 'video'
 
 /** a file kept with a tool call (the server's `files` block) */
 export type MediaFile = {
@@ -43,12 +43,12 @@ export type Preset = {
   kind: Kind
   label: string
   family: string
-  task: 'generate' | 'edit' | 'music'
+  task: 'generate' | 'edit' | 'music' | 'video'
   good_at: string
   prompting: string
   example: string
   parameters: Param[]
-  /** images */
+  /** images and video */
   size?: { width: number; height: number; step: number; max_pixels: number }
   negative?: boolean
   /** how many images an edit takes (0 for new images) */
@@ -68,8 +68,8 @@ export type Preset = {
 }
 
 /** the settings role that lists each kind's presets */
-export const ROLE: Record<Kind, string> = { images: 'image_generation', music: 'music_generation' }
-const EVENT: Record<Kind, string> = { images: 'images.batch', music: 'music.batch' }
+export const ROLE: Record<Kind, string> = { images: 'image_generation', music: 'music_generation', video: 'video_generation' }
+const EVENT: Record<Kind, string> = { images: 'images.batch', music: 'music.batch', video: 'video.batch' }
 
 /** a batch, from a call's display or an event's `batch` */
 export function asBatch(v: unknown): Batch | null {
@@ -79,7 +79,7 @@ export function asBatch(v: unknown): Batch | null {
 
 /** the batch an event carries, of any kind or of `kind` */
 export function batchEvent(ev: ServerEvent, kind?: Kind): Batch | null {
-  if (kind ? ev.type !== EVENT[kind] : ev.type !== EVENT.images && ev.type !== EVENT.music) return null
+  if (kind ? ev.type !== EVENT[kind] : !Object.values(EVENT).includes(ev.type)) return null
   return asBatch((ev as { batch?: unknown }).batch)
 }
 

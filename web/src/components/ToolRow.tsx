@@ -1,6 +1,6 @@
 /* What Celine did with a tool. In the
    stream only what is at work shows, as one shimmering line (ToolLines), with the pictures
-   and music it makes as their blocks, each batch under a fold that hides it; everything else is in its reply's Activity: a list with one row per call (ToolGroup), the icon, the words, a
+   music and clips it makes as their blocks, each batch under a fold that hides it; everything else is in its reply's Activity: a list with one row per call (ToolGroup), the icon, the words, a
    count or an exit where it says more, the row's colour its state (a settled row has no
    clock; a call at work ticks); a click opens everything about the
    call in a Sheet, the call by its name, the arguments, where it looked and the complete
@@ -14,7 +14,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { TextWithRefs } from './Markdown'
 import {
   Activity, AlertTriangle, AppWindow, ArrowLeft, Bell, BookOpen, Bot, Brain, Bug, CalendarClock, CircleSlash, Code, Cpu, Download, ExternalLink, FileText, Flag, Globe,
-  ImagePlus, Images, ListChecks, LockKeyhole, Mail, MessageSquare, MessagesSquare, Music, NotebookPen, PanelRight, Paperclip, ScreenShare, Search, SlidersHorizontal, Square,
+  Clapperboard, ImagePlus, Images, ListChecks, LockKeyhole, Mail, MessageSquare, MessagesSquare, Music, NotebookPen, PanelRight, Paperclip, ScreenShare, Search, SlidersHorizontal, Square,
   Terminal, UserRound, Wrench, type LucideIcon,
 } from 'lucide-react'
 import { api, type ToolCall, type ToolRun } from '../lib/api'
@@ -41,12 +41,17 @@ import './ToolRow.css'
 const ICONS: Record<string, typeof Wrench> = {
   chat_archive: MessagesSquare, user_documents: BookOpen, notebook: NotebookPen, shell: Terminal,
   web: Globe, past_conversations: Search, sub_agents: Bot, image_generator: ImagePlus,
-  music_generator: Music, artifacts: AppWindow, email: Mail, browser: Globe, appearance: UserRound, me: UserRound,
+  music_generator: Music, video_generator: Clapperboard, artifacts: AppWindow, email: Mail, browser: Globe, appearance: UserRound, me: UserRound,
   vault: LockKeyhole, settings: SlidersHorizontal, models: Cpu, routines: CalendarClock, missions: Flag, plan: ListChecks,
   mind: Brain, code: Code, intercom: MessageSquare, bugreport: Bug,
 }
 
 type Args = Record<string, unknown>
+
+/** a batch's fold: its kind's icon and what it holds */
+const BATCH = {
+  images: { icon: ImagePlus, noun: 'image' }, music: { icon: Music, noun: 'track' }, video: { icon: Clapperboard, noun: 'clip' },
+} as const
 
 function argsOf(call: ToolCall): Args | null {
   try {
@@ -247,11 +252,11 @@ function useView(call: ToolCall): View {
   if (call.name === 'missions__update') {
     return { icon: Flag, tone: toneOf(call), meta: took(call), words: rowWords(call) }
   }
-  if ((skill === 'image_generator' || skill === 'music_generator') && (asBatch(d) || tool === 'generate' || tool === 'read' || tool === 'stop')) {
+  if ((skill === 'image_generator' || skill === 'music_generator' || skill === 'video_generator') && (asBatch(d) || tool === 'generate' || tool === 'read' || tool === 'stop')) {
     const b = asBatch(d)
     const failed = b && b.state !== 'running' && b.items.every(i => i.state !== 'done')
     return {
-      icon: skill === 'music_generator' ? Music : ImagePlus, words: rowWords(call),
+      icon: ICONS[skill] ?? ImagePlus, words: rowWords(call),
       tone: !b ? toneOf(call) : b.state === 'running' ? 'running' : failed ? 'error' : null,
       meta: b ? doneWords(b) : took(call), actions: b && <StopBatch batch={b} />,
       detail: b && <Part label="Batch"><BatchGallery batch={b} /></Part>,
@@ -475,8 +480,7 @@ function ToolLine({ call }: { call: ToolCall }) {
   // open until its head is clicked; a hidden batch stays hidden on this device
   if (b) return (
     <Fold className="tool__batch" defaultOpen remember={`batch:${b.id}`}
-          icon={b.kind === 'images' ? ImagePlus : Music}
-          title={count(b.items.length, b.kind === 'images' ? 'image' : 'track')}>
+          icon={BATCH[b.kind].icon} title={count(b.items.length, BATCH[b.kind].noun)}>
       <BatchGallery batch={b} />
     </Fold>
   )
