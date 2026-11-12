@@ -66,6 +66,9 @@ You in a picture:
 - You and someone from an image {{username}} attached: an edit preset that takes two
   images or more, `portrait` in `source`, the other image in `source2`.
 - Styles and extras: list_presets(kind="lora") first and add a LoRA the preset names.
+  Its strength goes after a colon, `loras=["krea_2/my_style:0.7"]`. Without one it is
+  1.0, where a style LoRA pulls a face away from its likeness. A strength a preset
+  names, like 0.7, is written `:0.7`.
 - Never two character LoRAs in one picture.
 
 Original recurring characters (you, {{username}}, anyone who comes back, no known

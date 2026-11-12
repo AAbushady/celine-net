@@ -26,7 +26,7 @@ has no effect at cfg 1, so leave it empty.
 Size: native is 2048x2048 (4 MP); 1024x1024 is four times faster. Presets: 1:1 2048x2048,
 4:3 2400x1792, 3:4 1792x2400, 3:2 2528x1696, 2:3 1696x2528, 16:9 2752x1536, 9:16 1536x2752.
 
-Anime: variant raw, the LoRA "qwen2.1/anime-style" at 0.7 to 1.0, and start the prompt
+Anime: variant raw, the LoRA "qwen2.1/anime-style:0.7" to ":1.0", and start the prompt
 with its trigger phrase "fusal style." followed by structured blocks: [TASK: TEXT_TO_IMAGE]
 [Subject] ... [Appearance] ... [Pose] ... [Expression] ... [Composition] ...
 [Environment] ... [Lighting] ... [Style] Anime-style illustration ... Blocks may be left

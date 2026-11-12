@@ -35,12 +35,12 @@ night." Not a description of the finished image.
 
 Variant: raw (the default, 40 steps) or turbo (8 steps, about 5x faster).
 
-Anime (variant raw, LoRA "qwen2.1/anime-style" at 0.7 to 1.0): start with its trigger
+Anime (variant raw, LoRA "qwen2.1/anime-style:0.7" to ":1.0"): start with its trigger
 phrase, "fusal style. [TASK: REFERENCE_TO_IMAGE] [Reference guidance] Preserve the
 recognizable identity and defining visual features of the character in <image1>." then
 the scene as [Pose and anatomy] [Expression and gaze] [Composition and camera] [Objects
 and interactions] [Environment] [Lighting and mood] [Rendering style] blocks. This
-redraws the whole frame. For a change in place, the LoRA at 0.65 to 0.70 and an
+redraws the whole frame. For a change in place, "qwen2.1/anime-style:0.65" to ":0.70" and an
 instruction with no task line: "fusal style. Edit <image1> in place: dress her in a red
 raincoat, while keeping her exact head, face, hair, eyes, pose, and background
 completely unchanged."
