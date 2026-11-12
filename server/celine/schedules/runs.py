@@ -113,7 +113,7 @@ from croniter import croniter
 
 from .. import homes, metrics, prompts
 from ..errors import NotFound
-from ..backends.base import Done, TextDelta, ToolCallDelta
+from ..backends.base import BackendError, Done, TextDelta, ToolCallDelta
 from ..backends.llm import HeldClock
 from ..conversations import store as conversations, tree
 from ..core.ids import iso, new_id, now
@@ -1141,12 +1141,12 @@ class Scheduler:
             {"run": rid}))[0]}]
         base = "\n\n".join([fill(cfg, s.reviewer_prompt, day, res),
                             _say(cfg, "asked.md"), prompt])
-        backend, tools = self._reviewer_backend(cid, s), self._reviewer_tools()
+        line, tools = self._reviewer(cid, s), self._reviewer_tools()
         for n in range(1, s.turns + 1):
             last = n == s.turns
             system = f"{base}\n\n" + (_say(cfg, "last_line.md") if last else
                                          _say(cfg, "line.md", n=n, turns=s.turns))
-            said = await self._line(backend, cid, system, history, tools)
+            said = await line(system, history, tools)
             ends = last or bool(END.search(said))
             said = END.sub("", said).strip()
             if not said:
@@ -1178,19 +1178,45 @@ class Scheduler:
         if state == "failed":
             raise RunFailed(reason or "The turn failed", code=code)
 
-    def _reviewer_backend(self, cid: str, s):
-        """The reviewer's model: the Mentor role's first model, else the run's role's;
-        behind every interactive request, named by the schedule's label, on that one
-        model only; never its Banned words, the reviewer is not it."""
+    def _reviewer(self, cid: str, s):
+        """The reviewer of one dialogue: `await line(system, history, tools)` says its
+        next line (`_line`). On the Mentor role, once every one of its models failed,
+        the run's own model plays the mentor for the rest of the dialogue."""
+        on: dict[str, object] = {"backend": self._reviewer_backend(cid, s),
+                                 "mentor": self._on_mentor()}
+
+        async def line(system: str, history: list[dict], tools: dict) -> str:
+            try:
+                return await self._line(on["backend"], cid, system, history, tools)
+            except BackendError as e:
+                if not on["mentor"]:
+                    raise
+                log.warning("mentor fell back", extra={
+                    "event": "schedules.mentor_fallback", "conversation": cid,
+                    "error": str(e)})
+                on.update(backend=self._reviewer_backend(cid, s, own=True), mentor=False)
+                return await self._line(on["backend"], cid, system, history, tools)
+        return line
+
+    def _on_mentor(self) -> bool:
+        """The Mentor role has models: the reviewer runs on them."""
+        settings = getattr(self.app.cfg, "settings", None)
+        return settings is not None and bool(settings.chain(MENTOR))
+
+    def _reviewer_backend(self, cid: str, s, own: bool = False):
+        """The reviewer's model, behind every interactive request, named by the
+        schedule's label; never its Banned words, the reviewer is not it. On the Mentor
+        role's models, the next one when one fails; else (or `own`, once every one
+        failed) on the run's role's first model only."""
         d = self.app.dispatcher
         fixed = d.backend_factory() if getattr(d, "backend_factory", None) else None
         if self.app.llm is None:
             return fixed
         from ..backends.queue import Priority
-        settings = getattr(self.app.cfg, "settings", None)
-        role = MENTOR if settings is not None and settings.chain(MENTOR) else s.role
-        return self.app.llm.bind(fixed, role=role, priority=Priority.BACKGROUND,
-                                 conversation_id=cid, label=shown(s), fallback=False,
+        mentor = not own and self._on_mentor()
+        return self.app.llm.bind(fixed, role=MENTOR if mentor else s.role,
+                                 priority=Priority.BACKGROUND, conversation_id=cid,
+                                 label=shown(s), fallback=mentor,
                                  voice=False, wait=0, run_clock=self._clock)
 
     def _reviewer_tools(self) -> dict:

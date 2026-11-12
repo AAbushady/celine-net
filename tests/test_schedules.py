@@ -647,17 +647,38 @@ async def test_a_run_is_over_only_once_its_sub_agents_have_reported(store):
 async def test_the_mentor_runs_on_its_own_role_once_that_has_a_model(store, cfg):
     """The mentor answered on the run's own role, so a stronger mentor meant a stronger
     model for the agent's turns too. The Mentor role, set, is the mentor's alone."""
+    from celine.backends.base import BackendError
     from celine.schedules import run_roles
-    bound: list[str] = []
-    llm = SimpleNamespace(bind=lambda fixed, **kw: bound.append(kw["role"]))
-    sched = Scheduler(_app(store, cfg, llm=llm))
+    bound: list[tuple[str, bool]] = []
+
+    def bind(fixed, **kw):
+        bound.append((kw["role"], kw["fallback"]))
+        return kw["role"]
+    sched = Scheduler(_app(store, cfg, llm=SimpleNamespace(bind=bind)))
     s = _s("reflection", reviewer="mentor.md", reviewer_prompt="Be fair.", role="chat")
     cfg.settings.roles = {**cfg.settings.roles, "mentor": {"chain": []}}
     sched._reviewer_backend("c", s)
     cfg.settings.roles = {**cfg.settings.roles, "mentor": {"chain": ["or/strong"]}}
     sched._reviewer_backend("c", s)
-    assert bound == ["chat", "mentor"]
+    assert bound == [("chat", False), ("mentor", True)], "the Mentor list walks on a failure"
     assert "mentor" not in run_roles(), "a routine's own turns never run on it"
+
+    # every Mentor model failed: the run's own model says this line and every one after
+    said: list[str] = []
+
+    async def line(backend, cid, system, history, tools):
+        if backend == "mentor":
+            raise BackendError("The mentor's server refused the connection.")
+        said.append(system)
+        return f"line {len(said)}"
+    sched._line = line
+    ask = sched._reviewer("c", s)
+    assert [await ask("one", [], {}), await ask("two", [], {})] == ["line 1", "line 2"]
+    assert said == ["one", "two"] and bound[-1] == ("chat", False)
+    cfg.settings.roles = {**cfg.settings.roles, "mentor": {"chain": []}}
+    sched._line = lambda *a: (_ for _ in ()).throw(BackendError("down"))
+    with pytest.raises(BackendError):
+        await sched._reviewer("c", s)("one", [], {})
 
 
 async def test_a_run_is_over_though_it_timed_a_message_to_itself_for_another_day(store):
