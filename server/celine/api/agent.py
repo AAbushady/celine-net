@@ -76,7 +76,7 @@ async def put_portrait(request: Request, store: TheStore, cfg: TheConfig) -> dic
         await agent.set_portrait(store, cfg, data)
     except ValueError as e:
         raise Invalid(field, str(e)) from None
-    await _changed(store, cfg)
+    store.emit_global({"type": AGENT_CHANGED})
     return {"portrait": agent.portrait_view(cfg.agent)}
 
 
@@ -86,7 +86,7 @@ async def delete_portrait(store: TheStore, cfg: TheConfig) -> dict:
     if not (cfg.agent and cfg.agent.portrait):
         return {"deleted": False}
     await agent.set_portrait(store, cfg, None)
-    await _changed(store, cfg)
+    store.emit_global({"type": AGENT_CHANGED})
     return {"deleted": True}
 
 

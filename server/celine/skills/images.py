@@ -41,8 +41,8 @@ class Item(TypedDict, total=False):
     prompt: Required[Annotated[str, "What to draw, written for the preset (the guide "
                                     "shows how). With source: what to change."]]
     source: Annotated[str, "An image to edit: its short id, like f5ef648c, from a "
-                           "result or list_images, or portrait:<name> for someone's "
-                           "portrait. Empty: a new image."]
+                           "result or list_images, or portrait for your portrait. "
+                           "Empty: a new image."]
     source2: Annotated[str, "A second image for the edit, as source: another person, "
                             "an outfit, a place. Only a preset that takes several images "
                             "uses it (the guide says which)."]
@@ -564,8 +564,8 @@ class ImageGenerator(Generator):
                                             "it: a short id like f5ef648c from a result or "
                                             "list_images (an image you made, in any "
                                             "conversation, or one {{username}} attached to "
-                                            "this conversation), or portrait:<name>. As "
-                                            "many as you need."] = None,
+                                            "this conversation), or portrait for your "
+                                            "portrait. As many as you need."] = None,
         batch: Annotated[str, "A batch id from generate, like 3f2a9c1e: every image it "
                               "made, in order, before the images."] = "",
         question: Annotated[str | None, "What you want to know about them, when your model "

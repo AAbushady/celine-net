@@ -3,6 +3,7 @@ take it), or an image in Documents (by its id, path or title, as user_documents_
 takes it)."""
 from __future__ import annotations
 
+import hashlib
 import re
 from typing import Annotated
 
@@ -34,19 +35,21 @@ class Appearance:
     ) -> ToolResult:
         """Make an image your portrait: the face {{username}} sees beside your messages
         and everywhere you speak in the app. It replaces the one before.
-        Returns: which image it is now."""
+        Returns: which image it is now, as the app reads it back once it is stored."""
         got = await self._image(ctx, image)
         if isinstance(got, str):
             return ToolResult(content=got, is_error=True)
         data, name = got
         try:
-            await agent.set_portrait(ctx.store, self.cfg, data)
+            stored = await agent.set_portrait(ctx.store, self.cfg, data)
         except ValueError as e:
             return ToolResult(content=f"{name} cannot be your portrait. {e}",
                               is_error=True)
-        if ctx.store is not None:
-            ctx.store.emit_global({"type": AGENT_CHANGED})
-        return ToolResult(content=f"Your portrait is now {name}.",
+        ctx.store.emit_global({"type": AGENT_CHANGED})
+        if stored != hashlib.sha256(data).hexdigest():
+            return ToolResult(content=f"{name} was written as your portrait, and the app "
+                                      f"reads back another one.", is_error=True)
+        return ToolResult(content=f"Your portrait is now {name}: the app read it back.",
                           display={"portrait": agent.portrait_view(self.cfg.agent)})
 
     async def _image(self, ctx: ToolContext, ref: str) -> tuple[bytes, str] | str:

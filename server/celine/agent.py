@@ -284,9 +284,11 @@ def _blob(cfg, c, data: bytes) -> str:
     return sha
 
 
-async def set_portrait(store, cfg, data: bytes | None) -> None:
-    """The agent's portrait from the image's bytes (None: no portrait). ValueError when it is
-    no png, jpg or webp."""
+async def set_portrait(store, cfg, data: bytes | None) -> str | None:
+    """The agent's portrait from the image's bytes (None: no portrait), written and read
+    back into `cfg.agent`, which every reader of the portrait goes by (the page's
+    /api/agent/portrait, an edit's or a look's `portrait`). ValueError when it is no png,
+    jpg or webp. -> the portrait's sha256 as the row holds it now."""
     if data is not None and image_kind(data) is None:
         raise ValueError("The portrait is a PNG, JPEG or WebP image.")
 
@@ -294,6 +296,8 @@ async def set_portrait(store, cfg, data: bytes | None) -> None:
         sha = _blob(cfg, c, data) if data is not None else None
         c.execute("UPDATE agent SET portrait=?, updated_at=? WHERE id = 1", (sha, now()))
     await store.write(fn)
+    await refresh(store, cfg)
+    return cfg.agent.portrait if cfg.agent is not None else None
 
 
 def portrait_file(cfg) -> tuple[Path, str] | None:

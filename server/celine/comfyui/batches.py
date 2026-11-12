@@ -260,14 +260,19 @@ async def named_image(cfg, store, ref: str, cid: str | None, own: bool) -> dict:
 
 def portrait_image(cfg, ref: str) -> dict | None:
     """`portrait`, `portrait:<its name>`, or its name alone: its portrait as an edit's
-    source; None for another ref. Raises ImageError when it has none."""
+    source, read from `cfg.agent` (agent.set_portrait keeps it current); None for a ref
+    that names no portrait. Raises ImageError when it has none, or when the ref is
+    `portrait:` with another name: its own is the one portrait there is."""
     from .. import agent
     key = ref.strip().casefold()
     if key not in ("portrait", f"portrait:{cfg.name.casefold()}", cfg.name.casefold()):
+        if key.startswith("portrait:"):
+            raise ImageError(f"There is no portrait of {ref.strip()[9:]}: the one portrait "
+                             f"is yours, portrait:{cfg.name}.")
         return None
     got = agent.portrait_file(cfg)
     if got is None:
-        raise ImageError(f"{cfg.name} has no portrait.")
+        raise ImageError(f"{cfg.name} has no portrait. appearance__set_portrait sets it.")
     return {"id": "portrait", "sha256": cfg.agent.portrait,
             "filename": f"portrait{_EXT.get(got[1], '.png')}", "media_type": got[1]}
 

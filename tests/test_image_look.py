@@ -244,6 +244,39 @@ async def test_its_portrait_by_the_ref_an_edit_takes(app, store, monkeypatch):
                                    "sha256": face["sha256"], "media_type": "image/png"}]
 
 
+async def test_a_portrait_it_sets_is_its_portrait_at_once_for_every_reader(app, store,
+                                                                           monkeypatch):
+    """appearance__set_portrait reads the portrait back: the page's portrait route and a
+    look's `portrait` see it on the next call, with no restart (#49: the row was written
+    and cfg.agent kept the old one, so the page showed none and a look said there was
+    none, while the call said it was set)."""
+    from celine.skills.appearance import Appearance
+    from celine import agent
+    monkeypatch.setattr(attachments, "turn_sees_images", _sees(True))
+    [face] = await _made(app, store, 1)
+    app.cfg.agent.portrait = None
+    store.emit_global = lambda ev: None
+    cid = await conversations.create(store)
+    ctx, mid = await _call(store, cid, "c1", "appearance__set_portrait")
+    out = await Appearance(app.cfg).set_portrait(ctx, image=face["id"][:8])
+    assert not out.is_error
+    assert out.content == f"Your portrait is now image {face['id'][:8]}: the app read it back."
+    assert out.display["portrait"]["url"].endswith(face["sha256"][:12])
+    assert agent.portrait_file(app.cfg)[0] == attachments.blob_path(app.cfg, face["sha256"])
+
+    look, mid = await _call(store, cid, "c2", LOOK)
+    out = await _look(app, look, mid, images=["portrait", f"portrait:{app.cfg.name}"])
+    assert out.content == "1. your portrait." and len(out.display["see"]) == 1
+    assert out.display["see"][0]["sha256"] == face["sha256"]
+
+    out = await ImageGenerator(app.cfg).look(look, images=["portrait:Alex"])
+    assert out.is_error and out.content == \
+        f"There is no portrait of Alex: the one portrait is yours, portrait:{app.cfg.name}."
+    await agent.set_portrait(store, app.cfg, None)
+    out = await ImageGenerator(app.cfg).look(look, images=["portrait"])
+    assert out.content == f"{app.cfg.name} has no portrait. appearance__set_portrait sets it."
+
+
 def test_its_row_says_how_many_it_looked_at_and_the_guard_reads_it_as_its_own():
     assert row_words(LOOK, {"images": ["a", "b"]}, {"count": 4}, "", "ok") == \
         "Looked at 4 images"
