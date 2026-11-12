@@ -50,6 +50,7 @@ inputs = [["7", "height"]]
 inputs = [["2", "unet_name"]]
 
 [catalog]
+hub_base = "Krea 2"
 models = ["krea2/"]
 loras = ["krea_2/"]
 lora_after = "6"

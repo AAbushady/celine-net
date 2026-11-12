@@ -89,7 +89,8 @@ READ = {"title": "Ink wash", "type": "LORA", "base": "Qwen", "creator": "someone
                           {"source": {"hub": "civitai", "version": 222, "file": 334},
                            "name": "Ink Wash v2.pt", "size": 200 * MB, "takes": False,
                            "why": "Only a .safetensors file is taken."}]}],
-        "examples": [{"prompt": f"ink wash, a heron {n}", "negative": "blurry",
+        "examples": [{"base": "SD 1.5" if n == 2 else "Qwen" if n == 1 else None,
+                      "prompt": f"ink wash, a heron {n}", "negative": "blurry",
                       "settings": {"steps": 8, "cfg": 1.0},
                       "picture": {"id": f"p{n}", "width": 832, "height": 1216,
                                   "mature": n == 3}} for n in range(1, 7)]}
@@ -518,7 +519,7 @@ async def test_a_search_on_each_hub_pages_and_its_value_goes_to_the_request_unch
     r = await skill.search_models(ctx, hub="civitai", kind="lora", query="ink wash",
                                   base="Qwen")
     assert r.content.splitlines() == [
-        "Civitai, LoRAs for \"ink wash\":",
+        "Civitai, LoRAs for \"ink wash\", base \"Qwen\":",
         "1. Ink wash (LORA, Qwen, 200 MB), 12,345 downloads; trigger words: inkwash style. "
         "file: civitai:222",
         "2. Night (LORA, Qwen, 200 MB), marked mature. file: civitai:777/9",
@@ -560,6 +561,42 @@ async def test_a_listing_with_no_words_and_a_preset_that_takes_no_such_file(hub)
     r = await skill.search_models(ctx, hub="civitai", kind="model", preset="qwen2.1-smart")
     assert (r.is_error, r.content) == (True, "Qwen 2.1 takes no model choice.")
     assert len(hub.helper.searches) == 1, "the preset is checked before the hub is asked"
+
+
+async def test_a_preset_keeps_a_civitai_search_to_its_base(hub):
+    """preset= only checked that the preset takes LoRAs: eight of ten results were of other
+    bases, which the preset cannot load (#52)."""
+    skill, ctx = _images(hub), await _ctx(hub, "image_generator__search_models")
+    r = await skill.search_models(ctx, hub="civitai", kind="lora", preset="qwen2.1-smart",
+                                  sort="most_downloaded")
+    assert hub.helper.searches[-1]["base"] == "Qwen 2.1"
+    assert r.content.startswith(
+        "Civitai, LoRAs, base \"Qwen 2.1\", most downloaded first:\n1. Ink wash")
+    await skill.search_models(ctx, hub="civitai", kind="lora", preset="qwen2.1-smart",
+                              base="Qwen")
+    assert hub.helper.searches[-1]["base"] == "Qwen", "a base given goes before the preset's"
+    r = await skill.search_models(ctx, hub="huggingface", kind="lora",
+                                  preset="qwen2.1-smart")
+    assert "base" not in hub.helper.searches[-1]
+    assert r.content.splitlines()[1] == (
+        "Files of every base: Qwen 2.1 names no base for Hugging Face. Give base, as "
+        "Hugging Face names it, to keep to its own.")
+
+
+async def test_each_example_says_the_base_it_was_made_with_and_its_version(hub, monkeypatch):
+    """An example made with another base looked like what the file does (#52)."""
+    skill = _images(hub)
+    r = await skill.read_model(await _ctx(hub, "image_generator__read_model"),
+                               model="civitai:222")
+    assert "Example prompts posted to version v2 (Qwen) (look_examples shows" in r.content
+    assert "2. prompt: ink wash, a heron 2 (has a picture)\n   made with: SD 1.5\n" in r.content
+    assert "3. prompt: ink wash, a heron 3 (has a picture)\n   negative:" in r.content
+    monkeypatch.setattr(attachments, "turn_sees_images", _sees(True))
+    r = await skill.look_examples(await _ctx(hub, "image_generator__look_examples"),
+                                  model="civitai:222", examples=[1])
+    assert r.content.startswith("Example pictures posted to version v2 (Qwen) from "
+                                "civitai.red")
+    assert "1. prompt: ink wash, a heron 1 (has a picture)\n   made with: Qwen\n" in r.content
 
 
 async def test_a_read_comes_in_parts_and_a_file_the_helper_does_not_take_has_no_value(hub):

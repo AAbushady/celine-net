@@ -74,6 +74,7 @@ inputs = [["turbo", "value"]]
 choices = { raw = false, turbo = true }
 
 [catalog]
+hub_base = "Qwen 2.1"
 loras = ["qwen2.1/"]
 lora_after = "lora"
 text = ["prompt", "value"]

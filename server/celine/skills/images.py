@@ -660,9 +660,11 @@ class ImageGenerator(Generator):
         query: Annotated[str, "Words to search for. Empty: the hub's listing in the order "
                               "of sort."] = "",
         preset: Annotated[str, "The image preset the file is for, by its id: checked first "
-                               "that it takes files of this kind. Empty: none."] = "",
+                               "that it takes files of this kind, and on Civitai the "
+                               "search keeps to its base model. Empty: none."] = "",
         base: Annotated[str, "The base model as the hub names it, like \"Qwen\" or "
-                             "\"Flux.1 D\". Empty: any."] = "",
+                             "\"Flux.1 D\", in place of the preset's. Empty: the "
+                             "preset's, else any."] = "",
         sort: Annotated[Literal["newest", "most_downloaded", "highest_rated"] | None,
                         "The order: newest, most_downloaded or highest_rated. Empty: the "
                         "hub's own."] = None,

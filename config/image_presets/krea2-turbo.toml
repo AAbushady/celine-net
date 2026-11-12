@@ -64,6 +64,7 @@ inputs = [["11", "value"]]
 choices = { direct = "direct", expand = "expand", gently = "gently" }
 
 [catalog]
+hub_base = "Krea 2"
 models = ["krea2/"]
 loras = ["krea_2/"]
 lora_after = "3"

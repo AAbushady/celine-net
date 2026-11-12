@@ -585,6 +585,14 @@ async def search(app, *, hub: str, kind: str, query: str = "", preset: str = "",
         if not (p.loras if kind == "lora" else p.models):
             return (f"{p.label} takes no LoRAs." if kind == "lora" else
                     f"{p.label} takes no model choice."), True, {}
+    # a preset keeps a Civitai search to its base; without one the page is of every base
+    every = ""
+    if p is not None and not base.strip():
+        if hub == "civitai" and p.hub_base:
+            base = p.hub_base
+        else:
+            every = (f"Files of every base: {p.label} names no base for {hubs.HUBS[hub]}. "
+                     f"Give base, as {hubs.HUBS[hub]} names it, to keep to its own.")
     args = {"hub": hub, "kind": kind, "query": query.strip(), "preset": preset.strip(),
             "base": base.strip(), "sort": sort, "period": period, "tag": tag.strip()}
     body: dict[str, Any] = {"hub": hub, "kind": kind, "limit": hubs.PAGE}
@@ -606,7 +614,11 @@ async def search(app, *, hub: str, kind: str, query: str = "", preset: str = "",
         return unreachable(app, pid, e), True, {}
     results = [r for r in answer.get("results") or [] if isinstance(r, dict)]
     mature = any(r.get("mature") is True for r in results)
-    return (hubs.search_text(answer, hub, kind, args), False,
+    text = hubs.search_text(answer, hub, kind, args)
+    if every:
+        head, _, rest = text.partition("\n")
+        text = "\n".join(x for x in (head, every, rest) if x)
+    return (text, False,
             {"hub": hub, "count": len(results), "class": _class(mature)})
 
 
@@ -663,7 +675,8 @@ async def pictures(app, ctx, model: str, which: list[int] | None,
                           if isinstance(e.get("picture"), dict)][:LOOK_MAX]
             if not chosen:
                 return "This model's examples have no pictures.", True, {}, []
-            lines = [hubs.HEAD_PICTURES.format(site=hubs.site(src, answer.get("address")))]
+            lines = [hubs.HEAD_PICTURES.format(site=hubs.site(src, answer.get("address")),
+                                               version=hubs.examples_version(answer))]
             ids: list[str] = []
             mature = False
             for n, e in chosen:

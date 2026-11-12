@@ -22,7 +22,8 @@ The TOML:
   (image_catalog.py): models and loras (name prefixes), lora_after (the node a LoRA
   chain follows), sampler (the node a model's settings go to), text ([node, input] that
   trigger words are put in front of), max_loras, full_settings (the sampler settings of
-  a model that is not turbo).
+  a model that is not turbo), hub_base (the base model as Civitai names it, which a
+  search for this preset's files keeps to).
 
 `load(kind)` reads both folders once per change of their files and checks every preset:
 each problem is one sentence for the configuration banner (config.Problem), and a preset
@@ -125,6 +126,7 @@ class Preset:
     text: tuple[str, str] | None = None
     max_loras: int = 0
     full_settings: dict[str, Any] = field(default_factory=dict)
+    hub_base: str = ""              # the base model as Civitai names it ("Krea 2")
 
     @property
     def role(self) -> str:
@@ -430,7 +432,7 @@ def build(kind: str, pid: str, data: dict[str, Any], workflow: dict[str, Any],
         cat = {}
     for k in cat:
         if k not in ("models", "loras", "lora_after", "sampler", "text", "max_loras",
-                     "full_settings"):
+                     "full_settings", "hub_base"):
             bad.append(f"catalog.{k} is not a catalog setting.")
     models = tuple(str(x) for x in cat.get("models") or ())
     loras = tuple(str(x) for x in cat.get("loras") or ())
@@ -468,7 +470,7 @@ def build(kind: str, pid: str, data: dict[str, Any], workflow: dict[str, Any],
         size_step=int(size.get("step", STEP)),
         max_pixels=int(size.get("max_pixels", PIXELS_MAX)), models=models, loras=loras,
         lora_after=lora_after, sampler=sampler, text=text_in, max_loras=max_loras,
-        full_settings=dict(full))
+        full_settings=dict(full), hub_base=str(cat.get("hub_base") or "").strip())
 
 
 # ---- for people and for it ------------------------------------------------------------
@@ -717,7 +719,10 @@ def fields(p: Preset) -> list[dict[str, Any]]:
             {"key": "catalog.sampler", "label": "Sampler node", "type": "text",
              "help": "The id of the node a model's steps and CFG go to."},
             {"key": "catalog.text", "label": "Trigger words node", "type": "text",
-             "help": "Node id, input: where a LoRA's trigger words go in front."}]
+             "help": "Node id, input: where a LoRA's trigger words go in front."},
+            {"key": "catalog.hub_base", "label": "Civitai base model", "type": "text",
+             "help": "The base model as Civitai names it (Krea 2): a search for this "
+                     "preset's files keeps to it."}]
         out += [{"key": f"catalog.full.{k}", "label": f"Full model {label}", "type": "text",
                  "help": "For a model that is not turbo."}
                 for k, label in (("steps", "steps"), ("cfg", "CFG"), ("sampler", "sampler"),
@@ -744,7 +749,8 @@ def values(p: Preset) -> dict[str, Any]:
             "catalog.models": ", ".join(p.models), "catalog.loras": ", ".join(p.loras),
             "catalog.max_loras": p.max_loras, "catalog.lora_after": p.lora_after or "",
             "catalog.sampler": p.sampler or "",
-            "catalog.text": ", ".join(p.text) if p.text else ""})
+            "catalog.text": ", ".join(p.text) if p.text else "",
+            "catalog.hub_base": p.hub_base})
         for k in ("steps", "cfg", "sampler", "scheduler"):
             v = p.full_settings.get(k, p.full_settings.get("sampler_name") if k == "sampler"
                                     else None)
@@ -822,7 +828,7 @@ def edited(p: Preset, new: dict[str, Any]) -> tuple[dict[str, Any], dict[str, An
                 cat["max_loras"] = v
             else:
                 bad.append("LoRAs per image is a whole number.")
-        elif key in ("catalog.lora_after", "catalog.sampler"):
+        elif key in ("catalog.lora_after", "catalog.sampler", "catalog.hub_base"):
             cat[key.removeprefix("catalog.")] = str(v or "").strip() or None
         elif key == "catalog.text":
             parts = [x.strip() for x in str(v or "").split(",")]
