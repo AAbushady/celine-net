@@ -277,6 +277,40 @@ async def test_a_portrait_it_sets_is_its_portrait_at_once_for_every_reader(app, 
     assert out.content == f"{app.cfg.name} has no portrait. appearance__set_portrait sets it."
 
 
+async def test_it_lists_what_it_kept_or_made_in_any_conversation_its_portrait_marked(
+        app, store):
+    """A self-review in a conversation with no images could not list the render it kept
+    elsewhere, nor see that it was its portrait (#50)."""
+    from celine import agent
+    kept, other = await _made(app, store, 2)
+    await life.keep(app.cfg, store, [kept["id"]], True, at=T0)
+    store.emit_global = lambda ev: None
+    await agent.set_portrait(store, app.cfg, attachments.blob_path(
+        app.cfg, kept["sha256"]).read_bytes())
+    cid = await conversations.create(store)
+    ctx, _ = await _call(store, cid, "c1", "image_generator__list_images")
+    skill = ImageGenerator(app.cfg)
+
+    out = await skill.list_images(ctx)
+    assert out.content == "There are no images in this conversation."
+    out = await skill.list_images(ctx, scope="kept")
+    [head, prompt] = out.content.splitlines()
+    assert head.startswith(f"{kept['id'][:8]}  ")
+    assert head.endswith(", kept, your portrait, in another conversation")
+    assert prompt == "  prompt: picture 0"
+    out = await skill.list_images(ctx, scope="all")
+    assert sorted(b.split()[0] for b in out.content.split("\n\n")) == \
+        sorted([other["id"][:8], kept["id"][:8]])
+
+    await life.keep(app.cfg, store, [kept["id"]], False, at=T0)
+    out = await skill.list_images(ctx, scope="kept")
+    assert out.content == "You have kept no images."
+    assert row_words("image_generator__list_images", {"scope": "kept"}, {}, "", "ok") == \
+        "Listed the kept images"
+    assert row_words("image_generator__list_images", {}, {}, "", "ok") == \
+        "Listed the images in this chat"
+
+
 def test_its_row_says_how_many_it_looked_at_and_the_guard_reads_it_as_its_own():
     assert row_words(LOOK, {"images": ["a", "b"]}, {"count": 4}, "", "ok") == \
         "Looked at 4 images"

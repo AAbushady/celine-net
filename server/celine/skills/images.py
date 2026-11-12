@@ -513,19 +513,37 @@ class ImageGenerator(Generator):
         return ToolResult(content=text.strip(), display={"count": len(rows)})
 
     @tool()
-    async def list_images(self, ctx: ToolContext) -> ToolResult:
-        """The images in this conversation, newest first: the ones you made, each with
-        the prompt, the preset, the size and the seed it was made from and whether it is
-        kept or cleared, and the ones {{username}} attached. Use it to see what an earlier
-        image was asked for before you edit it or make a variation. Returns: one block
-        per image with its short id, the source of an edit."""
-        rows = await attachments.images(ctx.store, ctx.conversation_id)
+    async def list_images(
+        self,
+        ctx: ToolContext,
+        scope: Annotated[Literal["here", "kept", "all"], "here: the images in this "
+                         "conversation, the ones you made and the ones {{username}} "
+                         "attached. kept: the ones you kept, in any conversation. all: "
+                         "every one you made, in any conversation."] = "here",
+    ) -> ToolResult:
+        """Images, newest first: the ones you made, each with the prompt, the preset, the
+        size and the seed it was made from, whether it is kept or cleared and whether it
+        is your portrait, and the ones {{username}} attached. Use it to see what an earlier
+        image was asked for before you edit it or make a variation, or to find an image
+        from another conversation. Returns: one block per image with its short id, the
+        source of an edit."""
+        if scope == "here":
+            rows = await attachments.images(ctx.store, ctx.conversation_id)
+            none = "There are no images in this conversation."
+        else:
+            rows = await attachments.images(ctx.store, kept=scope == "kept")
+            none = ("You have kept no images." if scope == "kept"
+                    else "You have made no images.")
         if not rows:
-            return ToolResult(content="There are no images in this conversation.")
+            return ToolResult(content=none)
+        face = self.cfg.agent.portrait if self.cfg.agent is not None else None
         blocks = []
         for r in rows[:30]:
             when = when_(r["created_at"], zone(self.cfg))
             made = r["made"]
+            elsewhere = ", in another conversation" if (
+                r["conversation_id"] != ctx.conversation_id) else ""
+            portrait = ", your portrait" if r["sha256"] == face else ""
             if made:
                 att = made.get("attachment") or {}
                 head = (f"{short(r['id'])}  {when}  you made it with {made.get('preset')}, "
@@ -540,16 +558,17 @@ class ImageGenerator(Generator):
                     head += ", kept"
                 elif r["life"] == MadeLife.CLEARED:
                     head += f", cleared on {when_(r['life_at'], zone(self.cfg))}"
-                lines = [head, f"  prompt: {made.get('prompt') or '(not recorded)'}"]
+                lines = [head + portrait + elsewhere,
+                         f"  prompt: {made.get('prompt') or '(not recorded)'}"]
                 if made.get("negative"):
                     lines.append(f"  negative: {made['negative']}")
                 blocks.append("\n".join(lines))
             elif r["role"] == "user":
                 blocks.append(f"{short(r['id'])}  {when}  {self.cfg.user} attached "
-                              f"{r['filename']}")
+                              f"{r['filename']}{portrait}")
             else:
                 blocks.append(f"{short(r['id'])}  {when}  you made {r['filename']} (what "
-                              f"it was asked for is not recorded)")
+                              f"it was asked for is not recorded){portrait}{elsewhere}")
         more = len(rows) - 30
         text = "\n\n".join(blocks)
         if more > 0:

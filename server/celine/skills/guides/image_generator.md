@@ -24,7 +24,9 @@ tell {{username}} it is made when the GPU is free, and answer.
 
 `image_generator__list_images` lists the images in this conversation with the prompt,
 the preset, the size and the seed each one was made from, and its short id: read it
-before you edit an earlier image or make a variation of one. `image_generator__look`
+before you edit an earlier image or make a variation of one. With `scope="kept"` it
+lists the images you kept in any conversation, with `scope="all"` every one you made;
+it marks the one that is your portrait. `image_generator__look`
 shows you images by their short ids, or every image of a batch, as many as you need in
 one call. `image_generator__list_presets` lists the presets, or with `kind` lora or model
 what a preset can use. What you make is cleared after the number of days set in Settings

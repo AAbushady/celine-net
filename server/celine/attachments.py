@@ -54,6 +54,7 @@ from PIL import ExifTags, Image, ImageOps
 
 from .conversations import store as conversations
 from .core.ids import iso, new_id, now, when
+from .core.statuses import MadeLife
 from .errors import TooLarge
 from . import shellbox
 from .core.event_types import ATTACHMENT_DESCRIBED, MESSAGE_ATTACHMENTS
@@ -665,14 +666,21 @@ async def set_box_path(store, aid: str, path: str) -> None:
 
 
 async def images(store, conversation_id: str | None = None,
-                 aid: str | None = None) -> list[dict]:
+                 aid: str | None = None, kept: bool = False) -> list[dict]:
     """Sent image attachments with the role of their message and its conversation,
-    newest first: those of one conversation, or those whose id starts with `aid`. One a
-    batch made has its `life` and `life_at` (comfyui/life.py). `width` and `height`: its
-    blob's, when known."""
+    newest first: those whose id starts with `aid`, those of one conversation, or with
+    neither every one the agent made, in any conversation (`kept`: only those kept). One
+    a batch made has its `life` and `life_at` (comfyui/life.py). `width` and `height`:
+    its blob's, when known."""
     def fn(c: sqlite3.Connection) -> list[dict]:
-        where, args = (("substr(a.id, 1, ?)=?", (len(aid), aid)) if aid
-                       else ("m.conversation_id=?", (conversation_id,)))
+        if aid:
+            where, args = "substr(a.id, 1, ?)=?", (len(aid), aid)
+        elif conversation_id:
+            where, args = "m.conversation_id=?", (conversation_id,)
+        else:
+            where, args = "m.role='assistant'", ()
+        if kept:
+            where, args = where + " AND a.life=?", (*args, MadeLife.KEPT.value)
         out = []
         for r in c.execute(
                 "SELECT a.id, a.filename, a.sha256, b.media_type, b.width, b.height, m.role, "

@@ -1626,7 +1626,8 @@ music). One code path for both (`batches.Batches`).
   result does): what was made and how long it waited. A batch that did not wait, or one
   the agent stopped itself, says nothing. `read` shows a batch, `stop` stops one. `image_generator__list_presets` lists
   the presets or a preset's models and LoRAs (`image_catalog.py`), `list_images` the images
-  of the conversation. `image_generator__look` shows it images by the refs an edit's
+  of the conversation, or (`scope` kept or all) the ones the agent kept or made in any
+  conversation, its portrait marked. `image_generator__look` shows it images by the refs an edit's
   source takes (`batches.named_image`), or every image a batch made, as many as it names:
   one line each (short id, preset, size, seed, its life) and the pictures through its
   display's `see`, or a description by the vision role for a model that cannot see.

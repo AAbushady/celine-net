@@ -420,7 +420,9 @@ PRESETS: dict[str, Sentence] = {
 }
 
 IMAGE_GENERATOR: dict[str, Sentence] = {
-    "list_images": lambda a, d, r: "Listed the images in this chat",
+    "list_images": lambda a, d, r: {"kept": "Listed the kept images",
+                                    "all": "Listed every image made"}.get(
+        _str(a.get("scope")), "Listed the images in this chat"),
     "look": _look,
     "list_presets": _presets,
     "keep": _keep("image"),
