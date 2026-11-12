@@ -1,7 +1,8 @@
 # Wan 2.2 TI2V 5B in ComfyUI (UNETLoader, the umt5 text encoder, the Wan 2.2 VAE,
 # Wan22ImageToVideoLatent, KSampler 20 steps uni_pc at CFG 5, shift 8). Node 7 holds the
-# start image: without one its node goes and the clip comes from the prompt alone. The clip
-# is saved as MP4 (node 12), and four of its frames (the first, the 40th, the 80th and the
+# start image: without one its node goes and the clip comes from the prompt alone. Node 10
+# decodes in tiles (VAEDecodeTiled, 64 frames at a time): a 5 s clip at 1280x704 decoded in
+# one pass needs more memory than a 24 GB card has. The clip is saved as MP4 (node 12), and four of its frames (the first, the 40th, the 80th and the
 # last) as stills (node 20), the pictures its look shows.
 label = "Wan 2.2 5B"
 family = "Wan"
