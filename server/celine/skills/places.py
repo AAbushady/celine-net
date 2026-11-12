@@ -34,6 +34,7 @@ PLACES: dict[str, frozenset[str]] = {
     "vault": _WORK,
     "artifacts": _WORK,
     "music_generator": _WORK,
+    "video_generator": _WORK,
     "writer": _WORK,
     "models": _WORK,
     "web": _WORK,

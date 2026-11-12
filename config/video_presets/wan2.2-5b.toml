@@ -1,0 +1,50 @@
+# Wan 2.2 TI2V 5B in ComfyUI (UNETLoader, the umt5 text encoder, the Wan 2.2 VAE,
+# Wan22ImageToVideoLatent, KSampler 20 steps uni_pc at CFG 5, shift 8). Node 7 holds the
+# start image: without one its node goes and the clip comes from the prompt alone. The clip
+# is saved as MP4 (node 12), and four of its frames (the first, the 40th, the 80th and the
+# last) as stills (node 20), the pictures its look shows.
+label = "Wan 2.2 5B"
+family = "Wan"
+workflow = "wan2.2-5b.json"
+good_at = "Short clips at 720p from a prompt, or a picture of yours brought to life: people, animals, nature, slow camera moves."
+prompting = """
+Write the prompt as one paragraph of plain sentences, in this order:
+1. The subject and what it looks like: "a red fox with a thick winter coat"
+2. What moves and how: "trots through fresh snow, then stops and looks back"
+3. The place and the light: "a birch forest at dawn, low golden light, soft mist"
+4. The camera: "the camera follows slowly at its height", or "a static wide shot"
+5. The look: "cinematic, shallow depth of field, natural colors"
+
+One clear motion reads better than several. Name the camera's move, or say it stays
+still. From a picture (`source`), say only what changes: the picture already sets the
+subject, the place and the light; the prompt says what moves and how the camera goes.
+"""
+example = "A red fox with a thick winter coat trots through fresh snow, then stops and looks back over its shoulder. A birch forest at dawn, low golden light, soft mist between the trees. The camera follows slowly at its height. Cinematic, shallow depth of field, natural colors."
+
+[size]
+step = 32
+max_pixels = 1000000
+
+[parameters.prompt]
+inputs = [["5", "text"]]
+
+[parameters.negative]
+inputs = [["6", "text"]]
+
+[parameters.seed]
+inputs = [["9", "seed"]]
+
+[parameters.width]
+inputs = [["8", "width"]]
+
+[parameters.height]
+inputs = [["8", "height"]]
+
+[parameters.length]
+inputs = [["8", "length"]]
+
+[parameters.fps]
+inputs = [["11", "fps"]]
+
+[parameters.image]
+inputs = [["7", "image"]]

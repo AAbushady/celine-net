@@ -50,8 +50,9 @@ from typing import Any
 from ..config import CONFIG_DIR, ROOT, Problem
 from ..errors import CelineError
 
-FOLDERS = {"images": "image_presets", "music": "music_presets"}
-ROLES = {"images": "image_generation", "music": "music_generation"}
+FOLDERS = {"images": "image_presets", "music": "music_presets", "video": "video_presets"}
+ROLES = {"images": "image_generation", "music": "music_generation",
+         "video": "video_generation"}
 TASKS = ("generate", "edit")
 STEP = 32                           # width and height are multiples of this, unless a preset says
 SIDE_MIN, SIDE_MAX, PIXELS_MAX = 256, 2752, 4_300_000
@@ -81,13 +82,27 @@ PARAMETERS: dict[str, dict[str, tuple[str, str, str]]] = {
         "duration": ("number", "Length", "The most the track may last, in seconds."),
         "instrumental": ("boolean", "Instrumental", "No vocals."),
     },
+    "video": {
+        "prompt": ("text", "Prompt", "What happens in the clip: the scene, the motion, the "
+                                     "camera."),
+        "negative": ("text", "Negative prompt", "What to keep out of the clip."),
+        "seed": ("integer", "Seed", "The same seed and prompt give the same clip."),
+        "width": ("integer", "Width", "In pixels."),
+        "height": ("integer", "Height", "In pixels."),
+        "length": ("integer", "Frames", "How many frames the clip has."),
+        "fps": ("number", "Frames per second", "How fast the frames play."),
+        "image": ("image", "Start image", "The picture the clip starts from; its node goes "
+                                          "when there is none."),
+    },
 }
 # an edit's images: the parameter each fills and the field of its item it comes from
 IMAGES = ("image", "image2", "image3", "image4")
 SOURCES = ("source", "source2", "source3", "source4")
 REQUIRED = {"generate": ("prompt", "seed", "width", "height"),
             "edit": ("prompt", "seed", "width", "height", "image"),
-            "music": ("style", "seed")}
+            "music": ("style", "seed"),
+            "video": ("prompt", "seed", "width", "height", "length", "fps")}
+FRAMES_MAX = 241        # a clip's frames at most: ten seconds at 24 per second
 
 
 class ImageError(Exception):
@@ -378,7 +393,7 @@ def build(kind: str, pid: str, data: dict[str, Any], workflow: dict[str, Any],
     label = text("label", required=True)
     family, good_at = text("family"), text("good_at")
     prompting, example = text("prompting"), text("example")
-    task = "music"
+    task = "music" if kind == "music" else "video"
     if kind == "images":
         task = data.get("task", "generate")
         if task not in TASKS:
@@ -495,12 +510,14 @@ def view(p: Preset) -> dict[str, Any]:
         "id": p.id, "kind": p.kind, "label": p.label, "family": p.family, "task": p.task,
         "good_at": p.good_at, "prompting": p.prompting, "example": p.example,
         "parameters": params}
-    if p.kind == "images":
+    if p.kind in SIZED:
         w, h = p.size
         out["size"] = {"width": w, "height": h, "step": p.size_step,
                        "max_pixels": p.max_pixels}
         out["negative"] = p.takes("negative")
+    if p.kind in SIZED:
         out["images"] = p.images
+    if p.kind == "images":
         out["catalog"] = {"models": bool(p.models), "max_loras": p.max_loras} \
             if p.models or p.loras else None
     out.update(origin=p.origin, proposed=p.proposed, fields=fields(p), values=values(p))
@@ -509,7 +526,8 @@ def view(p: Preset) -> dict[str, Any]:
 
 def docs(p: Preset, first: bool) -> str:
     """One preset in its guide: what it is for, how it takes a prompt, an example."""
-    what = {"generate": "new images", "edit": "edits", "music": "music"}[p.task]
+    what = {"generate": "new images", "edit": "edits", "music": "music",
+            "video": "clips"}[p.task]
     family = f" ({p.family})" if p.family else ""
     head = f"### `{p.id}`: {p.label}{family}, {what}{', the default' if first else ''}"
     lines = [head] + ([p.good_at] if p.good_at else [])
@@ -531,6 +549,17 @@ def docs(p: Preset, first: bool) -> str:
         if p.models or p.loras:
             facts.append("Takes a model" + (f" and up to {p.max_loras} LoRAs" if p.loras
                                            else "") + " (list_presets lists them).")
+    elif p.kind == "video":
+        w, h = p.size
+        frames, fps = int(p.default("length")), int(p.default("fps"))
+        facts.append(f"Size {w}x{h}, sides in steps of {p.size_step}. {frames} frames at "
+                     f"{fps} a second ({frames / fps:.1f} s) by default, at most "
+                     f"{FRAMES_MAX}.")
+        facts.append("Reads a negative prompt." if p.takes("negative")
+                     else "Reads no negative prompt.")
+        if p.takes("image"):
+            facts.append("Starts from a picture when given `source`, else from the prompt "
+                         "alone.")
     else:
         if "duration" in p.parameters:
             facts.append(f"Duration: {p.default('duration'):g} s by default.")
@@ -557,8 +586,9 @@ _PLACEHOLDER = re.compile(r"\{\{\s*([A-Za-z0-9_]+)\s*(?::(.*?))?\s*\}\}", re.S)
 # what the runtime fills on every run: a default would never be used
 ALWAYS = ("prompt", "style", "seed", *IMAGES)
 # a default the runtime reads: the size, the length, the variant, the model file
-NEEDS_DEFAULT = ("width", "height", "duration", "mode", "model")
-NOUN = {"images": "image", "music": "music"}
+NEEDS_DEFAULT = ("width", "height", "duration", "mode", "model", "length", "fps")
+NOUN = {"images": "image", "music": "music", "video": "video"}
+SIZED = ("images", "video")     # the kinds with a width, a height and their size rules
 EXPORT = ("In ComfyUI, save it with Workflow, Export (API), and upload that file.")
 
 
@@ -633,7 +663,7 @@ def placeholders(kind: str, wf: dict[str, Any]
 
     for nid, node in graph.items():
         walk(node["inputs"], [str(nid)])
-    task = "music" if kind == "music" else (
+    task = kind if kind in ("music", "video") else (
         "edit" if any(n in found for n in IMAGES) else "generate")
     for name in REQUIRED[task]:
         if name not in found:
@@ -695,19 +725,22 @@ def fields(p: Preset) -> list[dict[str, Any]]:
         elif typ == "choice" and p.parameters[name].choices:
             f.update(type="choice", choices=[[w, w] for w in p.parameters[name].choices])
         elif typ in ("integer", "number"):
-            f.update(type="number", unit="seconds" if name == "duration" else "pixels")
+            f.update(type="number", unit={"duration": "seconds", "length": "frames",
+                                          "fps": "frames a second"}.get(name, "pixels"))
         else:
             f["type"] = "text"
         out.append(f)
     if "mode" in p.parameters:
         out.append({"key": "variants", "label": "Variants", "type": "text", "long": True,
                     "help": "One a line: its word = the value the node takes."})
-    if p.kind == "images":
+    if p.kind in SIZED:
         out += [
             {"key": "size.step", "label": "Size step", "type": "number", "unit": "pixels",
              "min": 1},
-            {"key": "size.max_pixels", "label": "Largest image", "type": "number",
-             "unit": "megapixels", "min": 0.1},
+            {"key": "size.max_pixels", "label": "Largest frame" if p.kind == "video"
+             else "Largest image", "type": "number", "unit": "megapixels", "min": 0.1}]
+    if p.kind == "images":
+        out += [
             {"key": "catalog.models", "label": "Models", "type": "text",
              "help": "The model names it takes, by their start (krea2/), comma separated."},
             {"key": "catalog.loras", "label": "LoRAs", "type": "text",
@@ -743,9 +776,11 @@ def values(p: Preset) -> dict[str, Any]:
     if "mode" in p.parameters:
         out["variants"] = "\n".join(f"{w} = {_word(v)}"
                                     for w, v in p.parameters["mode"].choices.items())
+    if p.kind in SIZED:
+        out.update({"size.step": p.size_step,
+                    "size.max_pixels": round(p.max_pixels / 1e6, 2)})
     if p.kind == "images":
         out.update({
-            "size.step": p.size_step, "size.max_pixels": round(p.max_pixels / 1e6, 2),
             "catalog.models": ", ".join(p.models), "catalog.loras": ", ".join(p.loras),
             "catalog.max_loras": p.max_loras, "catalog.lora_after": p.lora_after or "",
             "catalog.sampler": p.sampler or "",

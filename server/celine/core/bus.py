@@ -15,6 +15,7 @@ from .event_types import (
     LLM_QUEUE,
     MESSAGE_PURGED,
     MUSIC_BATCH,
+    VIDEO_BATCH,
     TOOL_DETACHED,
     TOOL_DONE,
     TOOL_GATED,
@@ -57,7 +58,7 @@ class EventBus:
 # Store.emit_global) take any type.
 MIRRORED = frozenset({
     TURN_STATE, JOB_STATE, CONVERSATION_TITLE, LLM_QUEUE, ARTIFACT_UPDATED,
-    VERSION_CHANGED, MESSAGE_PURGED, IMAGES_BATCH, MUSIC_BATCH,
+    VERSION_CHANGED, MESSAGE_PURGED, IMAGES_BATCH, MUSIC_BATCH, VIDEO_BATCH,
 })
 # and the tool calls a place lists, so its page refetches them as they happen: the box's
 # shell (Terminals) and browser calls, and what an MCP server shows there (mcp.placed)

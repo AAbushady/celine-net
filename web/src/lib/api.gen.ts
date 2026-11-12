@@ -35,10 +35,10 @@ export type Backlink = {
   title: string
 }
 
-/** A batch of images or tracks (batches.view). */
+/** A batch of images, tracks or clips (batches.view). */
 export type Batch = {
   id: string
-  kind: "images" | "music"
+  kind: "images" | "music" | "video"
   conversation_id: string | null
   /** where its conversation opens; null for yours */
   link: string | null
@@ -80,6 +80,10 @@ export type BatchItem = {
   title?: string | null
   instrumental?: boolean | null
   duration?: number | null
+  /** a clip's frames */
+  length?: number | null
+  fps?: number | null
+  frames?: Still[] | null
 }
 
 export type BatchItemPatch = {
@@ -357,6 +361,8 @@ export type MadeFile = {
   bytes: number
   width?: number | null
   height?: number | null
+  /** a clip's seconds */
+  duration?: number | null
   life?: Life | null
 }
 
@@ -574,6 +580,14 @@ export type StepIn = {
   model?: string | null
 }
 
+/** A frame a clip's preset saved beside it: what its look shows. */
+export type Still = {
+  id: string
+  sha256: string
+  filename: string
+  media_type: string
+}
+
 export type Stopped = {
   stopped: boolean
 }
@@ -751,7 +765,7 @@ export type TreeMission = {
 }
 
 export type UploadIn = {
-  kind: "images" | "music"
+  kind: "images" | "music" | "video"
   label: string
   workflow: string
 }
@@ -765,6 +779,23 @@ export type UploadResult = {
 
 export type ValuesIn = {
   values: Record<string, unknown>
+}
+
+export type VideoIn = {
+  kind: "video"
+  items: VideoItemIn[]
+  count?: number
+}
+
+export type VideoItemIn = {
+  prompt: string
+  source?: string | null
+  preset?: string | null
+  negative?: string | null
+  seconds?: number | null
+  width?: number | null
+  height?: number | null
+  seed?: number | null
 }
 
 /** What turns took: tokens in and out as the servers counted them, and run time. */

@@ -50,7 +50,7 @@ KINDS: dict[str, dict[str, Any]] = {
 SWAPS = ("llama-swap", "tabby")
 LLAMA = (*SWAPS, "llama-server")
 CAPS = ("chat", "tools", "vision", "embeddings", "rerank", "image_generation",
-        "music_generation", "transcription", "speech")
+        "music_generation", "video_generation", "transcription", "speech")
 ANTHROPIC_VERSION = "2023-06-01"
 ANTHROPIC_BETAS = "thinking-binding-controls-2026-08-01"
 EFFORTS = ("low", "medium", "high", "xhigh", "max")     # Anthropic's, weakest first

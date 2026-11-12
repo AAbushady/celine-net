@@ -28,7 +28,7 @@ def _runs(services: Services) -> dict[str, Run]:
                 await anyio.sleep_forever()
             finally:
                 services.model_files = None
-    return {"media": Run(run, features=("images", "music"), early=True),
+    return {"media": Run(run, features=("images", "music", "video"), early=True),
             "model_files": Run(files, features=("images",))}
 
 

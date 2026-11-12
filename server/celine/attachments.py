@@ -174,6 +174,8 @@ def _kind(media_type: str) -> str:
         return "image"
     if media_type.startswith("audio/"):
         return "audio"
+    if media_type.startswith("video/"):
+        return "video"
     if media_type.startswith("text/") or media_type in _TEXT_TYPES:
         return "text"
     return "binary"
@@ -760,13 +762,15 @@ def _attached(c: sqlite3.Connection, ref: str, cid: str | None) -> str | None:
 
 
 def cleared_line(cfg, kind: str, aid: str, at: str, what: str) -> str:
-    """The sentence of a refusal for a file a batch of `kind` (images, music) made that was
-    cleared at `at` (comfyui/life.py): `what` it cannot be, and how the agent makes it
-    again."""
+    """The sentence of a refusal for a file a batch of `kind` (images, music, video) made
+    that was cleared at `at` (comfyui/life.py): `what` it cannot be, and how the agent
+    makes it again."""
     from .clock import zone
-    unit, tool, again = (
-        ("Image", "image_generator", "the prompt, preset, size and seed list_images shows")
-        if kind == "images" else ("Track", "music_generator", "the same style, lyrics and seed"))
+    unit, tool, again = {
+        "images": ("Image", "image_generator",
+                   "the prompt, preset, size and seed list_images shows"),
+        "video": ("Clip", "video_generator", "the same prompt, picture and seed"),
+    }.get(kind, ("Track", "music_generator", "the same style, lyrics and seed"))
     return (f"{unit} {aid[:SHORT]} was cleared on {when(at, zone(cfg))}{what}: make it "
             f"again with {tool}__generate from {again}.")
 

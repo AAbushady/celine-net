@@ -41,6 +41,7 @@ renders the items that wait, one after the other:
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import logging
 import re
@@ -62,12 +63,16 @@ from ..core.statuses import MadeLife
 from ..settings.registry import provider_headers
 from . import life, presets as presets_mod, server as server_mod
 from .presets import ImageError
-from ..core.event_types import IMAGES_BATCH, MUSIC_BATCH
+from ..core.event_types import IMAGES_BATCH, MUSIC_BATCH, VIDEO_BATCH
 
 log = logging.getLogger("celine.comfyui")
 
-KINDS = ("images", "music")
-EVENTS = {"images": IMAGES_BATCH, "music": MUSIC_BATCH}
+KINDS = ("images", "music", "video")
+EVENTS = {"images": IMAGES_BATCH, "music": MUSIC_BATCH, "video": VIDEO_BATCH}
+UNITS = {"images": "images", "music": "tracks", "video": "clips"}
+# a source picture's long edge at most, as a multiple of the long edge of what is made:
+# a 12-megapixel photo took minutes to encode for a 1024px edit and changed nothing in it
+SOURCE_SCALE = 2
 SHORT = 8                   # a batch's and an image's short id: the first characters
 STOP_WAIT = 15.0            # seconds a Stop waits for the batch to settle
 WAIT_MAX = 3600.0           # seconds its call with wait=true holds its turn at most
@@ -76,6 +81,25 @@ GPU_TRY = 20.0              # seconds such a call waits before it returns a batc
                             # waits for the GPU
 clock = time.monotonic      # the clock of an item's time and a batch's wait for the GPU
 _EXT = {"image/jpeg": ".jpg", "image/webp": ".webp"}    # a media type's file name end, else .png
+
+
+def _smaller(data: bytes, media_type: str, edge: int) -> tuple[bytes, str]:
+    """`data` as it is when its long edge is at most `edge`, else scaled down to it (its
+    camera turn applied) as a JPEG. A picture PIL cannot read goes as it is."""
+    import io
+
+    from PIL import Image, ImageOps
+    try:
+        with Image.open(io.BytesIO(data)) as im:
+            if max(im.size) <= edge:
+                return data, media_type
+            im = ImageOps.exif_transpose(im).convert("RGB")
+            im.thumbnail((edge, edge), Image.Resampling.LANCZOS)
+            out = io.BytesIO()
+            im.save(out, "JPEG", quality=92)
+            return out.getvalue(), "image/jpeg"
+    except (OSError, ValueError):
+        return data, media_type
 
 
 def view(b: dict) -> dict:
@@ -113,6 +137,19 @@ async def get(store, bid: str) -> dict | None:
     def fn(c: sqlite3.Connection) -> dict | None:
         r = c.execute("SELECT * FROM media_batches WHERE id=?", (bid,)).fetchone()
         return _row(c, r) if r else None
+    return await store.read(fn)
+
+
+async def clip_item(store, aid: str) -> dict | None:
+    """The item of a video batch that made the clip `aid` (its stills under `frames`), as
+    stored; None for none."""
+    def fn(c: sqlite3.Connection) -> dict | None:
+        r = c.execute("SELECT mb.items FROM attachments a JOIN media_batches mb ON "
+                      "mb.id = a.batch_id WHERE a.id = ?", (aid,)).fetchone()
+        for item in json.loads(r["items"]) if r else []:
+            if (item.get("attachment") or {}).get("id") == aid:
+                return item
+        return None
     return await store.read(fn)
 
 
@@ -317,9 +354,8 @@ class Batches:
             clipped = (f"Only the first {BATCH_MAX} of the {n} images were queued: a "
                        f"batch holds {BATCH_MAX}.")
         elif n > BATCH_MAX:
-            unit = "images" if kind == "images" else "tracks"
-            raise TooMany(f"A batch holds at most {BATCH_MAX} {unit} (items times count); "
-                          f"this one asks for {n}.")
+            raise TooMany(f"A batch holds at most {BATCH_MAX} {UNITS[kind]} (items times "
+                          f"count); this one asks for {n}.")
         router = self.app.llm.router
         ordered = await router.order(presets_mod.ROLES[kind])
         slots: list[dict] = []
@@ -357,6 +393,11 @@ class Batches:
                     item[key] = str(raw[key])
             if raw.get("loras"):
                 item["loras"] = list(raw["loras"])
+        elif kind == "video":
+            item = {"index": index, "state": "waiting", "prompt": str(raw.get("prompt") or ""),
+                    "seed": seed}
+            if raw.get("negative"):
+                item["negative"] = str(raw["negative"])
         else:
             item = {"index": index, "state": "waiting", "style": str(raw.get("style") or ""),
                     "lyrics": str(raw.get("lyrics") or ""),
@@ -372,6 +413,8 @@ class Batches:
                 item["duration"] = d
             if kind == "images":
                 await self._image_slot(item, raw, ordered, cid, own)
+            elif kind == "video":
+                await self._clip_slot(item, raw, ordered, cid, own)
             else:
                 if not item["style"].strip():
                     raise ImageError("The style is empty.")
@@ -433,6 +476,43 @@ class Batches:
         if not item["warnings"]:
             item.pop("warnings")
 
+    async def _clip_slot(self, item: dict, raw: dict, ordered, cid, own: bool) -> None:
+        """A clip as the agent gave it, checked like an image: its prompt as it is, a start
+        picture (`source`) as an edit's source is named, its length from `seconds`, its
+        size fitted to the preset (and to the picture's shape when it has one)."""
+        if not item["prompt"].strip():
+            raise ImageError("The prompt is empty.")
+        if raw.get("source"):
+            got = await named_image(self.app.cfg, self.app.store, str(raw["source"]), cid,
+                                    own)
+            item["source"] = {k: got[k] for k in ("id", "sha256", "filename", "media_type")}
+        name = str(raw.get("preset") or "").strip() or None
+        p, pid = self._pick("video", ordered, name, "video", [],
+                            lambda q: not raw.get("source") or q.takes("image"))
+        if raw.get("source") and not p.takes("image"):
+            raise ImageError(f"{p.label} starts from no picture: leave source out.")
+        item.update(preset=p.id, provider=pid)
+        fps = float(raw.get("fps") or p.default("fps"))
+        frames = int(p.default("length"))
+        if raw.get("seconds") is not None:
+            s = raw["seconds"]
+            if isinstance(s, bool) or not isinstance(s, (int, float)) or s <= 0:
+                raise ImageError("seconds is how long the clip lasts, a number above 0.")
+            # Wan takes 4n + 1 frames
+            frames = int(round(s * fps / 4)) * 4 + 1
+        if frames > presets_mod.FRAMES_MAX:
+            raise ImageError(f"{frames} frames is past the most a clip has, "
+                             f"{presets_mod.FRAMES_MAX} ({presets_mod.FRAMES_MAX / fps:.0f} s "
+                             f"at {fps:g} a second).")
+        item.update(length=max(5, frames), fps=fps)
+        if item.get("negative") and not p.takes("negative"):
+            item.pop("negative")
+        shape = None
+        if item.get("source"):
+            path = blob_path(self.app.cfg, item["source"]["sha256"])
+            shape = image_size(path.read_bytes()) if path.exists() else None
+        item["width"], item["height"] = p.fit(raw.get("width"), raw.get("height"), shape)
+
     async def _choose_now(self, item: dict, p, pid: str) -> None:
         """The model and LoRAs checked when the batch is made, not when the image
         renders: what is wrong fails now, where it sees it. The ids are stored as
@@ -468,7 +548,8 @@ class Batches:
 
         chain = [r for r in ordered.chain if of_task(r)]
         refs = [r for r in ordered.refs if of_task(r)]
-        what = {"generate": "new images", "edit": "image edits", "music": "music"}[task]
+        what = {"generate": "new images", "edit": "image edits", "music": "music",
+                "video": "video"}[task]
         if not chain:
             raise ImageError(f"No preset for {what} is set. {self.app.cfg.user} chooses "
                              f"presets in Settings, Images & Music.")
@@ -698,6 +779,8 @@ class Batches:
             started = clock()                               # the item's time
             if b["kind"] == "images":
                 await self._image(b, item, servers, note)
+            elif b["kind"] == "video":
+                await self._clip(b, item, servers, note)
             else:
                 await self._song(b, item, servers, note)
             item["state"] = "done"
@@ -747,12 +830,9 @@ class Batches:
             await note("Sending the source image" + ("s" if len(sources) > 1 else "")
                        + " to ComfyUI")
         for name, src in sources:
-            path = blob_path(self.app.cfg, src["sha256"])
-            if not path.exists():
-                raise ImageError(f"The file of {src['filename']} is no longer stored.")
+            data, media = await self._source(src, max(item["width"], item["height"]))
             values[name] = await comfy.upload(
-                path.read_bytes(), f"celine-{uuid4().hex[:16]}"
-                f"{_EXT.get(src['media_type'], '.png')}", src["media_type"])
+                data, f"celine-{uuid4().hex[:16]}{_EXT.get(media, '.png')}", media)
         graph = p.build(values)
         for name in presets_mod.IMAGES[1:]:     # an image not given: its node goes
             if p.takes(name) and name not in values:
@@ -764,6 +844,62 @@ class Batches:
         row = await self._store(b, data, f"{p.id}-{item['seed']}{ext}", media_type)
         item["attachment"] = {**row, "width": w, "height": h}
         item.update(choice.recipe())
+
+    async def _source(self, src: dict, edge: int) -> tuple[bytes, str]:
+        """A source picture's bytes for ComfyUI: as stored, or scaled down (JPEG) when its
+        long edge is past SOURCE_SCALE times `edge`, the long edge of what is made."""
+        path = blob_path(self.app.cfg, src["sha256"])
+        if not path.exists():
+            raise ImageError(f"The file of {src['filename']} is no longer stored.")
+        data = await anyio.to_thread.run_sync(path.read_bytes)
+        return await anyio.to_thread.run_sync(_smaller, data, src["media_type"],
+                                              edge * SOURCE_SCALE)
+
+    async def _clip(self, b: dict, item: dict, servers: "_Servers", note) -> None:
+        """One clip: its start picture uploaded (scaled down when large), the workflow run,
+        the clip stored as the item's attachment and its stills (the frames its look
+        shows) beside it, bound to the batch and out of the conversation's images."""
+        from .. import attachments
+        p = self._preset("video", item)
+        comfy, timeout = await servers.get(item["provider"], note)
+        await servers.check(item["provider"], p)
+        values: dict[str, Any] = {"prompt": item["prompt"], "seed": item["seed"],
+                                  "width": item["width"], "height": item["height"],
+                                  "length": item["length"], "fps": item["fps"]}
+        if item.get("negative") and p.takes("negative"):
+            values["negative"] = item["negative"]
+        if src := item.get("source"):
+            await note("Sending the start picture to ComfyUI")
+            data, media = await self._source(src, max(item["width"], item["height"]))
+            values["image"] = await comfy.upload(
+                data, f"celine-{uuid4().hex[:16]}{_EXT.get(media, '.png')}", media)
+        graph = p.build(values)
+        if p.takes("image") and "image" not in values:      # no picture: its node goes
+            graph = presets_mod.unwire(graph, p.parameters["image"].inputs[0][0])
+        refs = await server_mod.run_refs(comfy, graph, note, timeout)
+        clip = next((r for r in refs if server_mod.is_video(r)), None)
+        if clip is None:
+            raise ImageError("The workflow finished without a clip.")
+        data, media_type = await comfy.output(clip)
+        meta = clip.get("metadata") or {}
+        ext = ".webm" if "webm" in media_type else ".mp4"
+        row = await self._store(b, data, f"{p.id}-{item['seed']}{ext}",
+                                media_type if media_type.startswith("video/") else "video/mp4")
+        item["attachment"] = {**row, "width": meta.get("width") or item["width"],
+                              "height": meta.get("height") or item["height"]}
+        if isinstance(meta.get("duration"), (int, float)):
+            item["attachment"]["duration"] = round(float(meta["duration"]), 2)
+        frames: list[dict] = []
+        for n, ref in enumerate(r for r in refs if r is not clip):
+            fdata, fmedia = await comfy.output(ref)
+            if any(f["sha256"] == hashlib.sha256(fdata).hexdigest() for f in frames):
+                continue                # a short clip's later frames can be the same last one
+            got = await attachments.save_generated(
+                self.app.cfg, self.app.store, fdata, f"{p.id}-{item['seed']}-frame{n + 1}"
+                f"{_EXT.get(fmedia, '.png')}", fmedia, b["tool_call_id"], in_message=False,
+                batch_id=b["id"])
+            frames.append({k: got[k] for k in ("id", "sha256", "filename", "media_type")})
+        item["frames"] = frames
 
     async def _song(self, b: dict, item: dict, servers: "_Servers", note) -> None:
         p = self._preset("music", item)

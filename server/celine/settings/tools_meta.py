@@ -54,6 +54,9 @@ SKILLS: dict[str, dict[str, str]] = {
     "music_generator": {"label": "Music generation",
                         "summary": "Makes songs and instrumental tracks with ComfyUI, in "
                                    "batches."},
+    "video_generator": {"label": "Video generation",
+                        "summary": "Makes short clips with ComfyUI from a prompt or a "
+                                   "picture, in batches."},
     "models": {"label": "Models", "summary": "Lists the models {{name}} may use and asks one "
                                              "of them directly."},
     "writer": {"label": "Writing", "summary": "Writes posts, comments and messages in "
@@ -397,6 +400,29 @@ TOOLS: dict[str, dict[str, str]] = {
     "music_generator__keep": {"label": "Music generation: keep tracks",
                               "summary": "Keeps tracks {{name}} made past their days, "
                                          "or lets them go to be cleared."},
+    "video_generator__read_preset": {"label": "Video generation: read a preset",
+                                     "summary": "Reads a video preset as its editor has "
+                                                "it, with its workflow."},
+    "video_generator__look_up_node": {"label": "Video generation: look up a node",
+                                      "summary": "Reads what ComfyUI says of one node, or "
+                                                 "finds nodes by words."},
+    "video_generator__propose_preset": {"label": "Video generation: propose a preset",
+                                        "summary": "Proposes a video preset of "
+                                                   "{{name}}'s own; it is saved once you "
+                                                   "approve it."},
+    "video_generator__generate": {"label": "Video generation: make clips",
+                                  "summary": "Makes a batch of clips, one after the "
+                                             "other, each shown in the chat once it is done."},
+    "video_generator__read": {"label": "Video generation: check progress",
+                              "summary": "Shows a batch's clips and their state."},
+    "video_generator__stop": {"label": "Video generation: stop",
+                              "summary": "Stops a batch; what was made stays."},
+    "video_generator__keep": {"label": "Video generation: keep clips",
+                              "summary": "Keeps clips {{name}} made past their days, "
+                                         "or lets them go to be cleared."},
+    "video_generator__look": {"label": "Video generation: look at clips",
+                              "summary": "Shows {{name}} the stills of clips it made: "
+                                         "the first frame, two in between and the last."},
     "models__list": {"label": "Models: list", "summary": "The models {{name}} may use."},
     "models__ask": {"label": "Models: ask", "summary": "Sends one request to one of {{name}}'s "
                                                        "models and returns its answer."},

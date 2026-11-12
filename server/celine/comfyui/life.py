@@ -40,6 +40,7 @@ stored).
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -60,7 +61,7 @@ DAYS = "generated_keep_days"     # the General setting
 CLEAR_EVERY = 3600.0             # seconds between two looks of the app's loop
 MARGIN = timedelta(hours=1)      # an app's file no row holds is left alone this long
 SHORT = 8                        # a made file's short id: the first characters of its id
-UNIT = {"images": "image", "music": "track"}
+UNIT = {"images": "image", "music": "track", "video": "clip"}
 KINDS = tuple(UNIT)
 
 # the names the app writes under images/ and music/ (dated, kept, link's file on its way)
@@ -331,13 +332,24 @@ async def find(store, kind: str, ref: str) -> dict | str:
     def fn(c: sqlite3.Connection) -> list[dict]:
         return [dict(r) for r in c.execute(
             "SELECT a.id FROM attachments a JOIN media_batches mb ON mb.id = a.batch_id "
-            "WHERE mb.kind = ? AND substr(a.id, 1, ?) = ? LIMIT 2", (kind, len(ref), ref))]
+            "WHERE mb.kind = ? AND substr(a.id, 1, ?) = ? "
+            "AND (mb.kind <> 'video' OR a.kind = 'video') LIMIT 2",   # a clip, not its stills
+            (kind, len(ref), ref))]
     rows = await store.read(fn)
     if not rows:
         return f"There is no {unit} {ref} that a batch made."
     if len(rows) > 1:
         return f"Several {unit}s start with {ref}: use all {SHORT} characters of its short id."
     return rows[0]
+
+
+def _frames(c: sqlite3.Connection, batch_id: str, aid: str) -> list[str]:
+    """The ids of the stills a clip's item holds (batches._clip), the clip `aid`."""
+    r = c.execute("SELECT items FROM media_batches WHERE id = ?", (batch_id,)).fetchone()
+    for item in json.loads(r["items"]) if r else []:
+        if (item.get("attachment") or {}).get("id") == aid:
+            return [f["id"] for f in item.get("frames") or []]
+    return []
 
 
 async def keep(cfg, store, aids: list[str], on: bool, at: datetime | None = None) -> list[dict]:
@@ -366,6 +378,10 @@ async def keep(cfg, store, aids: list[str], on: bool, at: datetime | None = None
                 continue
             c.execute("UPDATE attachments SET life = ?, life_at = ? WHERE id = ?",
                       (want.value, stamp, aid))
+            if r["kind"] == "video":    # its stills go with it, never into the kept folder
+                for fid in _frames(c, r["batch_id"], aid):
+                    c.execute("UPDATE attachments SET life = ?, life_at = ? WHERE id = ? "
+                              "AND life <> 'cleared'", (want.value, stamp, fid))
             entries.append((kept_entry(cfg, r["kind"], aid, r["filename"]),
                             blob_path(cfg, r["sha256"])))
             touched.add(r["batch_id"])

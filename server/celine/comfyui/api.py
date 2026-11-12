@@ -1,6 +1,6 @@
-"""Images and music over HTTP, the same batches its tools make (batches.py):
+"""Images, music and video over HTTP, the same batches its tools make (batches.py):
 
-- GET /api/generation-presets?kind=images|music: every preset of the kind as the UI
+- GET /api/generation-presets?kind=images|music|video: every preset of the kind as the UI
   shows it (presets.view: its editor's fields and values, `origin` shipped, edited or
   own), with `ref` ("provider/preset" in its role, null when the role does not list it)
   and `order` (its place in the role, null likewise);
@@ -61,7 +61,16 @@ class MadeFile(Answer):
     bytes: int
     width: int | None = None
     height: int | None = None
+    duration: float | None = Field(default=None, description="a clip's seconds")
     life: Life | None = None
+
+
+class Still(Answer):
+    """A frame a clip's preset saved beside it: what its look shows."""
+    id: str
+    sha256: str
+    filename: str
+    media_type: str
 
 
 class SourceImage(Answer):
@@ -103,12 +112,16 @@ class BatchItem(Answer):
     title: str | None = None
     instrumental: bool | None = None
     duration: float | None = None
+    # video
+    length: int | None = Field(default=None, description="a clip's frames")
+    fps: float | None = None
+    frames: list[Still] | None = None
 
 
 class Batch(Answer):
-    """A batch of images or tracks (batches.view)."""
+    """A batch of images, tracks or clips (batches.view)."""
     id: str
-    kind: Literal["images", "music"]
+    kind: Literal["images", "music", "video"]
     conversation_id: str | None
     link: str | None = Field(description="where its conversation opens; null for yours")
     tool_call_id: str | None
@@ -161,13 +174,30 @@ class MusicIn(BaseModel):
     count: int = Field(default=1, ge=1)
 
 
-BatchIn = Annotated[ImagesIn | MusicIn, Field(discriminator="kind")]
-KINDS = ("images", "music")
+class VideoItemIn(BaseModel):
+    prompt: str = Field(min_length=1)
+    source: str | None = None          # an image attachment's id: the clip starts from it
+    preset: str | None = None
+    negative: str | None = None
+    seconds: float | None = Field(default=None, gt=0)
+    width: int | None = None
+    height: int | None = None
+    seed: int | None = None
+
+
+class VideoIn(BaseModel):
+    kind: Literal["video"]
+    items: list[VideoItemIn] = Field(min_length=1)
+    count: int = Field(default=1, ge=1)
+
+
+BatchIn = Annotated[ImagesIn | MusicIn | VideoIn, Field(discriminator="kind")]
+KINDS = ("images", "music", "video")
 
 
 def _kind(kind: str) -> str:
     if kind not in KINDS:
-        raise CelineError("bad_request", "kind is images or music.", 400)
+        raise CelineError("bad_request", "kind is images, music or video.", 400)
     return kind
 
 

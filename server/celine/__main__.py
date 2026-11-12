@@ -245,7 +245,7 @@ def build_app(cfg: config_mod.Config, dev: bool) -> FastAPI:
             tg.start_soon(connectors.run)
 
             from .comfyui import server as comfy_server
-            if on["images"] or on["music"]:
+            if on["images"] or on["music"] or on["video"]:
                 tg.start_soon(comfy_server.free_shared, cfg, llm)
             tg.start_soon(llm.router.check_all)  # each provider asked once; then requests tell
 

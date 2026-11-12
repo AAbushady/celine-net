@@ -88,7 +88,8 @@ def kinds_view() -> list[dict[str, Any]]:
 # role's list. ComfyUI (Images & Music, no Cloud switch) fills its preset roles wherever
 # it runs.
 AUTO_ROLES = ("chat", "small", "embeddings", "reranker", "vision",
-              "image_generation", "music_generation", "transcription", "speech")
+              "image_generation", "music_generation", "video_generation", "transcription",
+              "speech")
 
 
 def fill_roles(s, pid: str, provider: dict[str, Any],

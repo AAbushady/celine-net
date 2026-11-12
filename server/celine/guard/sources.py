@@ -15,15 +15,16 @@ from urllib.parse import urlsplit
 
 from . import patterns
 
-# never looked at: image and music generation (their prompts are never checked, image
+# never looked at: image, music and video generation (their prompts are never checked, image
 # moderation is left to the ComfyUI server) and the vault (it has its own tap)
-NEVER = ("image_generator__", "music_generator__", "vault__")
+NEVER = ("image_generator__", "music_generator__", "video_generator__", "vault__")
 # the generators' tools that reach outside or change what the app runs: looked at as
 # their like are (a model hub searched and read as web__search and web__read_page, a
 # model file asked for and a preset proposed as settings__propose), never as a prompt
 LOOKED = frozenset({"image_generator__search_models", "image_generator__read_model",
                     "image_generator__look_examples", "image_generator__request_model",
-                    "image_generator__propose_preset", "music_generator__propose_preset"})
+                    "image_generator__propose_preset", "music_generator__propose_preset",
+                    "video_generator__propose_preset"})
 # skills whose results hold text someone else wrote. Shell output counts only when
 # plain code finds a reason (network, a file from outside, text aimed at an AI);
 # every other MCP server counts too (its display names the server), but one whose

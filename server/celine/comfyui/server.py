@@ -426,12 +426,22 @@ def _plain(text: Any) -> str:
     return " ".join(str(text or "").split()).rstrip(".")
 
 
-def _output_ref(outputs: dict[str, Any]) -> dict[str, Any] | None:
-    for out in outputs.values():
-        for item in (out.get("images") or []) + (out.get("audio") or []):
-            if isinstance(item, dict) and item.get("filename"):
-                return item
-    return None
+def _output_refs(outputs: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every file a prompt saved, in its nodes' order: images, clips (SaveVideo lists its
+    file under `images` with metadata kind video) and audio."""
+    return [item for out in outputs.values()
+            for key in ("images", "video", "audio")
+            for item in (out.get(key) or [])
+            if isinstance(item, dict) and item.get("filename")]
+
+
+_CLIP = (".mp4", ".webm", ".mov", ".mkv")
+
+
+def is_video(ref: dict[str, Any]) -> bool:
+    """A saved file is a clip: its metadata says so, or its name ends like one."""
+    return (ref.get("metadata") or {}).get("kind") == "video" or \
+        str(ref.get("filename", "")).lower().endswith(_CLIP)
 
 
 async def discover(c: httpx.AsyncClient, url: str, headers: dict[str, str]) -> list[dict]:
@@ -477,9 +487,17 @@ async def free_shared(cfg, llm) -> int:
 
 
 async def run(comfy: Comfy, graph: dict[str, Any], note, timeout: float) -> tuple[bytes, str]:
-    """Queue one prompt, follow it, fetch what it made. A prompt that did not finish
-    (a Stop, an error, the timeout) is interrupted and taken out of ComfyUI's queue
-    before this returns or raises. Freeing ComfyUI's memory is the batch's, at its end."""
+    """Queue one prompt, follow it, fetch the first file it made (run_refs)."""
+    refs = await run_refs(comfy, graph, note, timeout)
+    return await comfy.output(refs[0])
+
+
+async def run_refs(comfy: Comfy, graph: dict[str, Any], note,
+                   timeout: float) -> list[dict[str, Any]]:
+    """Queue one prompt, follow it, and the references of every file it saved (each
+    fetched with comfy.output). A prompt that did not finish (a Stop, an error, the
+    timeout) is interrupted and taken out of ComfyUI's queue before this returns or
+    raises. Freeing ComfyUI's memory is the batch's, at its end."""
     prompt_id: str | None = None
     finished = False
     try:
@@ -494,10 +512,10 @@ async def run(comfy: Comfy, graph: dict[str, Any], note, timeout: float) -> tupl
         status = entry.get("status") or {}
         if status.get("status_str") == "error":
             raise ImageError(_failed(status))
-        ref = _output_ref(entry.get("outputs") or {})
-        if ref is None:
+        refs = _output_refs(entry.get("outputs") or {})
+        if not refs:
             raise ImageError("The workflow finished without an output.")
-        return await comfy.output(ref)
+        return refs
     finally:
         if prompt_id is not None and not finished:
             with anyio.CancelScope(shield=True), anyio.move_on_after(CLEANUP_SECONDS):
@@ -573,3 +591,7 @@ async def probe_images(cfg, services) -> dict[str, str]:
 
 async def probe_music(cfg, services) -> dict[str, str]:
     return await _probe(cfg, "music_generation")
+
+
+async def probe_video(cfg, services) -> dict[str, str]:
+    return await _probe(cfg, "video_generation")

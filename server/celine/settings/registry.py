@@ -75,6 +75,9 @@ ROLES: dict[str, dict[str, Any]] = {
     "music_generation": {"label": "Music generation", "caps": ["music_generation"],
                          "help": "The music presets tracks are made with. ComfyUI renders "
                                  "them."},
+    "video_generation": {"label": "Video generation", "caps": ["video_generation"],
+                         "help": "The video presets clips are made with. ComfyUI renders "
+                                 "them."},
     "transcription": {"label": "Dictation", "caps": ["transcription"],
                       "help": "Turns what you say into text in the message box."},
     "speech": {"label": "Read aloud", "caps": ["speech"],
@@ -83,7 +86,7 @@ ROLES: dict[str, dict[str, Any]] = {
 # the roles whose list is the set of presets in use, the first of each task its default
 # (comfyui/batches.py): they take every preset. Every other role's list is a fallback
 # order of at most MAX_CHAIN models.
-PRESET_ROLES = ("image_generation", "music_generation")
+PRESET_ROLES = ("image_generation", "music_generation", "video_generation")
 MAX_CHAIN = 6
 
 # the "?" of Settings, Models, Providers (GET /providers `help`)
@@ -393,12 +396,12 @@ def validate_model(kind: str, name: str, m: Any, path: str,
     if not isinstance(caps, list) or any(c not in kinds_mod.CAPS for c in caps):
         raise Invalid(f"{path}.caps", "Capabilities are some of "
                       + ", ".join(kinds_mod.CAPS) + ".")
-    media = {"image_generation", "music_generation"}
+    media = {"image_generation", "music_generation", "video_generation"}
     if (kind == "comfyui") != bool(media & set(caps)) or (
             kind == "comfyui" and len(set(caps)) > 1):
         raise Invalid(f"{path}.caps", "A ComfyUI preset has one capability, "
-                                      "image_generation or music_generation, and only "
-                                      "ComfyUI has them.")
+                                      "image_generation, music_generation or "
+                                      "video_generation, and only ComfyUI has them.")
     out["caps"] = list(dict.fromkeys(caps))
     for k in ("context", "slots"):
         if m.get(k) not in (None, 0):

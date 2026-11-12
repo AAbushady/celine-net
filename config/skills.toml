@@ -123,6 +123,12 @@ enabled = true
 # presets are files in config/music_presets/; which one it uses is the Music generation
 # role in Settings, Models.
 
+[video_generator]
+enabled = true
+# Short clips with ComfyUI, from a prompt or from a picture, in batches (skills/clips.py,
+# comfyui/). The presets are files in config/video_presets/; which ones it uses, in which
+# order, is the Video generation role in Settings, Models.
+
 
 [models]
 enabled = true

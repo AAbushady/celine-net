@@ -30,6 +30,7 @@ from celine.image_catalog import Catalog, Resource
 from celine.jobs.jobs import Jobs
 from celine.skills import Registry, ToolContext, build as build_registry
 from celine.skills.images import ImageGenerator
+from celine.skills.clips import VideoGenerator
 from celine.skills.music import MusicGenerator
 from celine.turns import store as turns
 from celine.core.cancel import Token
@@ -48,13 +49,15 @@ PROVIDERS = {
                          "krea2-turbo": {"label": "Krea 2 turbo"},
                          "krea2-identity-edit": {"label": "Krea 2 identity edit"},
                          "moss-image-edit": {"label": "MOSS-Image edit"},
-                         "yue2": {"label": "YuE2"}}},
+                         "yue2": {"label": "YuE2"},
+                         "wan2.2-5b": {"label": "Wan 2.2 5B"}}},
 }
 ROLES = {"chat": {"chain": ["swap/big"]},
          "image_generation": {"chain": ["comfy/anima-turbo", "comfy/krea2-turbo",
                                         "comfy/krea2-identity-edit",
                                         "comfy/moss-image-edit"]},
-         "music_generation": {"chain": ["comfy/yue2"]}}
+         "music_generation": {"chain": ["comfy/yue2"]},
+         "video_generation": {"chain": ["comfy/wan2.2-5b"]}}
 
 
 def png(w: int, h: int) -> bytes:
@@ -120,15 +123,32 @@ class Fake:
                         ["execution_error", {"node_type": "KSampler",
                                              "exception_message": "CUDA out of memory."}]]},
                     "outputs": {}}})
+            g = self.graphs[-1]
             out = {"audio": [{"filename": "celine_1.mp3", "type": "output"}]} \
-                if "10" in self.graphs[-1] and "style" in self.graphs[-1]["10"]["inputs"] \
+                if "10" in g and "style" in g["10"]["inputs"] \
                 else {"images": [{"filename": "ComfyUI_temp_1.png", "type": "temp"}]}
             outputs = {"9": out}
+            if any(n["class_type"] == "SaveVideo" for n in g.values()):
+                # the clip under `images` as SaveVideo lists it, then its stills; a short
+                # clip's last two can be the same frame
+                outputs = {"12": {"images": [{"filename": "wan_00001.mp4", "type": "output",
+                                              "metadata": {"kind": "video", "width": 1280,
+                                                           "height": 704, "duration": 2.04}}],
+                                  "animated": [True]},
+                           "20": {"images": [{"filename": f"still_{n}.png", "type": "temp"}
+                                             for n in (1, 2, 3, 3)]}}
             return httpx.Response(200, json={pid: {
                 "status": {"status_str": "success", "completed": True, "messages": []},
                 "outputs": outputs}})
         if path == "/view":
-            if request.url.params["filename"].endswith(".mp3"):
+            name = request.url.params["filename"]
+            if name.endswith(".mp4"):
+                return httpx.Response(200, content=b"\x00\x00\x00\x18ftypmp42" + b"x" * 64,
+                                      headers={"content-type": "video/mp4"})
+            if name.startswith("still_"):
+                return httpx.Response(200, content=png(1280, 704) + name.encode(),
+                                      headers={"content-type": "image/png"})
+            if name.endswith(".mp3"):
                 return httpx.Response(200, content=b"ID3" + b"x" * 64,
                                       headers={"content-type": "audio/mpeg"})
             return httpx.Response(200, content=png(832, 1216),
@@ -311,6 +331,55 @@ async def test_music_made_outside_a_chat_says_nothing_of_hearing_it(app, store):
         r = await skill.generate(ctx, items=[{"style": "ambient"}])
         assert ("hears each one in this conversation" in r.content) is said, kind
         await skill.stop(ctx, batch=r.content.split()[1])
+
+
+async def test_a_clip_is_stored_with_its_stills_kept_with_it_and_looked_at(app, store,
+                                                                         monkeypatch):
+    skill = VideoGenerator(app.cfg)
+    skill.app = app
+    cid = await conversations.create(store)
+    ctx, _ = await _call(store, cid, "v1", "video_generator__generate")
+    r = await skill.generate(ctx, items=[{"prompt": "She turns to the window.",
+                                          "seconds": 2}], wait=True)
+    assert not r.is_error, r.content
+    [b] = await batches_mod.list_batches(store, "video", conversation=cid)
+    [item] = b["items"]
+    assert item["state"] == "done" and (item["length"], item["fps"]) == (49, 24)
+    g = app.fake.graphs[0]
+    assert g["8"]["inputs"]["length"] == 49 and g["11"]["inputs"]["fps"] == 24
+    assert "7" not in g and "start_image" not in g["8"]["inputs"], "no picture: no start"
+    clip = item["attachment"]
+    assert clip["media_type"] == "video/mp4" and clip["filename"].endswith(".mp4")
+    assert (clip["width"], clip["height"], clip["duration"]) == (1280, 704, 2.04)
+    assert len(item["frames"]) == 3, "the same last frame is stored once"
+    assert not await attachments.images(store, cid), "its stills are not the chat's images"
+
+    out = await skill.keep(ctx, clips=[clip["id"][:8]])
+    assert not out.is_error, out.content
+    for f in [clip, *item["frames"]]:
+        assert (await attachments.get(store, f["id"]))["life"] == "kept", f["filename"]
+
+    async def sees(*_a):
+        return True
+    monkeypatch.setattr(attachments, "turn_sees_images", sees)
+    look = await skill.look(ctx, clips=[clip["id"][:8]])
+    assert "3 stills, first to last: She turns to the window." in look.content
+    assert [s["id"] for s in look.display["see"]] == [f["id"] for f in item["frames"]]
+
+    # from a picture: the picture goes up and starts the clip, its shape sets the size
+    made_ctx, _ = await _call(store, cid, "i1")
+    pic = ImageGenerator(app.cfg)
+    pic.app = app
+    await pic.generate(made_ctx, items=[{"prompt": "1girl"}], wait=True)
+    [ib] = await batches_mod.list_batches(store, "images", conversation=cid)
+    src = ib["items"][0]["attachment"]
+    ctx2, _ = await _call(store, cid, "v2", "video_generator__generate")
+    r = await skill.generate(ctx2, items=[{"prompt": "Her hair moves.",
+                                           "source": src["id"][:8]}], wait=True)
+    assert not r.is_error, r.content
+    g = app.fake.graphs[-1]
+    assert g["7"]["inputs"]["image"] == "celine-src.png" and g["8"]["inputs"]["start_image"]
+    assert g["8"]["inputs"]["width"] < g["8"]["inputs"]["height"], "the picture's shape"
 
 
 # ---- its call ------------------------------------------------------------------------
@@ -818,16 +887,20 @@ async def test_a_new_comfyui_fills_its_preset_roles_with_what_its_server_can_run
     services.registry = build_registry(services)
     images = presets.of("images")
     # the server has every UNET file but the one of anima-turbo
-    unets = sorted({n["inputs"]["unet_name"] for p in images.values() if p.id != "anima-turbo"
+    unets = sorted({n["inputs"]["unet_name"]
+                    for p in [*images.values(), *presets.of("video").values()]
+                    if p.id != "anima-turbo"
                     for n in p.workflow.values() if n["class_type"] == "UNETLoader"})
     fake.answer["/object_info/UNETLoader"] = httpx.Response(
         200, json={"UNETLoader": {"input": {"required": {"unet_name": [unets]}}}})
     await saves.provider(services, "comfy", {"kind": "comfyui", "label": "ComfyUI",
                                              "base_url": "http://comfy:8188"})
     s = cfg.settings
-    assert set(s.providers["comfy"]["models"]) == set(images) | set(presets.of("music"))
+    assert set(s.providers["comfy"]["models"]) == \
+        set(images) | set(presets.of("music")) | set(presets.of("video"))
     assert s.chain("image_generation") == [f"comfy/{p}" for p in images if p != "anima-turbo"]
     assert s.chain("music_generation") == [f"comfy/{p}" for p in presets.of("music")]
+    assert s.chain("video_generation") == [f"comfy/{p}" for p in presets.of("video")]
 
 
 # ---- a ComfyUI that starts on demand, behind the comfy helper ------------------------

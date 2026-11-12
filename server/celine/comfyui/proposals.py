@@ -34,8 +34,8 @@ CHOICES = 20                # choices of one input shown
 FOUND = 40                  # classes one search lists
 TTL = 300.0                 # seconds a server's whole /object_info is reused
 NOBODY = "Nothing was proposed: nobody is here to approve it."
-TASKS = {"generate": "New images", "edit": "Edits", "music": "Music"}
-SKILL = {"images": "image_generator", "music": "music_generator"}
+TASKS = {"generate": "New images", "edit": "Edits", "music": "Music", "video": "Video"}
+SKILL = {"images": "image_generator", "music": "music_generator", "video": "video_generator"}
 _infos: dict[str, tuple[float, dict]] = {}
 
 
@@ -298,6 +298,9 @@ async def propose(app, ctx, kind: str, *, label: str, workflow: Any,
     elif kind == "images":
         said = (f"Added the preset {saved.label} (`{saved.id}`) at the end of the {where} list: "
                 f"image_generator__generate takes it as preset=\"{saved.id}\".")
+    elif kind == "video":
+        said = (f"Added the preset {saved.label} (`{saved.id}`) at the end of the {where} list: "
+                f"video_generator__generate takes it as preset=\"{saved.id}\".")
     else:
         said = (f"Added the preset {saved.label} (`{saved.id}`) at the end of the {where} list; "
                 f"music_generator__generate uses the first preset of that list, which "

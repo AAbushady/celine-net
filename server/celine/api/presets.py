@@ -28,7 +28,7 @@ router = APIRouter(prefix="/api")
 
 
 class UploadIn(BaseModel):
-    kind: Literal["images", "music"]
+    kind: Literal["images", "music", "video"]
     label: str
     workflow: str
 

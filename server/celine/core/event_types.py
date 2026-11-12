@@ -86,6 +86,7 @@ MODEL_LOADED = "model.loaded"
 MODELS_STATE = "models.state"
 
 MUSIC_BATCH = "music.batch"
+VIDEO_BATCH = "video.batch"
 
 OVERRIDES_CHANGED = "overrides.changed"
 

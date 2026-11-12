@@ -194,6 +194,8 @@ VERB = {
     "image_generator__stop": "Stopped the images",
     "music_generator__generate": "Made music", "music_generator__read": "Checked the tracks",
     "music_generator__stop": "Stopped the music",
+    "video_generator__generate": "Made a video", "video_generator__read": "Checked the clips",
+    "video_generator__stop": "Stopped the video",
     "missions__update": "Updated the mission", "intercom__send": "Sent a message",
     "intercom__cancel": "Cancelled a message", "voice__send": "Sent a voice note",
     "missions__list": "Listed the missions", "missions__wait": "Paused the mission",
@@ -435,6 +437,20 @@ IMAGE_GENERATOR: dict[str, Sentence] = {
 }
 
 MUSIC_GENERATOR: dict[str, Sentence] = {"keep": _keep("track"), **PRESETS}
+
+
+def _look_clips(a: Args, d: dict, r: str) -> str:
+    n = d.get("count")
+    clips = _list(a.get("clips"))
+    if isinstance(n, int):
+        return f"Looked at {n} still{'' if n == 1 else 's'}"
+    if _str(a.get("batch")):
+        return f"Looking at the clips of batch {_str(a.get('batch'))}"
+    return f"Looking at {len(clips)} clip{'' if len(clips) == 1 else 's'}"
+
+
+VIDEO_GENERATOR: dict[str, Sentence] = {"keep": _keep("clip"), "look": _look_clips,
+                                        **PRESETS}
 
 
 def _terminal(a: Args, d: dict) -> str | None:
@@ -748,7 +764,7 @@ SENTENCES: dict[str, dict[str, Sentence]] = {
     "chat_archive": CHAT_ARCHIVE, "user_documents": USER_DOCUMENTS, "notebook": NOTEBOOK,
     "past_conversations": PAST_CONVERSATIONS, "sub_agents": SUB_AGENTS,
     "intercom": INTERCOM, "artifacts": ARTIFACTS, "image_generator": IMAGE_GENERATOR,
-    "music_generator": MUSIC_GENERATOR, "shell": SHELL, "code": CODE, "web": WEB, "discord": DISCORD, "whatsapp": WHATSAPP,
+    "music_generator": MUSIC_GENERATOR, "video_generator": VIDEO_GENERATOR, "shell": SHELL, "code": CODE, "web": WEB, "discord": DISCORD, "whatsapp": WHATSAPP,
     "skills": SKILLS, "email": EMAIL, "vault": VAULT, "browser": BROWSER, "plan": PLAN,
     "mind": MIND, "models": MODELS, "routines": ROUTINES, "bugreport": BUGREPORT,
     "video": VIDEO,
@@ -865,7 +881,10 @@ def _state_words(said: str, state: str, d: dict, result: str) -> str:
     return could_not(said) if state == "error" else said
 
 
-MEDIA = ("image_generator", "music_generator")
+MEDIA = ("image_generator", "music_generator", "video_generator")
+# a media skill's words for what it makes: (made, checked or stopped)
+MADE = {"image_generator": ("Images", "images"), "music_generator": ("Music", "tracks"),
+        "video_generator": ("Video", "clips")}
 WHY_CHARS = 200          # the reason under a failed row; the whole result is in the call
 
 
@@ -889,9 +908,8 @@ def row(name: str, a: Args, d: dict, result: str, state: str, own: Own | None = 
         items = a.get("items")
         first = _dict(items[0]) if isinstance(items, list) and items else {}
         made = tool not in ("read", "stop")
-        label = ("Music" if skill == "music_generator" else "Images") if made else \
-            ("Checked the " if tool == "read" else "Stopped the ") + \
-            ("tracks" if skill == "music_generator" else "images")
+        label = MADE[skill][0] if made else \
+            ("Checked the " if tool == "read" else "Stopped the ") + MADE[skill][1]
         prompt = (_str(first.get("prompt")) or _str(first.get("style"))) if made else None
         return " ".join(x for x in (label, prompt) if x)
     return _state_words(said, state, d, result)
