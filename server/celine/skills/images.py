@@ -527,7 +527,8 @@ class ImageGenerator(Generator):
         scope: Annotated[Literal["here", "kept", "all"], "here: the images in this "
                          "conversation, the ones you made and the ones {{username}} "
                          "attached. kept: the ones you kept, in any conversation. all: "
-                         "every one you made, in any conversation."] = "here",
+                         "every one you made, in any conversation, and the ones "
+                         "{{username}} attached to this one."] = "here",
     ) -> ToolResult:
         """Images, newest first: the ones you made, each with the prompt, the preset, the
         size and the seed it was made from, whether it is kept or cleared and whether it
@@ -540,6 +541,10 @@ class ImageGenerator(Generator):
             none = "There are no images in this conversation."
         else:
             rows = await attachments.images(ctx.store, kept=scope == "kept")
+            if scope == "all":          # and what the user attached here, which it may use
+                rows += [r for r in await attachments.images(ctx.store, ctx.conversation_id)
+                         if r["role"] == "user"]
+                rows.sort(key=lambda r: r["created_at"], reverse=True)
             none = ("You have kept no images." if scope == "kept"
                     else "You have made no images.")
         if not rows:

@@ -156,6 +156,33 @@ async def test_images_it_made_anywhere_and_yours_here_but_never_yours_elsewhere(
     assert not out.is_error and await _rows(store) == before
 
 
+async def test_the_users_image_is_named_by_its_line_its_file_name_or_its_box_path(
+        app, store, monkeypatch):
+    """The user's attachment showed only its box path, and no tool took that or its file
+    name, so it could never be an edit's source (#55)."""
+    monkeypatch.setattr(attachments, "turn_sees_images", _sees(True))
+    here = await conversations.create(store)
+    att = await upload(app.cfg, store, PNG, "8t6onhjeacpf1.jpeg", "image/png")
+    await user_says(store, here, "for the second image", attachment_ids=[att["id"]])
+    box = "~/uploads/e082b5bc9be8/8t6onhjeacpf1.jpeg"
+    await attachments.set_box_path(store, att["id"], box)
+    short = att["id"][:8]
+    # its line says its short id, beside where it is in the box
+    mid_user = await store.read(lambda c: c.execute(
+        "SELECT message_id FROM attachments WHERE id=?", (att["id"],)).fetchone()[0])
+    rows = await store.read(lambda c: attachments.of_message(c, mid_user))
+    [said] = attachments.render(app.cfg, [{"role": "user", "content": "for the second image",
+                                           "attachments": rows}])
+    text = said["content"][0]["text"]
+    assert f"[image 8t6onhjeacpf1.jpeg, short id {short}, in your box at " in text
+    ctx, mid = await _call(store, here, "c1", LOOK)
+    for ref in ("8t6onhjeacpf1.jpeg", box, "/home/celine/uploads/e082b5bc9be8/8t6onhjeacpf1.jpeg"):
+        out = await _look(app, ctx, mid, images=[ref])
+        assert not out.is_error and [p["id"] for p in out.display["see"]] == [att["id"]], ref
+    listed = (await ImageGenerator(app.cfg).list_images(ctx, scope="all")).content
+    assert f"{short}  " in listed and "attached 8t6onhjeacpf1.jpeg" in listed
+
+
 async def test_a_cleared_image_an_unknown_id_and_a_good_one_in_one_look(app, store, monkeypatch):
     monkeypatch.setattr(attachments, "turn_sees_images", _sees(True))
     gone, kept = await _made(app, store, 2)
@@ -172,8 +199,9 @@ async def test_a_cleared_image_an_unknown_id_and_a_good_one_in_one_look(app, sto
         attachments.cleared_line(app.cfg, "images", gone["id"], iso(T0 + DAYS), ""),
         "There is no image abcdef12 that you may use: only an image you made, or one "
         f"{app.cfg.user} attached to this conversation.",
-        "nothing! is not an image's short id: use the 8 characters from its result or "
-        "list_images, like f5ef648c."]
+        "nothing! is not an image's short id: use the 8 characters from its line, its "
+        "result or list_images, like f5ef648c, or for one "
+        f"{app.cfg.user} attached to this conversation its file name."]
     assert len(lines) == 4 and lines[3].startswith(f"1. image {kept['id'][:8]}: ")
     assert lines[3].endswith(" Kept.")
     assert not out.is_error and [p["id"] for p in out.display["see"]] == [kept["id"]]

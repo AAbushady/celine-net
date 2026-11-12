@@ -199,7 +199,12 @@ def render(cfg, history: list[dict]) -> list[dict]:
             if a["kind"] == "image":
                 if path.exists():
                     parts.append(image_part(a, path))
-                    if box:
+                    # on a message, its short id: what an edit's source and
+                    # image_generator__look take (a tool result's picture is neither)
+                    if m["role"] in ("user", "assistant"):
+                        notes.append(f"[image {a['filename']}, short id "
+                                     f"{a['id'][:SHORT]}{where}]")
+                    elif box:
                         notes.append(f"[image {a['filename']}{where}]")
                 else:
                     notes.append(gone(a["filename"]))
@@ -711,8 +716,17 @@ async def agent_image(store, ref: str, cid: str | None, cfg) -> dict | str:
     why not."""
     wanted = ref
     if not re.fullmatch(r"[0-9a-f]{4,32}", wanted):
+        # one the user attached here, by its file name or where it is in the box
+        named = await store.read(lambda c: _attached(c, wanted, cid))
+        if named is not None:
+            rows = await images(store, aid=named)
+            if rows:
+                row = rows[0]
+                return cleared_line(cfg, "images", row["id"], row["life_at"], "") \
+                    if row["life"] == "cleared" else row
         return (f"{wanted} is not an image's short id: use the {SHORT} characters from "
-                f"its result or list_images, like f5ef648c.")
+                f"its line, its result or list_images, like f5ef648c, or for one "
+                f"{cfg.user} attached to this conversation its file name.")
     rows = await images(store, aid=wanted)
     if len({r["id"] for r in rows}) > 1:
         return (f"Several images start with {wanted}: use all {SHORT} characters of its "
@@ -725,6 +739,24 @@ async def agent_image(store, ref: str, cid: str | None, cfg) -> dict | str:
     if row["life"] == "cleared":
         return cleared_line(cfg, "images", row["id"], row["life_at"], "")
     return row
+
+
+def _attached(c: sqlite3.Connection, ref: str, cid: str | None) -> str | None:
+    """The id of the image the user attached to conversation `cid` that `ref` names: its
+    box path (~/uploads/<sha12>/<name>, or the same under /home/...), or its file name,
+    the newest when several have it; None for none."""
+    ref = ref.strip()
+    if not cid or not ref:
+        return None
+    name = ref.rsplit("/", 1)[-1]
+    rows = c.execute(
+        "SELECT a.id, a.box_path FROM attachments a JOIN messages m ON m.id = a.message_id "
+        "WHERE m.conversation_id = ? AND m.role = 'user' AND a.kind = 'image' AND "
+        "a.filename = ? ORDER BY a.created_at DESC", (cid, name)).fetchall()
+    if "/" in ref:
+        tail = ref.split("/uploads/", 1)[-1]
+        rows = [r for r in rows if r["box_path"] and r["box_path"].endswith(tail)] or rows
+    return rows[0]["id"] if rows else None
 
 
 def cleared_line(cfg, kind: str, aid: str, at: str, what: str) -> str:
