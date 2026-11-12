@@ -34,7 +34,10 @@ def test_a_mood_fades_halfway_back_in_one_half_life_and_names_its_event():
     half = mind.current_mood([{**rows[0], "strength": 0.5}], base, 6, T0)
     assert half == pytest.approx(tuple(x / 2 for x in mind.PAD["angry"]))
     assert mind.mood_words(at_once, base) == ("hostile", "strong")
-    assert mind.mood_words(base, base)[1] == "slight"
+    assert mind.mood_words(base, base) == ("neutral", ""), "the middle is in no octant"
+    assert mind.mood_words((0.2, 0.2, 0.3), (0.2, 0.2, 0.3))[1] == "slight"
+    # relieved after two embarrassed: the middle, never "hostile, strong"
+    assert mind.mood_words((-0.02, 0.0, 0.02), (0.2, 0.2, 0.3)) == ("neutral", "")
     rows = [{"at": T0.isoformat(), "emotion": "annoyed", "strength": 0.8,
              "why": "the build broke again"}]
     line = mind.describe_mood(rows, timezone.utc, T0 + timedelta(hours=1))

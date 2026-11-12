@@ -101,8 +101,15 @@ def current_mood(rows, baseline, half_life_h: float, now_: datetime):
     return m
 
 
+NEUTRAL = 0.15      # a mood this close to the middle is in no octant: its signs are noise
+
+
 def mood_words(m, baseline) -> tuple[str, str]:
-    """(the octant word of `m`, slight, clear or strong by its distance to the baseline)."""
+    """(the octant word of `m`, slight, clear or strong by its distance to the baseline);
+    ("neutral", "") within NEUTRAL of the middle, where a sign is only noise (relieved
+    after embarrassed came to (-0.02, 0.00, 0.02) and read "hostile, strong")."""
+    if math.dist(m, (0.0, 0.0, 0.0)) < NEUTRAL:
+        return "neutral", ""
     word = OCTANTS[tuple(int(x >= 0) for x in m)]
     d = math.dist(m, baseline)
     return word, "slight" if d < 0.15 else "clear" if d < 0.4 else "strong"
@@ -136,7 +143,7 @@ def describe_mood(rows, tz, now_: datetime) -> str:
         return ""
     base, half = _knobs()
     word, how = mood_words(current_mood(rows, base, half, now_), base)
-    out = f"mood: {word}, {how}."
+    out = f"mood: {word}, {how}." if how else f"mood: {word}."
     for r in reversed(rows):
         at = _at(r["at"])
         if float(r["strength"]) > 0.3 and (now_ - at).total_seconds() < 4 * half * 3600:
