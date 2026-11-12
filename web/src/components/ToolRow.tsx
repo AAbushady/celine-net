@@ -14,7 +14,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { TextWithRefs } from './Markdown'
 import {
   Activity, AlertTriangle, AppWindow, ArrowLeft, Bell, BookOpen, Bot, Brain, Bug, CalendarClock, CircleSlash, Code, Cpu, Download, ExternalLink, FileText, Flag, Globe,
-  ImagePlus, ListChecks, LockKeyhole, Mail, MessageSquare, MessagesSquare, Music, NotebookPen, PanelRight, Paperclip, ScreenShare, Search, SlidersHorizontal, Square,
+  ImagePlus, Images, ListChecks, LockKeyhole, Mail, MessageSquare, MessagesSquare, Music, NotebookPen, PanelRight, Paperclip, ScreenShare, Search, SlidersHorizontal, Square,
   Terminal, UserRound, Wrench, type LucideIcon,
 } from 'lucide-react'
 import { api, type ToolCall, type ToolRun } from '../lib/api'
@@ -499,21 +499,33 @@ function ToolLine({ call }: { call: ToolCall }) {
 type CallFile = MediaFile & { kind: string }
 
 /* the files kept with a call alone, whatever the tool (the server's `files` block):
-   pictures as tiles that open in the Viewer, other files to download. What shell__send
-   sent is on its message. */
+   pictures as tiles that open in the Viewer, under a fold that hides them (open until its
+   head is clicked, a hidden one stays hidden on this device), other files to download.
+   What shell__send sent is on its message. */
 function Files({ call }: { call: ToolCall }) {
   const blocks = Array.isArray(call.display?.blocks) ? call.display.blocks as { type?: string; files?: CallFile[] }[] : []
   const files = blocks.find(b => b.type === 'files')?.files ?? []
   if (!files.length) return null
-  return (
-    <div className="tool__files">
-      {files.filter(f => f.kind === 'image').map(f => (
-        <Picture key={f.id} className="tool__picture" src={tileUrl(f, TILE)} full={fileUrl(f)} name={titleOf(null)}
-                 ratio={f.width && f.height ? `${f.width} / ${f.height}` : '4 / 3'} />
-      ))}
-      {files.filter(f => f.kind !== 'image').map(f => <FileLine key={f.id} name={f.filename} a={f} />)}
-    </div>
-  )
+  const pictures = files.filter(f => f.kind === 'image')
+  const others = files.filter(f => f.kind !== 'image')
+  return <>
+    {pictures.length > 0 && (
+      <Fold defaultOpen remember={`pictures:${call.id}`} icon={Images}
+            title={count(pictures.length, 'picture')}>
+        <div className="tool__files">
+          {pictures.map(f => (
+            <Picture key={f.id} className="tool__picture" src={tileUrl(f, TILE)} full={fileUrl(f)} name={titleOf(null)}
+                     ratio={f.width && f.height ? `${f.width} / ${f.height}` : '4 / 3'} />
+          ))}
+        </div>
+      </Fold>
+    )}
+    {others.length > 0 && (
+      <div className="tool__files">
+        {others.map(f => <FileLine key={f.id} name={f.filename} a={f} />)}
+      </div>
+    )}
+  </>
 }
 
 /* a file to download: its name, size and Download on one line (only its name while
