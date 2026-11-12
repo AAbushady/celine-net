@@ -332,7 +332,7 @@ The words of the Events place (`server/celine/events.py` gives them).
 |---|---|---|
 | Guard, (its name), Background tasks | the tabs: what Bastet decided, what the agent did in its chats, what ran without you (runs, tasks, missions, sub-agents, jobs); Guard is also the Intercom tab of Bastet's threads | Guard as the setting; Background as in the transcript |
 | Turn, Turns, Tools, Notebook, Background jobs, Intercom, Runs, Freeze, Pass, Titles and moods, Persona, Bugs | the Type filter, and a turn's row; Persona: the agent's own edits of its persona and Example lines | Turns as in Routines; Tools as in the side panel; GitHub Actions "workflow runs"; Intercom as the place; Freeze and Pass as Bastet says them |
-| Title, Mood, Document descriptions | the items of Titles and moods: a chat's title, its mood after a turn, the documents' descriptions | plain |
+| Title, Mood, Felt {feeling}, Document descriptions | the items of Titles and moods: a chat's title, its mood after a turn while it runs or when it failed, the feeling it set, the documents' descriptions | plain |
 | Bastet | the guard's decisions (her name) | |
 | Wrote, Edited, Deleted, Moved ... to ... | its notebook writes ("Wrote people/noor.md") | Google Docs activity "edited", "moved" |
 | To (the user's name) | a message it sent you | Gmail "To" |

@@ -171,6 +171,8 @@ async def test_the_appraisal_after_a_chat_turn_sets_its_mood(store):
                    "by": "appraisal", "message_id": "a1"}
     system = answer.calls[0][0]["content"]
     assert "jealous" in system and "—" not in system
+    assert "Most exchanges change nothing" in system
+    assert "mood" not in answer.calls[0][1]["content"], "the exchange alone, no mood before"
     assert mind.parse_appraisal('ok {"emotion": "sad", "strength": 2, "why": "x"}') == \
         {"emotion": "sad", "strength": 1.0, "why": "x"}
     long = "because " * 100

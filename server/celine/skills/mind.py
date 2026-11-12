@@ -467,10 +467,11 @@ def _turn_facts(c: sqlite3.Connection, cid: str, tid: str) -> dict | None:
     return {"said": said[0] or "", "reply": reply[1], "reply_id": reply[0]}
 
 
-def appraisal_prompt(cfg, mood: str, said: str, reply: str) -> tuple[str, str]:
+def appraisal_prompt(cfg, said: str, reply: str) -> tuple[str, str]:
+    """The exchange alone: its mood before is left out, so a mood does not carry itself
+    from one exchange to the next."""
     system = prompts.fill(cfg, __file__, "mind_appraisal.md", emotions=", ".join(PAD))
-    user = cfg.substitute(f"{{{{name}}}}'s mood before: {mood or 'none yet'}\n\n"
-                          f"{{{{username}}}}: {said}\n\n{{{{name}}}}: {reply}")
+    user = cfg.substitute(f"{{{{username}}}}: {said}\n\n{{{{name}}}}: {reply}")
     return system, user
 
 
@@ -514,8 +515,7 @@ async def appraise(app, cid: str, tid: str, backend=None) -> dict | None:
         return None
     small = llm.bind(backend, role="small", priority=Priority.BACKGROUND,
                      conversation_id=cid, lane=f"feeling-{cid}", thinking=OFF, voice=False)
-    system, user = appraisal_prompt(cfg, await _mood_now(store, cfg, datetime.now(timezone.utc)),
-                                    f["said"], f["reply"])
+    system, user = appraisal_prompt(cfg, f["said"], f["reply"])
     text = await complete(small, [{"role": "system", "content": system},
                                   {"role": "user", "content": user}], APPRAISE_SECONDS,
                           errors=True)
