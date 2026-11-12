@@ -66,20 +66,24 @@ OWN_BUSY_SQL = (
     "d.intercom_id WHERE d.state='pending' AND i.wake=1 AND i.cancelled_at IS NULL")
 
 
-def busy(c: sqlite3.Connection, cid: str, but: int | None = None) -> bool:
+def busy(c: sqlite3.Connection, cid: str, but: int | None = None,
+         by: str | None = None) -> bool:
     """Something will still come of conversation `cid`: a live turn, a running job or a
     waking message waiting in it, a sub-agent of it queued, or a sub-agent under it busy.
-    `but` is a message in `cid` that does not count (a mission's time limit)."""
+    `but` is a message in `cid` that does not count (a mission's time limit). `by`: only
+    a message due by then counts (a routine run's end, which a message the agent timed for
+    a later day does not hold up)."""
     if c.execute(
         f"SELECT 1 FROM turns WHERE conversation_id=? AND state IN {LIVE_TURNS_SQL} "
         "UNION ALL SELECT 1 FROM jobs WHERE conversation_id=? AND state='running' "
         "UNION ALL SELECT 1 FROM intercom_deliveries d JOIN intercom i ON i.id = "
         "d.intercom_id WHERE d.conversation_id=? AND d.state='pending' AND i.wake=1 "
-        "AND i.cancelled_at IS NULL AND i.id IS NOT ? LIMIT 1",
-        (cid, cid, cid, but)).fetchone():
+        "AND i.cancelled_at IS NULL AND i.id IS NOT ? "
+        "AND (? IS NULL OR i.due_at IS NULL OR i.due_at <= ?) LIMIT 1",
+        (cid, cid, cid, but, by, by)).fetchone():
         return True
     for (sub,) in c.execute("SELECT id FROM conversations WHERE agent_of=?", (cid,)).fetchall():
-        if queued(c, sub) is not None or busy(c, sub):
+        if queued(c, sub) is not None or busy(c, sub, by=by):
             return True
     return False
 

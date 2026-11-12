@@ -644,6 +644,19 @@ async def test_a_run_is_over_only_once_its_sub_agents_have_reported(store):
     assert await store.read(lambda c: runs_mod.finished(c, run))
 
 
+async def test_a_run_is_over_though_it_timed_a_message_to_itself_for_another_day(store):
+    """The agent sent itself a reminder for the next night into the run's conversation:
+    the run waited for it until that day, with every other run behind it. A mission
+    still counts it, as work that comes."""
+    from celine import activity
+    from celine.intercom import send
+    run = await conversations.for_trigger(store, "run:r:1", "Reflection")
+    await send(store, f"agent:{run}", f"agent:{run}", "Read the three numbers.",
+               due_at=iso(datetime(2100, 1, 1, tzinfo=UTC)))
+    assert await store.read(lambda c: runs_mod.finished(c, run))
+    assert await store.read(lambda c: activity.busy(c, run)), "a mission waits for it"
+
+
 async def test_a_run_that_was_running_at_the_stop_runs_on_in_its_conversation(store, cfg):
     """A graceful stop ends its turn `interrupted`; the next start's scheduler picks the
     run up where it was and continues that turn: the same conversation, the same turn."""

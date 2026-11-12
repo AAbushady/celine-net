@@ -468,8 +468,10 @@ def binding(c: sqlite3.Connection, cid: str, cfg) -> dict | None:
 
 
 def finished(c: sqlite3.Connection, cid: str) -> bool:
-    """The agent's conversation is quiet, and so is every sub-agent of it, each reported."""
-    if busy(c, cid):
+    """The agent's conversation is quiet, and so is every sub-agent of it, each reported.
+    A message timed for later (one it sent itself for the next night) comes after the
+    run, which would otherwise wait until that day with every other run behind it."""
+    if busy(c, cid, by=now()):
         return False
     return all(asked(c, s, cid) is None for (s,) in c.execute(
         "SELECT id FROM conversations WHERE agent_of = ?", (cid,)).fetchall())
