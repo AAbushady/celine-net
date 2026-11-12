@@ -627,10 +627,14 @@ async def search(app, *, hub: str, kind: str, query: str = "", preset: str = "",
         return f"period is {', '.join(hubs.PERIODS)}.", True, {}
     p = None
     if preset.strip():
-        p = presets_mod.of("images").get(preset.strip())
+        p = preset_of(preset)
         if p is None:
-            return f"There is no image preset {preset!r}: list_presets lists them.", True, {}
-        if not (p.loras if kind == "lora" else p.models):
+            return (f"There is no image or video preset {preset!r}: "
+                    f"image_generator__list_presets and video_generator__read_preset name "
+                    f"them."), True, {}
+        # an image preset takes files of its own catalog; a video preset takes the files
+        # its workflow names (request: named), whatever the kind
+        if p.kind == "images" and not (p.loras if kind == "lora" else p.models):
             return (f"{p.label} takes no LoRAs." if kind == "lora" else
                     f"{p.label} takes no model choice."), True, {}
     # a preset keeps a Civitai search to its base; without one the page is of every base

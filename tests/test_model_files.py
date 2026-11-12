@@ -631,6 +631,23 @@ async def test_a_preset_keeps_a_civitai_search_to_its_base(hub):
         "Hugging Face names it, to keep to its own.")
 
 
+async def test_a_search_keeps_to_a_video_presets_base_once_it_names_one(hub):
+    """Bug #60: preset= knew only image presets, so a search could not keep to the model a
+    video preset loads."""
+    skill, ctx = _images(hub), await _ctx(hub, "image_generator__search_models")
+    r = await skill.search_models(ctx, hub="civitai", kind="lora", preset="wan2.2-5b")
+    assert not r.is_error, r.content
+    assert "base" not in hub.helper.searches[-1]
+    assert r.content.splitlines()[1] == (
+        "Files of every base: Wan 2.2 5B names no base for Civitai. Give base, as Civitai "
+        "names it, to keep to its own.")
+    wan = presets.of("video")["wan2.2-5b"]
+    assert "catalog.hub_base" in {f["key"] for f in presets.fields(wan)}
+    data, _ = presets.edited(wan, {"catalog.hub_base": "Wan Video 2.2 TI2V-5B"})
+    assert data["catalog"] == {"hub_base": "Wan Video 2.2 TI2V-5B"}
+    assert presets.edited(wan, {"catalog.hub_base": ""})[0].get("catalog") is None
+
+
 async def test_each_example_says_the_base_it_was_made_with_and_its_version(hub, monkeypatch):
     """An example made with another base looked like what the file does (#52)."""
     skill = _images(hub)

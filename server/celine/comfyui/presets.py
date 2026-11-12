@@ -700,6 +700,12 @@ def with_placeholders(p: Preset) -> dict[str, Any]:
     return graph
 
 
+# a search's Civitai base model (model_files.search): image and video presets
+HUB_BASE = {"key": "catalog.hub_base", "label": "Civitai base model", "type": "text",
+            "help": "The base model as Civitai names it (Krea 2): a search for this preset's "
+                    "files keeps to it."}
+
+
 # ---- the editor (Settings, Media) ----------------------------------------------
 
 TEXTS = {"label": "Name", "family": "Family", "good_at": "Good at",
@@ -739,6 +745,8 @@ def fields(p: Preset) -> list[dict[str, Any]]:
              "min": 1},
             {"key": "size.max_pixels", "label": "Largest frame" if p.kind == "video"
              else "Largest image", "type": "number", "unit": "megapixels", "min": 0.1}]
+    if p.kind == "video":
+        out.append(HUB_BASE)
     if p.kind == "images":
         out += [
             {"key": "catalog.models", "label": "Models", "type": "text",
@@ -753,9 +761,7 @@ def fields(p: Preset) -> list[dict[str, Any]]:
              "help": "The id of the node a model's steps and CFG go to."},
             {"key": "catalog.text", "label": "Trigger words node", "type": "text",
              "help": "Node id, input: where a LoRA's trigger words go in front."},
-            {"key": "catalog.hub_base", "label": "Civitai base model", "type": "text",
-             "help": "The base model as Civitai names it (Krea 2): a search for this "
-                     "preset's files keeps to it."}]
+            HUB_BASE]
         out += [{"key": f"catalog.full.{k}", "label": f"Full model {label}", "type": "text",
                  "help": "For a model that is not turbo."}
                 for k, label in (("steps", "steps"), ("cfg", "CFG"), ("sampler", "sampler"),
@@ -779,6 +785,8 @@ def values(p: Preset) -> dict[str, Any]:
     if p.kind in SIZED:
         out.update({"size.step": p.size_step,
                     "size.max_pixels": round(p.max_pixels / 1e6, 2)})
+    if p.kind == "video":
+        out["catalog.hub_base"] = p.hub_base
     if p.kind == "images":
         out.update({
             "catalog.models": ", ".join(p.models), "catalog.loras": ", ".join(p.loras),
@@ -799,7 +807,7 @@ def edited(p: Preset, new: dict[str, Any]) -> tuple[dict[str, Any], dict[str, An
     data, wf = copy.deepcopy(p.source), copy.deepcopy(p.workflow)
     keys = {f["key"] for f in fields(p)}
     bad: list[str] = []
-    cat = data.setdefault("catalog", {}) if p.kind == "images" else {}
+    cat = data.setdefault("catalog", {}) if p.kind in ("images", "video") else {}
     full = cat.setdefault("full_settings", {}) if p.kind == "images" else {}
     for key, v in new.items():
         if key not in keys:
