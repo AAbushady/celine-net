@@ -1509,10 +1509,10 @@ keeps for the user alone is an attachment of the call (`tool_call_id`, no `messa
 An image a tool gives it with its result (`ToolResult.images`) is linked to the call's
 `role=tool` row by `finish_tool_call`, and `turns/context.py` renders it through
 `attachments.render`. A result's display can also name pictures that are stored already
-(`see`, a list of `{id, filename, sha256, media_type}`): browser__look's screen.
-`calls_wire` sends them after the result, in that order, with no new row; a file gone
-since goes as the line of a missing image. An aged result goes as its stub, without its
-images.
+(`see`, a list of `{id, filename, sha256, media_type}`): browser__look's screen, the
+images `image_generator__look` shows. `calls_wire` sends them after the result, in that
+order, with no new row, so a look holds no image past its clearing; a file gone since goes
+as the line of a missing image. An aged result goes as its stub, without its images.
 
 Startup GC (`attachments.gc`, its rule in the module docstring): a blob stays while an
 attachment or its portrait points at it; a draft stays until it is sent, removed or 30
@@ -1626,7 +1626,10 @@ music). One code path for both (`batches.Batches`).
   result does): what was made and how long it waited. A batch that did not wait, or one
   the agent stopped itself, says nothing. `read` shows a batch, `stop` stops one. `image_generator__list_presets` lists
   the presets or a preset's models and LoRAs (`image_catalog.py`), `list_images` the images
-  of the conversation.
+  of the conversation. `image_generator__look` shows it images by the refs an edit's
+  source takes (`batches.named_image`), or every image a batch made, as many as it names:
+  one line each (short id, preset, size, seed, its life) and the pictures through its
+  display's `see`, or a description by the vision role for a model that cannot see.
 - **Model files the agent finds and asks for** (`comfyui/model_files.py`, `hubs.py`, table
   `model_requests`), only through the comfy helper of a ComfyUI that starts on demand:
   - Looking around a hub (Civitai, Hugging Face): `image_generator__search_models` (words,

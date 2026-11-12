@@ -4,10 +4,13 @@ The agent's call starts the batch in the app's task group and returns at once wi
 per image; the batch fills the slots in place as each image is made. It is no job: only a
 batch that had to wait for the GPU wakes it, with one notice from the app once it is done.
 `wait` holds its turn for the end, or until the batch still waits for the GPU after
-GPU_TRY seconds. It never sees the images: it gets the preset, the size, the seed and
-each image's short id. An edit starts only from an image it made (an attachment of its
-own message, in any conversation) or one the user attached to this conversation; never
-from the Messages archive or Documents.
+GPU_TRY seconds. A batch's result is text: the preset, the size, the seed and each
+image's short id. It sees a picture when it looks at it (`look`, by short ids or a whole
+batch): the call's display names the pictures and the context sends them with its result
+(turns/context.py calls_wire), so a look stores no copy and holds no image past its
+clearing. An edit and a look take an image it made (an attachment of its own message, in
+any conversation), one the user attached to this conversation, or its portrait
+(batches.named_image); never one from the Messages archive or Documents.
 """
 from __future__ import annotations
 
@@ -16,7 +19,7 @@ import typing
 from collections.abc import Callable
 from typing import Annotated, Literal, Required, TypedDict
 
-from .. import attachments
+from .. import attachments, vision
 from ..clock import zone
 from ..core.ids import iso, span, when as when_
 from ..core.statuses import MadeLife
@@ -71,11 +74,8 @@ def item_line(i: dict, cfg, lives: bool = False) -> str:
         return f"{n}. failed: {i['error']}{warned}"
     if i["state"] == "stopped":
         return f"{n}. stopped before it was made.{warned}"
-    p = presets_mod.of("images").get(i.get("preset", ""))
-    label = p.label if p else i.get("preset")
-    att = i.get("attachment") or {}
-    size = f"{att.get('width', i.get('width'))}x{att.get('height', i.get('height'))}"
     if i["state"] != "done":
+        label, size = _label_size(i)
         line = f"{n}. {label}, {size}, seed {i['seed']}: {i.get('note') or i['state']}."
         if i.get("mode"):
             line += f" Variant {i['mode']}."
@@ -84,7 +84,23 @@ def item_line(i: dict, cfg, lives: bool = False) -> str:
         if i.get("loras"):
             line += f" LoRAs {', '.join(i['loras'])}."
         return line + warned
-    line = f"{n}. image {short(att['id'])}: {label}, {size}, seed {i['seed']}"
+    return f"{n}. {made_line(i, cfg, lives)}{warned}"
+
+
+def _label_size(i: dict) -> tuple[str, str]:
+    """A slot's preset label and its size, "832x1216"."""
+    p = presets_mod.of("images").get(i.get("preset", ""))
+    att = i.get("attachment") or {}
+    return (p.label if p else i.get("preset") or "",
+            f"{att.get('width', i.get('width'))}x{att.get('height', i.get('height'))}")
+
+
+def made_line(i: dict, cfg, lives: bool = False) -> str:
+    """A made slot after its number: its image's short id, preset, size and seed, how it
+    was made, and with `lives` when it is cleared or that it is kept (life.words)."""
+    label, size = _label_size(i)
+    att = i.get("attachment") or {}
+    line = f"image {short(att['id'])}: {label}, {size}, seed {i['seed']}"
     if i.get("seconds") is not None:
         line += f", {i['seconds']:.0f} s"
     line += "."
@@ -100,7 +116,22 @@ def item_line(i: dict, cfg, lives: bool = False) -> str:
         line += f" Variant {i['mode']}."
     if lives and (lived := life.words(cfg, att.get("life"))):
         line += f" {lived}"
-    return line + warned
+    return line
+
+
+def look_line(n: int, got: dict, cfg) -> str:
+    """Image `got` (batches.named_image's row) as a look reads it, `n` the place of its
+    picture: what ties the picture to its id, as list_images and item_line say it."""
+    if got["id"] == "portrait":
+        return f"{n}. your portrait."
+    if made := got.get("made"):
+        lived = life.view(got["life"], got["life_at"]) if got.get("life") else None
+        return f"{n}. " + made_line(
+            {**made, "attachment": {**(made.get("attachment") or {}), "life": lived}}, cfg,
+            lives=True)
+    size = f", {got['width']}x{got['height']}" if got.get("width") else ""
+    who = f"{cfg.user} attached" if got["role"] == "user" else "you made"
+    return f"{n}. image {short(got['id'])}: {who} {got['filename']}{size}."
 
 
 def _src(aid: str) -> str:
@@ -363,8 +394,10 @@ class ImageGenerator(Generator):
         item with `source`). Load the guide first: it has each preset's prompt rules.
         The call returns at once with the batch id and one slot per image. The images
         are made one after the other and appear in this conversation as each is done;
-        {{username}} sees them there. You do not see them. A batch reports back only
-        when it had to wait for the GPU: one message from the app once it is done.
+        {{username}} sees them there. You see one when you look at it with
+        image_generator__look; describe details only of pictures you looked at. A batch
+        reports back only when it had to wait for the GPU: one message from the app once
+        it is done.
         image_generator__read shows a batch, image_generator__stop stops one.
         What you make is cleared after the number of days set in Settings unless
         image_generator__keep keeps it.
@@ -522,6 +555,79 @@ class ImageGenerator(Generator):
         if more > 0:
             text += f"\n\n{more} older images are not listed."
         return ToolResult(content=text, display={"count": len(rows)})
+
+    @tool()
+    async def look(
+        self,
+        ctx: ToolContext,
+        images: Annotated[list[str] | None, "The images, each as an edit's source takes "
+                                            "it: a short id like f5ef648c from a result or "
+                                            "list_images (an image you made, in any "
+                                            "conversation, or one {{username}} attached to "
+                                            "this conversation), or portrait:<name>. As "
+                                            "many as you need."] = None,
+        batch: Annotated[str, "A batch id from generate, like 3f2a9c1e: every image it "
+                              "made, in order, before the images."] = "",
+        question: Annotated[str | None, "What you want to know about them, when your model "
+                                        "cannot see images and another describes "
+                                        "them."] = None,
+    ) -> ToolResult:
+        """Look at images: ones you made, ones {{username}} attached to this conversation,
+        or your portrait, as many as you need in one call. Look before you say what a
+        picture you made shows. Example: image_generator__look(images=["f5ef648c",
+        "0d1e2f3a"]), or image_generator__look(batch="3f2a9c1e"). Returns: one line per
+        image in order (its short id, preset, size and seed, and when it is cleared or
+        that it is kept) and the pictures in that order, or their descriptions when your
+        model cannot see images."""
+        # a list written as one string ("f5ef648c, 0d1e2f3a") reads as its ids
+        refs = images.replace(",", " ").split() if isinstance(images, str) else \
+            [str(r).strip() for r in images or () if str(r).strip()]
+        lines: list[str] = []
+        if batch.strip():
+            try:
+                b = await batches_mod.find(ctx.store, "images", batch)
+            except presets_mod.ImageError as e:
+                lines.append(str(e))
+            else:
+                lines.append(settled_head(b, None))
+                refs = [i["attachment"]["id"] for i in b["items"]
+                        if i["state"] == "done" and i.get("attachment")] + refs
+        elif not refs:
+            return ToolResult(content="Give images, by their short ids, or a batch id.",
+                              is_error=True)
+        sees = await attachments.turn_sees_images(self.cfg, ctx)
+        llm = self.app.llm if self.app is not None else None
+        tried: set[str] = set()
+        shown: list[dict] = []          # each image looked at, in order: {id, ..., media_type}
+        for ref in refs:
+            if ref.lower() in tried:
+                continue
+            tried.add(ref.lower())
+            try:
+                got = await batches_mod.named_image(self.cfg, ctx.store, ref,
+                                                    ctx.conversation_id, True)
+            except presets_mod.ImageError as e:
+                lines.append(str(e))
+                continue
+            if any(s["id"] == got["id"] for s in shown):
+                continue
+            path = attachments.blob_path(self.cfg, got["sha256"])
+            if not path.exists():
+                lines.append(f"Image {short(got['id'])}: the file is no longer stored.")
+                continue
+            shown.append({k: got[k] for k in ("id", "filename", "sha256", "media_type")})
+            line = look_line(len(shown), got, self.cfg)
+            if not sees:
+                line += "\n" + await vision.describe(llm, path.read_bytes(),
+                                                     ctx.conversation_id, ctx.turn_id,
+                                                     question)
+            lines.append(line)
+        if not shown:
+            return ToolResult(content="\n".join(lines), is_error=True)
+        # the pictures go to the model with the result, as the display names them; the
+        # look keeps no copy (module docstring)
+        return ToolResult(content="\n".join(lines),
+                          display={"count": len(shown), **({"see": shown} if sees else {})})
 
     # ---- model files: found on a hub, asked of the user (comfyui/model_files.py) --------
 

@@ -14,5 +14,5 @@ the app. {{username}} can set it in Settings; you set it with
   and `image_generator__list_images` show the short ids.
 - an image in Documents: its id, path or title, as `user_documents__read` takes it.
 
-A PNG, JPEG or WebP image works. To make a new portrait, generate the image first, then
-set it by its short id.
+A PNG, JPEG or WebP image works. To make a new portrait, generate the image first, look
+at it with `image_generator__look`, then set it by its short id.

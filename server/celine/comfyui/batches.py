@@ -230,6 +230,48 @@ def _settle(b: dict) -> None:
     b["finished_at"] = now()
 
 
+# ---- the images an edit starts from (and image_generator__look shows) ------------------
+
+async def named_image(cfg, store, ref: str, cid: str | None, own: bool) -> dict:
+    """The image `ref` names, as an edit's source takes it: its portrait (portrait,
+    portrait:<its name>, or its name alone); else, for its own call (`own`), one it made (an
+    attachment of its own message, in any conversation) or one the user attached to
+    conversation `cid`, by its id or the start of it; for the user's batch, any image
+    attachment by its id. Raises ImageError with the sentence why not."""
+    from .. import attachments
+    if face := portrait_image(cfg, ref):
+        return face
+    wanted = ref.strip().lower()
+    if not own:
+        row = await attachments.get(store, wanted)
+        if row is None or row["kind"] != "image":
+            raise ImageError(f"There is no image {wanted}.")
+        if row["life"] == MadeLife.CLEARED:
+            from ..clock import zone
+            raise ImageError(f"The image was cleared on "
+                             f"{when(row['life_at'], zone(cfg))}: Retry on it "
+                             f"makes it again.")
+        return row
+    row = await attachments.agent_image(store, wanted, cid, cfg)
+    if isinstance(row, str):
+        raise ImageError(row)
+    return row
+
+
+def portrait_image(cfg, ref: str) -> dict | None:
+    """`portrait`, `portrait:<its name>`, or its name alone: its portrait as an edit's
+    source; None for another ref. Raises ImageError when it has none."""
+    from .. import agent
+    key = ref.strip().casefold()
+    if key not in ("portrait", f"portrait:{cfg.name.casefold()}", cfg.name.casefold()):
+        return None
+    got = agent.portrait_file(cfg)
+    if got is None:
+        raise ImageError(f"{cfg.name} has no portrait.")
+    return {"id": "portrait", "sha256": cfg.agent.portrait,
+            "filename": f"portrait{_EXT.get(got[1], '.png')}", "media_type": got[1]}
+
+
 BATCH_MAX = 16          # slots in one batch: items times count
 
 
@@ -343,7 +385,7 @@ class Batches:
         given = [k for k in presets_mod.SOURCES if raw.get(k)]
         names = presets_mod.SOURCES[:len(given)]
         for key, name in zip(given, names):
-            got = await self._source(str(raw[key]), cid, own)
+            got = await named_image(self.app.cfg, self.app.store, str(raw[key]), cid, own)
             item[name] = {k: got[k] for k in ("id", "sha256", "filename", "media_type")}
         source = item.get("source")
         warn = item.setdefault("warnings", []).append
@@ -404,45 +446,6 @@ class Batches:
         item.pop("model", None)
         item.pop("loras", None)
         item.update({k: v for k, v in choice.recipe().items() if k != "triggers"})
-
-    async def _source(self, ref: str, cid: str | None, own: bool) -> dict:
-        """The image an edit starts from: its portrait (portrait, or
-        name>, or its name alone); else its own: one it made (an attachment of its own
-        message, in any conversation) or one the user attached to this conversation,
-        by its id or the start of it. The user's: any image attachment, by its id."""
-        from .. import attachments
-        if face := self._portrait(ref):
-            return face
-        store = self.app.store
-        wanted = ref.strip().lower()
-        if not own:
-            row = await attachments.get(store, wanted)
-            if row is None or row["kind"] != "image":
-                raise ImageError(f"There is no image {wanted}.")
-            if row["life"] == MadeLife.CLEARED:
-                from ..clock import zone
-                raise ImageError(f"The image was cleared on "
-                                 f"{when(row['life_at'], zone(self.app.cfg))}: Retry on it "
-                                 f"makes it again.")
-            return row
-        row = await attachments.agent_image(store, wanted, cid, self.app.cfg)
-        if isinstance(row, str):
-            raise ImageError(row)
-        return row
-
-    def _portrait(self, ref: str) -> dict | None:
-        """`portrait`, `portrait:<its name>`, or its name alone: its portrait as an
-        edit's source; None for another ref. Raises ImageError when it has none."""
-        from .. import agent
-        cfg = self.app.cfg
-        key = ref.strip().casefold()
-        if key not in ("portrait", f"portrait:{cfg.name.casefold()}", cfg.name.casefold()):
-            return None
-        got = agent.portrait_file(cfg)
-        if got is None:
-            raise ImageError(f"{cfg.name} has no portrait.")
-        return {"id": "portrait", "sha256": cfg.agent.portrait,
-                "filename": f"portrait{_EXT.get(got[1], '.png')}", "media_type": got[1]}
 
     def _pick(self, kind: str, ordered, name: str | None, task: str,
               wants: list[str], fits=None) -> tuple[presets_mod.Preset, str]:

@@ -372,6 +372,15 @@ def _keep(unit: str) -> Sentence:
     return say
 
 
+def _look(a, d, r):
+    """look: "Looked at 4 images", the images it showed (the ones named while it runs or
+    when it failed), or "Looked at the images of batch 3f2a9c1e"."""
+    n = _num(d.get("count")) or len(_list(a.get("images")))
+    batch = _str(a.get("batch"))
+    return f"Looked at {count(n, 'image')}" if n else \
+        f"Looked at the images of batch {batch}" if batch else "Looked at images"
+
+
 HUBS = {"civitai": "Civitai", "huggingface": "Hugging Face"}
 
 
@@ -412,6 +421,7 @@ PRESETS: dict[str, Sentence] = {
 
 IMAGE_GENERATOR: dict[str, Sentence] = {
     "list_images": lambda a, d, r: "Listed the images in this chat",
+    "look": _look,
     "list_presets": _presets,
     "keep": _keep("image"),
     "search_models": _search_models,

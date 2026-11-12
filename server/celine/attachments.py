@@ -16,10 +16,11 @@ answers, so a fallback in the chat list gets what it can take:
 
 An image or a track a batch makes (comfyui/batches.py) is stored the same way and
 belongs to its batch, and in its batch also to the message that holds its call. That
-message goes to a model as its tool calls only, so a generated image never reaches a
-model. A batch the user started has no message: its files are the batch's alone. Such a
-file has a life (`life`, `life_at`, comfyui/life.py): temporary, kept, or cleared after
-its days, when its row stays and its bytes go. A
+message goes to a model as its tool calls only, so a generated image reaches a model
+only when it looks at it (image_generator__look: the call's display names the image, and
+no row is added). A batch the user started has no message: its files are the batch's
+alone. Such a file has a life (`life`, `life_at`, comfyui/life.py): temporary, kept, or
+cleared after its days, when its row stays and its bytes go. A
 picture a tool keeps for the user, like a browser shot (skills/browser.py), belongs to
 the call alone: no message holds it, so only the call's row shows it, and its image
 list and edits never see it.
@@ -667,13 +668,14 @@ async def images(store, conversation_id: str | None = None,
                  aid: str | None = None) -> list[dict]:
     """Sent image attachments with the role of their message and its conversation,
     newest first: those of one conversation, or those whose id starts with `aid`. One a
-    batch made has its `life` and `life_at` (comfyui/life.py)."""
+    batch made has its `life` and `life_at` (comfyui/life.py). `width` and `height`: its
+    blob's, when known."""
     def fn(c: sqlite3.Connection) -> list[dict]:
         where, args = (("substr(a.id, 1, ?)=?", (len(aid), aid)) if aid
                        else ("m.conversation_id=?", (conversation_id,)))
         out = []
         for r in c.execute(
-                "SELECT a.id, a.filename, a.sha256, b.media_type, m.role, "
+                "SELECT a.id, a.filename, a.sha256, b.media_type, b.width, b.height, m.role, "
                 "m.conversation_id, a.created_at, a.life, a.life_at, "
                 # the batch item that made it: prompt, preset, seed, size, source
                 "(SELECT je.value FROM media_batches mb, json_each(mb.items) je "

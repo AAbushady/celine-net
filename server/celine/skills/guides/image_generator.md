@@ -8,7 +8,7 @@ with a `prompt` makes a new image; an item with `source` too edits that image, a
 prompt says what changes. `count` makes that many images of each item, each with its
 own seed. The call returns at once with the batch id and one slot per image. The images
 are made one after the other, and each appears in this conversation when it is done,
-where {{username}} sees it. You do not see the images.
+where {{username}} sees it. You see one when you look at it with `image_generator__look`.
 
 The GPU is shared. While it is in use, a batch waits in line until it is free, as long
 as that takes, and its slots say "Waiting for the GPU" and why. A batch that had to
@@ -24,14 +24,17 @@ tell {{username}} it is made when the GPU is free, and answer.
 
 `image_generator__list_images` lists the images in this conversation with the prompt,
 the preset, the size and the seed each one was made from, and its short id: read it
-before you edit an earlier image or make a variation of one. `image_generator__list_presets`
-lists the presets, or with `kind` lora or model what a preset can use. What you make is
-cleared after the number of days set in Settings unless `image_generator__keep` keeps it:
-keep an image {{username}} wants to keep or one you will edit again.
+before you edit an earlier image or make a variation of one. `image_generator__look`
+shows you images by their short ids, or every image of a batch, as many as you need in
+one call. `image_generator__list_presets` lists the presets, or with `kind` lora or model
+what a preset can use. What you make is cleared after the number of days set in Settings
+unless `image_generator__keep` keeps it: keep an image {{username}} wants to keep or one
+you will edit again.
 
 When to use: {{username}} asks for a picture or a change to a picture, or a picture
-shows a thing better than words. When not: to look at a photo. These tools make and
-change images; they do not describe them.
+shows a thing better than words. When not: to look at a picture from your box, a page or
+Documents. `image_generator__look` shows only images you made, ones {{username}}
+attached to this conversation and your portrait.
 
 An edit starts from an image you made, in any conversation, one {{username}}
 attached to this conversation, or someone's portrait (`portrait:<id>`, the id or name).
@@ -75,8 +78,8 @@ character):
   row: chained edits soften the details.
 - A new seed for every new scene; reuse a seed only to tune one prompt.
 
-After an image: say in one or two sentences what you asked for or the mood. You do not
-see the pixels, so never describe details as if you looked at it.
+After an image: say in one or two sentences what you asked for or the mood. Describe
+details only of a picture you looked at with `image_generator__look`.
 
 Your prompt reaches the model as you wrote it: nothing is swapped, cut or added, but
 the first trigger word of each LoRA you give, in front. An item that does not fit its

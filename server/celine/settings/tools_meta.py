@@ -344,6 +344,10 @@ TOOLS: dict[str, dict[str, str]] = {
                                      "summary": "Lists the images in the chat "
                                                 "with the prompt, preset, size and seed "
                                                 "of each one {{name}} made."},
+    "image_generator__look": {"label": "Image generation: look at images",
+                              "summary": "Shows {{name}} images {{name}} made and ones you "
+                                         "attached to the chat, or their descriptions when "
+                                         "the model cannot see images."},
     "image_generator__list_presets": {"label": "Image generation: list presets",
                                       "summary": "Lists the presets, or the models and "
                                                  "LoRAs a preset can use with what each "
