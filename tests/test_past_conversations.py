@@ -115,7 +115,7 @@ async def test_a_read_back_marks_where_a_result_took_an_image(store):
     skill = PastConversations(cfg)
     a = await conversations.create(store, "Looks")
     here = await conversations.create(store)
-    shot = '{"see": true, "shot": {"id": "f1", "sha256": "x"}}'
+    shot = '{"see": [{"id": "f1", "sha256": "x"}], "shot": {"id": "f1", "sha256": "x"}}'
 
     def chat(c):
         m = tree.append(c, store, a, None, "user", "look at it", "user")

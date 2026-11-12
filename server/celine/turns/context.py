@@ -294,7 +294,7 @@ def _kept(call: dict, policy: Policy) -> bool:
 def _agable(call: dict, policy: Policy, counter) -> bool:
     if _kept(call, policy):
         return False
-    if call.get("attachments") or (call.get("display") or {}).get("shot"):
+    if call.get("attachments") or (call.get("display") or {}).get("see"):
         return True                     # an image goes with its result
     return counter.estimate(call.get("result") or "", "tool") >= policy.never_age_below
 
@@ -465,24 +465,26 @@ def calls_wire(cfg, it: _Item, guarded: bool, plan: _Plan | None = None) -> list
         images: list[dict] = []
         if stubbed:
             res = compact.stub(c["name"], c["arguments"], c["result"], plan.cited)
-        elif c.get("attachments"):
-            # the result's files (shell__look): their notes stay in the tool
-            # message, the image parts go below
-            rendered = attachments.render(cfg, [
-                {"role": "tool", "content": res,
-                 "attachments": c["attachments"]}])[0]["content"]
-            if isinstance(rendered, list):
-                res, images = rendered[0]["text"], rendered[1:]
-            else:
-                res = rendered
-        # a result meant to be seen (browser__look's screen, display "see")
-        shown = (c.get("display") or {}) if not stubbed else {}
-        shot = shown.get("shot") if shown.get("see") else None
-        if shot:
-            images.append({"type": attachments.IMAGE, "attachment": {
-                **{k: shot[k] for k in ("id", "filename", "sha256", "media_type")},
-                "size": attachments.image_size_of(
-                    attachments.blob_path(cfg, shot["sha256"]))}})
+        else:
+            if c.get("attachments"):
+                # the result's files (shell__look): their notes stay in the tool
+                # message, the image parts go below
+                rendered = attachments.render(cfg, [
+                    {"role": "tool", "content": res,
+                     "attachments": c["attachments"]}])[0]["content"]
+                if isinstance(rendered, list):
+                    res, images = rendered[0]["text"], rendered[1:]
+                else:
+                    res = rendered
+            # the pictures its display names for the model, in order (display "see":
+            # browser__look's screen, the images image_generator__look shows); a file
+            # gone since (a cleared image) goes as the line of a missing image
+            for p in (c.get("display") or {}).get("see") or ():
+                path = attachments.blob_path(cfg, p["sha256"])
+                if path.exists():
+                    images.append(attachments.image_part(p, path))
+                else:
+                    res += "\n" + attachments.gone(p["filename"])
         if images:
             res += "\n" + ("[the image follows]" if len(images) == 1
                            else "[the images follow]")
@@ -493,9 +495,14 @@ def calls_wire(cfg, it: _Item, guarded: bool, plan: _Plan | None = None) -> list
         # result is aged away
         if images:
             screens.append({"role": "user", "content": [
-                {"type": "text", "text": f"[the screen from {c['name']}]"}, *images],
+                {"type": "text", "text": pictures_from(c["name"], len(images))}, *images],
                 ORIGIN: origin(it.cid, turn=it.turn, call=c["id"], note="screen")})
     return out + screens
+
+
+def pictures_from(tool: str, n: int) -> str:
+    """The line before the pictures of a result (turns/legend.py names it)."""
+    return f"[the {'image' if n == 1 else 'images'} from {tool}]"
 
 
 async def step_wire(store, cfg, cid: str, mid: str) -> list[dict]:

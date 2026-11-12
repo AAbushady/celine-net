@@ -24,7 +24,7 @@ EXPECTED_TABLES = {
 }
 LOG_TABLES = {"events", "global_events", "raw_responses", "requests", "terminal_commands"}
 NOTEBOOK_TABLES = {"notebook_index", "notebook_fts"}
-LATEST = 34
+LATEST = 35
 
 
 def _version(db) -> int:
@@ -800,3 +800,41 @@ def test_0033_gives_what_a_batch_made_its_life_from_when_it_was_made_once(tmp_pa
     assert c.execute("SELECT life, life_at FROM attachments WHERE id = 'img'").fetchone() == \
         ("kept", "then"), "run again, it writes nothing new"
     c.close()
+
+
+def test_0035_names_a_seen_browser_shot_in_the_list_of_pictures_its_result_takes(
+        tmp_path, monkeypatch):
+    """A browser screen meant to be seen (`see: true` beside its shot) names its shot in
+    `see`; a shot only shown to the user and every other display stay as they were."""
+    import json
+    d = tmp_path / "migrations"
+    d.mkdir()
+    for f in sorted(MIGRATIONS_DIR.iterdir()):
+        if f.suffix in (".sql", ".py") and f.name < "0035":
+            shutil.copy(f, d)
+    monkeypatch.setattr(m, "MIGRATIONS_DIR", d)
+    db = tmp_path / "celine.db"
+    assert migrate(db) == 34
+    shot = {"id": "a1", "sha256": "s1", "filename": "g-plain.png", "media_type": "image/png",
+            "bytes": 5, "width": 1440, "height": 900}
+    displays = {"seen": {"tab": "g", "shot": shot, "see": True},
+                "asked": {"tab": "g", "shot": shot, "question": "What is the score?"},
+                "batch": {"id": "b1", "items": []}, "none": None}
+    c = sqlite3.connect(db)
+    c.execute("INSERT INTO conversations(id, kind, created_at, updated_at) "
+              "VALUES('c', 'chat', 'x', 'x')")
+    c.execute("INSERT INTO messages(id, conversation_id, role, created_at) "
+              "VALUES('m', 'c', 'assistant', 'x')")
+    for cid, display in displays.items():
+        c.execute("INSERT INTO tool_calls(id, message_id, name, arguments, state, display) "
+                  "VALUES(?, 'm', 'browser__look', '{}', 'ok', ?)",
+                  (cid, json.dumps(display) if display else None))
+    c.commit()
+    c.close()
+    shutil.copy(MIGRATIONS_DIR / "0035_seen_pictures.sql", d)
+    assert migrate(db) == 35
+    c = sqlite3.connect(db)
+    shown = {r[0]: json.loads(r[1]) if r[1] else None
+             for r in c.execute("SELECT id, display FROM tool_calls")}
+    c.close()
+    assert shown == {**displays, "seen": {"tab": "g", "shot": shot, "see": [shot]}}

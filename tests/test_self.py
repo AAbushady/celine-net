@@ -241,14 +241,14 @@ async def test_the_legend_names_the_marks_the_code_writes(cfg):
     from celine.skills import mind
     from celine.skills.notebook import NOTES_HEAD
     from celine.turns import compact, legend
-    from celine.turns.context import time_line
+    from celine.turns.context import pictures_from, time_line
     text = legend.legend(cfg, guarded=False)
     stamp = time_line({"created_at": T0}, ZoneInfo("UTC")).strip()
     assert stamp == "[Thu 22 Oct 18:00]"
     iv = {"kind": "report", "from": "agent:x", "from_name": "scout", "id": 4, "data": {}}
     from celine.skills.meta import CALL_HEAD
-    for mark in (mind.HEAD, recall.HEAD, NOTES_HEAD, compact.STUB_HEAD, "[cut: ", "[the screen from ", CALL_HEAD,
-                 "[Report from "):
+    for mark in (mind.HEAD, recall.HEAD, NOTES_HEAD, compact.STUB_HEAD, "[cut: ", CALL_HEAD,
+                 "[Report from ", pictures_from("...", 1), pictures_from("...", 2)):
         assert mark.rstrip() in text, mark
     assert header(iv, "Joe", None) == "[Report from scout (#4)]\n"
     assert "<outside>" not in text and "<outside>" in legend.legend(cfg, guarded=True)

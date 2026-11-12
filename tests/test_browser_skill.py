@@ -277,7 +277,8 @@ async def test_a_screen_with_a_question_says_no_other_model_was_asked(monkeypatc
     ctx = SimpleNamespace(max_output_tokens=None, conversation_id="", turn_id="")
     b = Browser(SimpleNamespace(user="Joe", settings=None))
     out = await b.look(ctx, what="screen", tab="g", question="What is the score?")
-    assert out.display["see"] and "Your question went to no other model" in out.content
+    assert out.display["see"] == [out.display["shot"]], "the shot goes to its model"
+    assert "Your question went to no other model" in out.content
     out = await b.look(ctx, what="screen", tab="g")
     assert out.display["see"] and "Your question" not in out.content
 

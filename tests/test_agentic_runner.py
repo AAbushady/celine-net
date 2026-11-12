@@ -116,7 +116,7 @@ class T:
         row = await attachments.save_generated(cfg_of(ctx), ctx.store, PNG, "s.png", "image/png",
                                                ctx.tool_call_id, in_message=False)
         shot = {k: row[k] for k in ("id", "sha256", "filename", "media_type", "bytes")}
-        return ToolResult(content="the screen", display={"see": True, "shot": shot})
+        return ToolResult(content="the screen", display={"see": [shot], "shot": shot})
 
     @tool()
     async def files(self, ctx) -> ToolResult:
@@ -217,7 +217,7 @@ async def test_a_result_with_an_image_shows_it_at_the_next_step_of_the_same_turn
         at = roles.index("tool")
         assert roles[at:at + 3] == ["tool", "tool", "user"], roles
         assert request[at]["content"] == f"{text}\n[the image follows]"
-        assert request[at + 2]["content"][0]["text"] == f"[the screen from t__{name}]"
+        assert request[at + 2]["content"][0]["text"] == f"[the image from t__{name}]"
         assert [p["type"] for p in request[at + 2]["content"]] == ["text", attachments.IMAGE]
     assert len(parts(backend.calls[2])) == 2, "one image, once"
 

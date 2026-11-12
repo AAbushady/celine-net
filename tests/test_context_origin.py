@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from chat_fixtures import user_says
+from chat_fixtures import PNG, user_says
 from compaction_fixtures import Model, archive_text, seed_exchange
 
 from celine.boot import load
@@ -87,13 +87,18 @@ def _ok(messages, cid) -> None:
 async def test_a_screen_follows_every_result_of_its_reply(store, cfg):
     """A browser__look screen is a user message: it comes after the reply's last result,
     never between two results of one reply."""
+    import hashlib
+    from celine import attachments
     cid = await conversations.create(store)
     _, mid = await seed_exchange(store, cid, "look", [("browser__look", "the page"),
                                                       ("arch__find", "found")])
-    shot = {"id": "s1", "filename": "s.png", "sha256": "a" * 64, "media_type": "image/png"}
+    sha = hashlib.sha256(PNG).hexdigest()
+    attachments.blob_path(cfg, sha).parent.mkdir(parents=True, exist_ok=True)
+    attachments.blob_path(cfg, sha).write_bytes(PNG)
+    shot = {"id": "s1", "filename": "s.png", "sha256": sha, "media_type": "image/png"}
     await store.write(lambda c: c.execute(
         "UPDATE tool_calls SET display=? WHERE message_id=? AND name='browser__look'",
-        (json.dumps({"see": True, "shot": shot}), mid)))
+        (json.dumps({"see": [shot], "shot": shot}), mid)))
     await user_says(store, cid, "and now?")
     built = await context.build(store, cfg, Model(window=50_000), cid, system="S",
                                 tools=[])

@@ -196,13 +196,11 @@ def render(cfg, history: list[dict]) -> list[dict]:
             where = f", in your box at {shellbox.home_short(box)}" if box else ""
             if a["kind"] == "image":
                 if path.exists():
-                    parts.append({"type": IMAGE, "attachment": {
-                        **{k: a[k] for k in ("id", "filename", "sha256", "media_type")},
-                        "size": image_size_of(path)}})
+                    parts.append(image_part(a, path))
                     if box:
                         notes.append(f"[image {a['filename']}{where}]")
                 else:
-                    notes.append(f"[image {a['filename']}: the file is no longer stored]")
+                    notes.append(gone(a["filename"]))
             elif a["kind"] == "text" and a["bytes"] <= inline_limit and path.exists():
                 notes.append(f"[attachment {a['filename']}{where}]\n"
                              f"{path.read_text(errors='replace')}\n[end of {a['filename']}]")
@@ -216,6 +214,19 @@ def render(cfg, history: list[dict]) -> list[dict]:
         else:
             out.append({"role": m["role"], "content": text})
     return out
+
+
+def image_part(a: dict, path: Path) -> dict:
+    """Image `a` (id, filename, sha256, media_type), stored at `path`, as an `IMAGE` part,
+    with its size for the token estimate."""
+    return {"type": IMAGE, "attachment": {
+        **{k: a[k] for k in ("id", "filename", "sha256", "media_type")},
+        "size": image_size_of(path)}}
+
+
+def gone(filename: str) -> str:
+    """The line a model gets for an image whose file is no longer stored (a cleared one)."""
+    return f"[image {filename}: the file is no longer stored]"
 
 
 def label(settings, ref: str | None) -> str:
@@ -313,11 +324,17 @@ class Images:
         return out
 
     async def _image(self, part: dict) -> dict:
-        """The image at most WIRE_EDGE px on its long edge (the copy `resized` keeps)."""
+        """The image at most WIRE_EDGE px on its long edge (the copy `resized` keeps); one
+        whose file went after the request was built (cleared meanwhile) as the line
+        `render` gives a missing image."""
         a = part["attachment"]
         path, media = await anyio.to_thread.run_sync(for_model, self.cfg, a["sha256"],
                                                      a["media_type"])
-        b64 = base64.b64encode(path.read_bytes()).decode()
+        try:
+            data = path.read_bytes()
+        except OSError:
+            return {"type": "text", "text": gone(a["filename"])}
+        b64 = base64.b64encode(data).decode()
         return {"type": "image_url", "image_url": {"url": f"data:{media};base64,{b64}"}}
 
     async def _described(self, a: dict, model: str) -> str:
@@ -330,6 +347,9 @@ class Images:
             return _line(a["filename"], row["described_by"], row["description"])
         try:
             data = blob_path(self.cfg, a["sha256"]).read_bytes()
+        except FileNotFoundError:
+            return gone(a["filename"])
+        try:
             out = await Engine(self.cfg, llm=self.llm).describe(data, a["media_type"],
                                                                 lane=self.lane)
         except (Waiting, CaptionError, OSError) as e:

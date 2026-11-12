@@ -22,10 +22,10 @@ from .. import attachments as files
 
 def _pictures(c: sqlite3.Connection, display: str | None, result_id: str | None) -> int:
     """How many images a stored result took to the model with it (turns/context.py
-    calls_wire): its image files and a screen meant to be seen. The stored text holds
-    none of them."""
+    calls_wire): its image files and the pictures its display names (`see`). The stored
+    text holds none of them."""
     shown = json.loads(display) if display else {}
-    n = int(bool(shown.get("see") and shown.get("shot")))
+    n = len(shown.get("see") or ())
     if result_id:
         n += sum(1 for f in files.of_message(c, result_id)
                  if str(f.get("media_type") or "").startswith("image/"))

@@ -1508,7 +1508,11 @@ holds the call; a file a batch makes is also the batch's (`batch_id`). A picture
 keeps for the user alone is an attachment of the call (`tool_call_id`, no `message_id`).
 An image a tool gives it with its result (`ToolResult.images`) is linked to the call's
 `role=tool` row by `finish_tool_call`, and `turns/context.py` renders it through
-`attachments.render`; an aged result goes as its stub, without the image.
+`attachments.render`. A result's display can also name pictures that are stored already
+(`see`, a list of `{id, filename, sha256, media_type}`): browser__look's screen.
+`calls_wire` sends them after the result, in that order, with no new row; a file gone
+since goes as the line of a missing image. An aged result goes as its stub, without its
+images.
 
 Startup GC (`attachments.gc`, its rule in the module docstring): a blob stays while an
 attachment or its portrait points at it; a draft stays until it is sent, removed or 30

@@ -765,7 +765,7 @@ class Browser:
             if kind == "marks":
                 lines += res.get("lines") or []
             return ToolResult(content="\n".join(lines + self._notes(res)),
-                              display={**display, "see": True})
+                              display={**display, "see": [display["shot"]]})
         turn = {"conversation_id": ctx.conversation_id, "turn_id": ctx.turn_id}
         try:
             got = await vision.ask(self.llm, png, question, answer_as, **turn)
@@ -823,7 +823,7 @@ class Browser:
                     media_type: str) -> dict:
         """A shot of the view, kept with the call alone: its row in the chat shows it, and
         the context builder hands it to it when its model sees images and the result
-        says so (display "see"). Without a call (the user's console), a draft the next
+        names it in display "see". Without a call (the user's console), a draft the next
         cleanup removes."""
         row = await attachments.save_generated(self.cfg, ctx.store, image, filename,
                                                media_type, ctx.tool_call_id or None,
