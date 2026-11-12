@@ -304,5 +304,5 @@ async def propose(app, ctx, kind: str, *, label: str, workflow: Any,
     else:
         said = (f"Added the preset {saved.label} (`{saved.id}`) at the end of the {where} list; "
                 f"music_generator__generate uses the first preset of that list, which "
-                f"{user} orders in Settings, Images & Music.")
+                f"{user} orders in Settings, Media.")
     return said, False, {"preset": saved.id}

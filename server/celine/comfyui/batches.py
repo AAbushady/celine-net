@@ -552,7 +552,7 @@ class Batches:
                 "video": "video"}[task]
         if not chain:
             raise ImageError(f"No preset for {what} is set. {self.app.cfg.user} chooses "
-                             f"presets in Settings, Images & Music.")
+                             f"presets in Settings, Media.")
         if not name:
             if not refs:
                 raise ImageError(" ".join(dict.fromkeys(
@@ -807,7 +807,7 @@ class Batches:
         p = presets_mod.of(kind).get(item["preset"])
         if p is None:
             raise ImageError(f"The preset {item['preset']} is gone from Settings, "
-                             f"Images & Music.")
+                             f"Media.")
         return p
 
     async def _image(self, b: dict, item: dict, servers: "_Servers", note) -> None:

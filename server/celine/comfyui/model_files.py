@@ -76,8 +76,8 @@ LORA_TYPES = {"lora", "locon", "dora"}           # Civitai's types a LoRA loader
 MODEL_TYPES = {"checkpoint"}
 KEY_SAID = {                # the helper's refusals about the Civitai key, by their code
     "civitai_key_missing": "This file needs a Civitai key, which {user} sets in Settings, "
-                           "Images & Music.",
-    "civitai_key_refused": "Civitai refused the key set in Settings, Images & Music for this "
+                           "Media.",
+    "civitai_key_refused": "Civitai refused the key set in Settings, Media for this "
                            "file."}
 EDGE = 1024                # the longest side of an example picture asked for
 LOOK_MAX = 4                # pictures one look shows at most

@@ -85,7 +85,7 @@ def kinds_view() -> list[dict[str, Any]]:
 # the roles an empty one of fills itself from a new provider's models: the first model
 # with the role's caps, every preset that fits for the preset roles. Settings shows it,
 # change it there. A cloud model provider fills none: the user picks its models in the
-# role's list. ComfyUI (Images & Music, no Cloud switch) fills its preset roles wherever
+# role's list. ComfyUI (Media, no Cloud switch) fills its preset roles wherever
 # it runs.
 AUTO_ROLES = ("chat", "small", "embeddings", "reranker", "vision",
               "image_generation", "music_generation", "video_generation", "transcription",

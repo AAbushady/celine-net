@@ -1,4 +1,4 @@
-/* The model files the agent asked for, on Images & Music while Images is on and its ComfyUI
+/* The model files the agent asked for, on Media while Images is on and its ComfyUI
    starts on demand (server/celine/comfyui/model_files.py, GET /api/model-files): a row per
    file that came by request (its hub's title, the preset it was asked for, where it came
    from, its size, the day it came) with Remove behind a confirm, and a row per request

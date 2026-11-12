@@ -1,5 +1,5 @@
 """The one save of a preset the user adds from a workflow with placeholders: Settings,
-Images & Music's Upload workflow (api/presets.py) and a preset the agent proposed once the
+Media's Upload workflow (api/presets.py) and a preset the agent proposed once the
 user approved it (comfyui/proposals.py)."""
 from __future__ import annotations
 

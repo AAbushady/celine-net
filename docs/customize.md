@@ -210,7 +210,7 @@ VAE file names inside the workflow must exist on your ComfyUI server under the s
 names, or the preset fails when it uses it. A preset with a problem is left out and
 listed on Settings, General.
 
-Settings, Images & Music edits every preset (an edit is saved in
+Settings, Media edits every preset (an edit is saved in
 `var/settings/image_presets/` or `music_presets/`; Reset to defaults goes back) and takes
 your own workflow: export it with Export (API), put a placeholder as the whole value of
 each input the app fills, and upload it. The placeholders are `{{prompt}}`, `{{seed}}`,
@@ -239,9 +239,9 @@ card, which shows the file, where it comes from (Civitai's page opens from the c
 size and licence, where it is saved and the free space after it; nothing comes before
 you approve. The file goes into the preset's first catalog folder (Models or LoRAs in its
 settings), and the agent hears when it is ready. Civitai gives some files only to a
-signed-in account: set your Civitai API key on Settings, Images & Music (Civitai key). The
+signed-in account: set your Civitai API key on Settings, Media (Civitai key). The
 app hands it to the helper, which asks Civitai once whether it takes the key, keeps it and
-sends it to Civitai's own hosts only; the app keeps no copy. Settings, Images & Music lists every file that came this way, with
+sends it to Civitai's own hosts only; the app keeps no copy. Settings, Media lists every file that came this way, with
 Remove.
 
 The agent can propose a preset of its own the same way: it reads a preset's workflow,

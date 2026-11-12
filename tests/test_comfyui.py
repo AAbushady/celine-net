@@ -687,7 +687,7 @@ def test_moss_image_fills_comfyuis_own_moss_nodes():
     assert g["2"]["inputs"]["type"] == "moss_image"
 
 
-# ---- the user's presets (Settings, Images & Music) -------------------------------------
+# ---- the user's presets (Settings, Media) -------------------------------------
 
 UPLOAD = {
     "1": {"class_type": "CLIPTextEncode", "inputs": {"text": "{{prompt}}", "clip": ["4", 1]}},

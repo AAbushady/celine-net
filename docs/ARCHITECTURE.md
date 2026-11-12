@@ -1541,7 +1541,7 @@ music). One code path for both (`batches.Batches`).
   `<id>.json` is the ComfyUI workflow in API format, whose values are the defaults.
   `load(kind)` checks each preset; every problem is a sentence in the configuration
   banner and a preset with one is left out. The user's presets are pairs in
-  `var/settings/image_presets/` and `music_presets/` (Settings, Images & Music): an edit
+  `var/settings/image_presets/` and `music_presets/` (Settings, Media): an edit
   of a shipped one under its id (Reset to defaults deletes it) or an upload of their own.
   An upload is a workflow in API format whose filled inputs hold placeholders
   (`"{{prompt}}"`, `"{{width:1024}}"` with a default); the placeholders become the
@@ -1669,7 +1669,7 @@ music). One code path for both (`batches.Batches`).
     follows each request still downloading again, hands one approved and not yet handed
     over again, and settles one whose card the restart closed as not answered, with its
     notice.
-  - Settings, Images & Music lists what came by request (`GET /api/model-files`: the
+  - Settings, Media lists what came by request (`GET /api/model-files`: the
     helper's `GET /models` with each file's request, and the requests on their way; the
     free space) and removes one (`DELETE /api/model-files/{path}`, the helper's `DELETE
     /models/files/<path>`); the provider's key stays on the server.

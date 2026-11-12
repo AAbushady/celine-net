@@ -525,7 +525,7 @@ selecting),
 **Do:** a click opens the Viewer, growing from it.
 
 ### Player
-**When:** a track that plays while you look on (Recent on Images & Music).
+**When:** a track that plays while you look on (Recent on Media).
 **Props:** `src`, `title`, `detail`, `onClose`. Play and Pause, its name, how far, close.
 
 ### Screen

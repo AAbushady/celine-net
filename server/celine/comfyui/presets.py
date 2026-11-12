@@ -2,7 +2,7 @@
 
 One folder per kind: config/image_presets/ (images) and config/music_presets/ (music)
 ship them; var/settings/image_presets/ and music_presets/ hold the user's (Settings,
-Images & Music): an edited shipped preset under its own id (Reset to defaults deletes it,
+Media): an edited shipped preset under its own id (Reset to defaults deletes it,
 the shipped one is back), and the user's own uploads. A preset is a pair of files with
 one name: `<id>.toml` describes it for people and for Celine, `<id>.json` is the ComfyUI
 workflow in API format (ComfyUI's "Export (API)"). The workflow's own values are the
@@ -700,7 +700,7 @@ def with_placeholders(p: Preset) -> dict[str, Any]:
     return graph
 
 
-# ---- the editor (Settings, Images & Music) ----------------------------------------------
+# ---- the editor (Settings, Media) ----------------------------------------------
 
 TEXTS = {"label": "Name", "family": "Family", "good_at": "Good at",
          "prompting": "Prompting", "example": "Example"}

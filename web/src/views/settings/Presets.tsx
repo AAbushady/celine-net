@@ -1,4 +1,4 @@
-/* Images, music and video on Images & Music (Media.tsx): one card per preset (comfyui/presets.py,
+/* Images, music and video on Media (Media.tsx): one card per preset (comfyui/presets.py,
    GET /api/generation-presets?kind=), shipped and the user's own. The presets it uses come
    first, in its order, which up and down change (the Image generation or Music generation
    role; the first of a task is its default); its switch takes a preset in or out. A card

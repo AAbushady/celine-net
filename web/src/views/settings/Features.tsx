@@ -96,7 +96,7 @@ export function FeatureTiers({ view, disabled = false, about = false, free = fal
                       label={<>{c.label}{about && <span className="feature-about">{c.about}</span>}</>} />
             </div>
           )) : view.catalog.filter(f => f.tier === t.id).map(f => {
-            // a feature with a page of its own links to it (Guard; Images & Music and a
+            // a feature with a page of its own links to it (Guard; Media and a
             // plugin's form page while on); a plugin's form lives only on its page
             const on = view.features[f.id] !== false
             const page = f.id === 'guard' ? 'guard' : MEDIA.has(f.id) && on ? 'media' : f.form && on ? f.form : null
@@ -109,7 +109,7 @@ export function FeatureTiers({ view, disabled = false, about = false, free = fal
                                  waiting={waits(view, f)} disabled={disabled} onChange={v => onChange(flip(view, f.id, v))} />
                   {onOpen && page && (
                     <Button variant="ghost" size="sm" icon={ArrowUpRight} href={format({ section: 'settings', page })}>
-                      {page === 'guard' ? 'Open Guard' : page === 'media' ? 'Open Images & Music' : `Open ${f.label}`}
+                      {page === 'guard' ? 'Open Guard' : page === 'media' ? 'Open Media' : `Open ${f.label}`}
                     </Button>
                   )}
                   {Form && (

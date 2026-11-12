@@ -1,4 +1,4 @@
-"""The user's presets (Settings, Images & Music; comfyui/presets.py), changed over HTTP:
+"""The user's presets (Settings, Media; comfyui/presets.py), changed over HTTP:
 
 - POST /api/generation-presets {kind, label, workflow (the file's text)}: the user's own
   preset from a workflow with placeholders (comfyui/adding.py, which an approved proposal of

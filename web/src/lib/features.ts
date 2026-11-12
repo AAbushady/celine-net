@@ -1,6 +1,6 @@
 /* a feature's switch as the server says it (GET /api/status features), for parts that
    show or hide with it: the guard's switch in a chat's Tools, the Intercom Guard tab,
-   Images & Music */
+   Media */
 import { api } from './api'
 import { useResource } from './useResource'
 

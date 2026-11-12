@@ -318,8 +318,8 @@ async def _notice_for(app, cid: str) -> str:
      "example.com is neither Civitai nor Hugging Face: give a file value, an address on "
      "civitai.red, civitai.com or huggingface.co, or owner/name/path for Hugging Face."),
     ({"file": "civitai:666"}, "This file needs a Civitai key, which sam sets in Settings, "
-                              "Images & Music."),
-    ({"file": "civitai:667"}, "Civitai refused the key set in Settings, Images & Music for "
+                              "Media."),
+    ({"file": "civitai:667"}, "Civitai refused the key set in Settings, Media for "
                               "this file."),
     ({"file": "civitai:555"}, "Civitai lists this file as VAE: only a LoRA or a checkpoint "
                               "is taken."),
@@ -447,8 +447,8 @@ async def test_a_download_that_failed_says_the_helpers_sentence(hub):
 
 @pytest.mark.parametrize("code, said", [
     ("civitai_key_missing", "This file needs a Civitai key, which sam sets in Settings, "
-                            "Images & Music."),
-    ("civitai_key_refused", "Civitai refused the key set in Settings, Images & Music for "
+                            "Media."),
+    ("civitai_key_refused", "Civitai refused the key set in Settings, Media for "
                             "this file.")])
 async def test_a_download_that_failed_on_the_civitai_key_says_where_the_key_is_set(
         hub, code, said):

@@ -353,7 +353,7 @@ async def test_a_comfyui_at_a_public_address_still_fills_its_preset_roles(api):
     r = await api.put("/api/providers/comfy", json={
         "kind": "comfyui", "label": "ComfyUI", "base_url": "https://comfy.example.com"})
     assert r.status_code == 200 and api.cfg.settings.chain("image_generation"), \
-        "Images & Music has no Cloud switch: its presets fill the empty roles"
+        "Media has no Cloud switch: its presets fill the empty roles"
 
 
 async def test_storing_a_key_asks_its_provider_again(api):

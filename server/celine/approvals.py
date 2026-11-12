@@ -105,9 +105,9 @@ HELP = {
               "lists asks only while Ask before cloud models from your lists is on; turn "
               "Cloud off for a provider you run yourself."),
     "model_file": ("A model file comes from outside your network onto the models disk, so "
-                   "each one waits for you. You remove it in Settings, Images & Music."),
+                   "each one waits for you. You remove it in Settings, Media."),
     "preset": ("A preset {{name}} proposes runs on your ComfyUI, so it is saved only once you "
-               "approve it. You edit or remove it in Settings, Images & Music."),
+               "approve it. You edit or remove it in Settings, Media."),
 }
 
 SHELL = "put the password of {entry} into a file in the shellbox"

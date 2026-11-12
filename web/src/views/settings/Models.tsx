@@ -75,10 +75,10 @@ function ModelsHome({ providers, roles, onChanged }: {
   onChanged: () => void
 }) {
   const [adding, setAdding] = useState(false)
-  // ComfyUI is on Images & Music
+  // ComfyUI is on Media
   const list = (providers.data?.providers ?? []).filter(p => p.provider.kind !== 'comfyui')
   const r = roles.data
-  // every role but images, music and video (Images & Music), the chat model first
+  // every role but images, music and video (Media), the chat model first
   const shown = Object.entries(r ?? {}).filter(([k]) => !Object.values(ROLE).includes(k))
     .sort(([a], [b]) => Number(b === 'chat') - Number(a === 'chat'))
   return (

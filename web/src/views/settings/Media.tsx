@@ -1,4 +1,4 @@
-/* Images & Music (/settings/media), listed while the Images, Music or Video feature is on:
+/* Media (/settings/media), listed while the Images, Music or Video feature is on:
    the ComfyUI server (its Address, saved when the field is left; its key; its options,
    each saved on change; Check provider; Remove this provider), then the presets of each
    kind that is on (Presets.tsx), and while Images is on and the ComfyUI starts on demand,
@@ -38,7 +38,7 @@ export function Media() {
   const problem = comfy?.state.error
 
   return (
-    <Page title="Images & Music" detail={comfy && <ReachWord p={comfy} />}
+    <Page title="Media" detail={comfy && <ReachWord p={comfy} />}
           actions={comfy && <Button icon={RefreshCw} loading={check.busy} disabled={!online} onClick={() => void check.run()}>Check provider</Button>}
           more={comfy ? [{ label: 'Remove this provider', icon: Trash2, danger: true, disabled: comfy.used_by.length > 0 || !online,
                            title: comfy.used_by.length ? `Used for ${comfy.used_by.join(', ')}` : undefined, onSelect: () => setRemoving(true) }] : undefined}>

@@ -164,7 +164,7 @@ function CheckRow({ label = 'Check', busy, disabled, error, onClick }: {
   )
 }
 
-/* ── comfyui: one address, Images and Music share the draft; the saved ComfyUI provider's
+/* ── comfyui: one address, Images, Music and Video share the draft; the saved ComfyUI provider's
    address to start with; Check saves it (PUT that provider, a new `comfyui` when none is
    saved) and asks the probe. Music with an address typed on Images: one muted line ── */
 type Comfy = { base_url: string }
