@@ -12,10 +12,10 @@ it. It is also saved in the music folder of the data folder. What you make is cl
 after the number of days set in Settings unless `music_generator__keep` keeps it.
 
 The GPU is shared. While it is in use, a batch waits in line until it is free, as long
-as that takes, and its slots say "Waiting for the GPU" and why. A batch that had to
-wait reports back once: when it is done, a message from the app says what was made and
-how long it waited. Nothing else reports back to you, not when a track is done and not
-when one fails, so answer now and do not poll `music_generator__read` for it. It shows
+as that takes, and its slots say "Waiting for the GPU" and why. A batch reports back
+once: when it is done, a message from the app says what was made and, when it had to
+wait for the GPU, how long. That message comes by itself, so answer now and do not poll
+`music_generator__read` for it. It shows
 a batch at any time, when there is a reason to look; `music_generator__stop` stops one;
 what was made stays. With `wait=true` your turn waits until the batch is done, as long
 as your turn's time allows; past it, the batch goes on. A batch that still waits for

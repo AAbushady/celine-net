@@ -11,11 +11,11 @@ are made one after the other, and each appears in this conversation when it is d
 where {{username}} sees it. You see one when you look at it with `image_generator__look`.
 
 The GPU is shared. While it is in use, a batch waits in line until it is free, as long
-as that takes, and its slots say "Waiting for the GPU" and why. A batch that had to
-wait reports back once: when it is done, a message from the app says what was made and
-how long it waited. Nothing else reports back to you by itself, not when an image is
-done and not when one fails, so answer now and do not poll `image_generator__read` for
-it. It shows a batch at any time, when there is a reason to look: each slot waiting,
+as that takes, and its slots say "Waiting for the GPU" and why. A batch reports back
+once: when it is done, a message from the app says what was made (each image's short
+id, for `image_generator__look`) and, when it had to wait for the GPU, how long. That
+message comes by itself, so answer now and do not poll `image_generator__read` for it.
+It shows a batch at any time, when there is a reason to look: each slot waiting,
 being made, made (with the image's short id), failed (with why) or stopped.
 `image_generator__stop` stops one; what was made stays. With `wait=true` your turn
 waits until the batch is done, as long as your turn's time allows; past it, the batch

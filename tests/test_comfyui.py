@@ -1150,18 +1150,21 @@ async def test_wait_true_returns_a_batch_that_waits_and_the_app_says_when_it_is_
                     f"{b['items'][0]['seed']}, 0 s.")
 
 
-async def test_a_call_hears_once_of_a_batch_that_waited_and_never_of_one_that_did_not(
-        od, store):
+async def test_a_call_hears_once_when_its_batch_is_done_and_how_long_it_waited(od, store):
+    """A batch that did not wait for the GPU said nothing when it was done, so the agent
+    never heard its pictures were ready."""
     skill = MusicGenerator(od.cfg)
     skill.app = od
     cid = await conversations.create(store)
     ctx, _ = await _call(store, cid, "m1", "music_generator__generate")
     od.helper.states = ["starting", "ready"]          # ComfyUI comes up: no wait for the GPU
     r = await skill.generate(ctx, items=[{"style": "ambient"}])
-    assert "The batch reports back only if it has to wait for the GPU" in r.content
-    for b in await batches_mod.list_batches(store, "music", conversation=cid):
-        await od.batches.wait(b["id"])
-    assert await _notices(store) == []
+    assert "When it is done, a message from the app says what was made." in r.content
+    [first] = await batches_mod.list_batches(store, "music", conversation=cid)
+    await od.batches.wait(first["id"])
+    [(to, text)] = await _notices(store)
+    assert to == f"agent:{cid}" and text.startswith(
+        f"Batch {first['id'][:8]} is done: 1 of 1 made.\n1. track "), "no wait, none named"
 
     import math
     from types import SimpleNamespace
@@ -1177,6 +1180,7 @@ async def test_a_call_hears_once_of_a_batch_that_waited_and_never_of_one_that_di
     od.helper.states = ["ready"]
     await od.batches.wait(b["id"])
     assert 100.0 < turn_clock.deadline < math.inf
-    [(to, text)] = await _notices(store)
+    (to, text) = (await _notices(store))[-1]
+    assert len(await _notices(store)) == 2, "one notice each"
     assert to == f"agent:{cid}" and text.startswith(
         f"Batch {b['id'][:8]} waited 30 s for the GPU and is done: 1 of 1 made.\n1. track ")

@@ -94,8 +94,9 @@ class MusicGenerator(Generator):
         guide first: it has the style rules. The call returns at once with the batch id
         and one slot per track. The tracks are made one after the other, a few minutes
         each, and appear in this conversation as each is done; in a chat {{username}}
-        hears them there. A batch reports back only when it had to wait for the GPU:
-        one message from the app once it is done. music_generator__read shows a batch,
+        hears them there. When the batch is done, one message from the app says what
+        was made (none when wait=true already returned it done). music_generator__read
+        shows a batch,
         music_generator__stop stops one. What you make is cleared after the number of
         days set in Settings unless music_generator__keep keeps it. Returns: the batch
         id and each slot; with wait=true, the batch when it is done, or as it is when it

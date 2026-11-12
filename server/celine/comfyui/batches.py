@@ -31,10 +31,11 @@ renders the items that wait, one after the other:
    cleared after its days unless kept (life.py).
 4. At the end, also after a Stop, an error or a restart's cut: ComfyUI frees its models
    and memory (POST /free), then the leases are released.
-5. A batch of the agent's call that had to wait for the comfy helper's GPU and settled
-   after its call returned: its conversation gets one notice from the app, what was made
-   and how long it waited (`begin`'s `report`). It wakes the agent as a job's result
-   does. A batch that did not wait says nothing.
+5. A batch of the agent's call that settled after its call returned: its conversation
+   gets one notice from the app, what was made and, when it had to wait for the comfy
+   helper's GPU, how long it waited (`begin`'s `report`). It wakes the agent as a job's
+   result does. A batch its call still waited for, or one it stopped itself, says
+   nothing: its call or its stop said how it ended.
 
 """
 from __future__ import annotations
@@ -297,7 +298,7 @@ class Batches:
         self.gpu: dict[str, anyio.Event] = {}
         self.waited: dict[str, float] = {}      # a running batch -> its seconds of that wait
         self.awaited: set[str] = set()          # the batches whose call waits for them now
-        self.reports: dict[str, Callable[[dict, float], str]] = {}     # begin's `report`
+        self.reports: dict[str, Callable[[dict, float | None], str]] = {}  # begin's `report`
 
     # ---- create ----------------------------------------------------------------------
 
@@ -512,13 +513,14 @@ class Batches:
             await hit[1].wait()
 
     async def begin(self, b: dict, *, wait: bool, time_left: float | None,
-                    wrote=None, report: Callable[[dict, float], str] | None = None) -> dict:
+                    wrote=None, report: Callable[[dict, float | None], str] | None = None
+                    ) -> dict:
         """The agent's call's batch, started; with `wait`, waited for as long as its turn's
         time allows, ANSWER seconds kept to answer, until `wrote` is set (the user's
         message, ToolContext.user_wrote), and past GPU_TRY seconds only while it does not
         wait for the GPU (_made). `report(batch, seconds)`: the words of the notice its
-        conversation gets when the batch had to wait for the comfy helper's GPU and settles
-        after the call returned. -> the batch as it is then."""
+        conversation gets when the batch settles after the call returned (seconds: its wait
+        for the comfy helper's GPU, None when it had none). -> the batch as it is then."""
         from ..core.cancel import until_set
         if b["state"] != "running":
             return b
@@ -591,18 +593,17 @@ class Batches:
                     _settle(b)
                     await _save(store, b)
                 # a call still waiting for the batch gets it settled: no notice then
-                if report is not None and waited is not None and b is not None and \
-                        bid not in self.awaited:
+                if report is not None and b is not None and bid not in self.awaited:
                     await self._notice(b, report, waited)
                 ended.set()
                 self.gpu.pop(bid, None)
         return b
 
-    async def _notice(self, b: dict, report: Callable[[dict, float], str],
-                      waited: float) -> None:
+    async def _notice(self, b: dict, report: Callable[[dict, float | None], str],
+                      waited: float | None) -> None:
         """The notice from the app to the conversation of the agent's call whose batch
-        waited for the GPU (the module docstring, 5), with the batch as stored (the lives
-        of what it made)."""
+        settled after the call returned (the module docstring, 5), with the batch as
+        stored (the lives of what it made)."""
         try:
             b = await get(self.app.store, b["id"]) or b
             await self.app.intercom.send("system:app", f"agent:{b['conversation_id']}",

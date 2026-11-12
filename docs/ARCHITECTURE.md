@@ -1620,10 +1620,10 @@ music). One code path for both (`batches.Batches`).
   (`Batches.begin`), and answers at once with the batch id and its slots. The batch is no
   job. `wait=true` holds its turn for the end, as long as its time allows; a batch that
   still waits for the helper's GPU after `GPU_TRY` (20 s) comes back as it is, with a
-  last line that it is made when the GPU is free. A batch of the call that had to wait
-  for the helper's GPU and settles after the call returned brings its conversation one
-  notice from the app (`system:app`, kind `notice`, delivered and waking it as a job's
-  result does): what was made and how long it waited. A batch that did not wait, or one
+  last line that it is made when the GPU is free. A batch of the call that settles after
+  the call returned brings its conversation one notice from the app (`system:app`, kind
+  `notice`, delivered and waking it as a job's result does): what was made and, when it
+  had to wait for the helper's GPU, how long. A batch its call still waited for, or one
   the agent stopped itself, says nothing. `read` shows a batch, `stop` stops one. `image_generator__list_presets` lists
   the presets or a preset's models and LoRAs (`image_catalog.py`), `list_images` the images
   of the conversation, or (`scope` kept or all) the ones the agent kept or made in any

@@ -154,8 +154,7 @@ def settled_head(b: dict, waited: float | None) -> str:
 
 
 # what the started line says of reporting back (images and music)
-REPORTS = ("The batch reports back only if it has to wait for the GPU: then a message from "
-           "the app says what was made once it is done.")
+REPORTS = ("When it is done, a message from the app says what was made.")
 # the `wait` parameter of a generate tool (images and music)
 WAIT = ("True: your turn waits until the batch is done or the user writes, as long as its "
         "time allows; a batch that still waits for the GPU after "
@@ -395,9 +394,9 @@ class ImageGenerator(Generator):
         The call returns at once with the batch id and one slot per image. The images
         are made one after the other and appear in this conversation as each is done;
         {{username}} sees them there. You see one when you look at it with
-        image_generator__look; describe details only of pictures you looked at. A batch
-        reports back only when it had to wait for the GPU: one message from the app once
-        it is done.
+        image_generator__look; describe details only of pictures you looked at. When the
+        batch is done, one message from the app says what was made (none when wait=true
+        already returned it done).
         image_generator__read shows a batch, image_generator__stop stops one.
         What you make is cleared after the number of days set in Settings unless
         image_generator__keep keeps it.
