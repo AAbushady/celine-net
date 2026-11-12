@@ -2,6 +2,8 @@
 when its run starts, each only when the prompt names it:
 
 - {{mood}}: its mood now (skills/mind.mood_line);
+- {{needs}}: the needs it feels now, in words (skills/mind.needs_line, skills/needs.py), the
+  ones it keeps for its chats left out;
 - {{on_mind}}: the notes whose `keys:` come up in its last thoughts and its last
   exchange with {{username}} (turns/loads.key_in), each with its summary;
 - {{tool_failures}}: per tool, the calls that failed that night: how many, and its most
@@ -50,6 +52,9 @@ async def extras(app, text: str, night: date,
     if "{{mood}}" in text:
         from ..skills import mind
         out["mood"] = mind.mood_line(app) or NONE
+    if "{{needs}}" in text:
+        from ..skills import mind
+        out["needs"] = mind.needs_line(app) or NONE
     if "{{on_mind}}" in text:
         out["on_mind"] = await on_mind(app)
     if "{{tool_failures}}" in text:
