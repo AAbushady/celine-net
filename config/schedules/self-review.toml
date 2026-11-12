@@ -20,6 +20,11 @@ Work like this, so the whole night fits:
 
 {{tool_failures}}
 
+   The night's runs and their notes, as the app has them: the evidence for any claim
+   about what a routine did or left.
+
+{{night_runs}}
+
 3. Give groups of conversations to sub-agents (sub_agents__start with read access), each
    with a brief to read them with past_conversations__read and report a short digest:
    per conversation what was asked, what you did, what went wrong, with message

@@ -90,7 +90,7 @@ or press New schedule on the Routines page.
 The prompt, reviewer file and note can use `{{date}}`, `{{day_before}}`, `{{weekday}}`,
 `{{username}}`, `{{name}}`, the pronouns, `{{result:<routine>}}` (another routine's
 result from the same day) and `{{mood}}`, `{{on_mind}}`, `{{tool_failures}}`,
-`{{voice_counts}}`. How many days of nightly backups are kept is set in Settings,
+`{{night_runs}}`, `{{voice_counts}}`. How many days of nightly backups are kept is set in Settings,
 Advanced, Backups kept (default 7).
 
 ## Texts the model reads

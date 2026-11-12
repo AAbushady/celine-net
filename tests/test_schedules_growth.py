@@ -3,6 +3,7 @@ and the growth jobs that ship with a fresh install (schedules/)."""
 from __future__ import annotations
 
 import lzma
+import os
 import sqlite3
 import tarfile
 import tomllib
@@ -302,6 +303,41 @@ async def test_tool_failures_say_each_error_and_the_conversations_it_happened_in
         "- shell__run: 1 failed of 1 call (100%).\n"
         f"  - once: exit 1 In: {a}.")
     assert await store.read(lambda c: tool_failures(c, date(2026, 10, 1), UTC)) == \
+        runs_mod.NONE
+
+
+async def test_night_runs_say_each_run_and_whether_its_note_is_there(store, tmp_path):
+    """The review reported checks on the night's notes it had not made: the app gives it
+    every run of the night with its state and its note as the notebook has it."""
+    from celine.schedules.variables import night_runs
+    cfg = SimpleNamespace(
+        timezone="UTC", substitute=lambda t: t,
+        schedules={"watch": Schedule("watch", "Watch videos", "0 1 * * *", "Go.",
+                                     note="watched/{{date}}.md"),
+                   "world": Schedule("world", "World news", "0 2 * * *", "Go.",
+                                     note="diary/{{date}}-world.md"),
+                   "tidy": Schedule("tidy", "Tidy", "0 3 * * *", "Go.")})
+    root = tmp_path / "notebook"
+    (root / "watched").mkdir(parents=True)
+    note = root / "watched/2026-10-16.md"
+    note.write_text("Last changed: x\none\ntwo\n")
+    os.utime(note, (0, datetime(2026, 10, 16, 1, 43, tzinfo=UTC).timestamp()))
+
+    def fn(c):
+        add_run(c, "r1", "watch", night="2026-10-16", slot="2026-10-16T01:00:00.000+00:00")
+        add_run(c, "r2", "world", night="2026-10-16", state="failed",
+                error="The model server refused the connection.")
+        add_run(c, "r3", "tidy", night="2026-10-16", state="skipped",
+                slot="2026-10-16T03:00:00.000+00:00", reason="Nothing changed.")
+    await store.write(fn)
+    got = await store.read(lambda c: night_runs(c, cfg, date(2026, 10, 16), root))
+    assert got.splitlines() == [
+        "- Watch videos (watch), 01:00: done. Note watched/2026-10-16.md, written "
+        "16 Oct 01:43, 3 lines.",
+        "- World news (world), 02:00: failed (The model server refused the connection.). "
+        "Note diary/2026-10-16-world.md: not in the notebook.",
+        "- Tidy (tidy), 03:00: skipped (Nothing changed.)."]
+    assert await store.read(lambda c: night_runs(c, cfg, date(2026, 10, 1), root)) == \
         runs_mod.NONE
 
 

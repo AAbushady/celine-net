@@ -1753,7 +1753,7 @@ night, never from the clock (`schedules.fill`): `{{date}}` (for a `daytime` sche
 calendar date of its slot), `{{day_before}}`,
 `{{weekday}}`, `{{result:<schedule>}}` (that schedule's answer of the same night), the
 agent's `{{name}}` and `{{pronouns}}`, and `{{username}}`. When the run starts, `schedules/variables.py` fills
-`{{mood}}`, `{{on_mind}}`, `{{tool_failures}}` and `{{voice_counts}}`.
+`{{mood}}`, `{{on_mind}}`, `{{tool_failures}}`, `{{night_runs}}` and `{{voice_counts}}`.
 
 **Runs** (table `runs`): one schedule at one slot, its planned time (UTC); `night` is the
 night of the slot (`night_of`: before 12:00 in the app's zone belongs to that date's

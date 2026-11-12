@@ -26,7 +26,8 @@ from the clock (`fill`): {{date}} the night's date (night_of: every day-based na
 it), or for a `daytime` job the calendar date of its slot (`run_date`), {{day_before}}, {{weekday}}, {{result:<schedule>}} that schedule's answer of the
 same night, its name, its pronouns and {{username}}. A
 prompt may also hold what schedules/variables.py fills when the run starts: {{mood}},
-{{on_mind}}, {{tool_failures}} and {{voice_counts}}. Runs: schedules/runs.py.
+{{on_mind}}, {{tool_failures}}, {{night_runs}} and {{voice_counts}}. Runs:
+schedules/runs.py.
 """
 from __future__ import annotations
 
@@ -44,7 +45,7 @@ ON_FAIL = ("retry", "skip")   # When a run fails (schedules/runs.py _fail)
 RESULT = re.compile(r"\{\{result:([a-z][a-z0-9_-]{0,31})\}\}")
 DAILY = re.compile(r"^(\d{1,2}) (\d{1,2}) \* \* \*$")
 VARIABLES = ("date", "day_before", "weekday", "username", "name", "mood", "on_mind",
-             "tool_failures", "voice_counts")
+             "tool_failures", "night_runs", "voice_counts")
 NONE = "(none)"
 PROMPT_MAX = 50_000          # characters
 

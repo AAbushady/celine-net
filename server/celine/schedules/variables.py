@@ -7,6 +7,9 @@ when its run starts, each only when the prompt names it:
 - {{tool_failures}}: per tool, the calls that failed that night: how many, and its most
   frequent errors, each with the conversations it happened in by title and short id (a
   digest instead of every transcript);
+- {{night_runs}}: every run of that night, in order: its routine, time and state with
+  why, and its note: when it was last written and how many lines it has, or that it is
+  not in the notebook (what a review checks before it says a run left something);
 - {{voice_counts}}: its chat replies of the last 7 days against {{username}}'s
   messages: slop hits per 1,000 characters (turns/slop.find), the phrases it uses far
   more (turns/slop.profile), the share of replies that start
@@ -52,6 +55,9 @@ async def extras(app, text: str, night: date,
     if "{{tool_failures}}" in text:
         out["tool_failures"] = await store.read(
             lambda c: tool_failures(c, night, zone(cfg)))
+    if "{{night_runs}}" in text:
+        root = cfg.agent.notebook if getattr(cfg, "agent", None) else None
+        out["night_runs"] = await store.read(lambda c: night_runs(c, cfg, night, root))
     if "{{voice_counts}}" in text:
         voice = cfg.agent.voice if getattr(cfg, "agent", None) else {}
         out["voice_counts"] = await store.read(lambda c: voice_counts(c, now, voice))
@@ -156,6 +162,41 @@ def tool_failures(c: sqlite3.Connection, night: date, tz) -> str:
             out.append(f"  - {sum(n for _, (n, _) in rest)} more failed with "
                        f"{len(rest)} other errors.")
     return "\n".join(out)
+
+
+# ---- night_runs --------------------------------------------------------------------------
+
+def night_runs(c: sqlite3.Connection, cfg, night: date, root: Path | None) -> str:
+    """Every run of `night`, in the order of their times: "- Watch videos (watch), 01:00:
+    done. Note watched/2026-11-12.md, written 12 Nov 01:43, 54 lines." A run with an
+    error or a reason says it; a note that is not there says so."""
+    from ..clock import zone
+    from ..skills.anchors import lines_of
+    from . import fill, run_date, shown
+    from .runs import results
+    tz = zone(cfg)
+    res = results(c, night.isoformat())
+    schedules = getattr(cfg, "schedules", None) or {}
+    out = []
+    for r in c.execute("SELECT schedule, slot, state, error, reason FROM runs WHERE night = ? "
+                       "ORDER BY slot", (night.isoformat(),)):
+        s = schedules.get(r["schedule"])
+        slot = datetime.fromisoformat(r["slot"])
+        line = (f"- {shown(s) if s else r['schedule']} ({r['schedule']}), "
+                f"{slot.astimezone(tz):%H:%M}: {r['state']}")
+        why = r["error"] or r["reason"]
+        line += f" ({why})." if why else "."
+        if s is not None and s.note:
+            path = fill(cfg, s.note, run_date(s, slot, tz), res)
+            p = root / path if root is not None else None
+            if p is not None and p.is_file():
+                at = datetime.fromtimestamp(p.stat().st_mtime, timezone.utc).astimezone(tz)
+                n = len(lines_of(p.read_text(errors="replace"))[0])
+                line += f" Note {path}, written {at:%d %b %H:%M}, {n} lines."
+            else:
+                line += f" Note {path}: not in the notebook."
+        out.append(line)
+    return "\n".join(out) or NONE
 
 
 # ---- voice_counts ------------------------------------------------------------------------
