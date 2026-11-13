@@ -6,8 +6,9 @@ whether the endpoint is exclusive (llama-swap group with swap: asking for a seco
 model unloads the first and kills its in-flight requests, so while one of our models
 runs there, requests for another model on that endpoint wait).
 
-Order: strict priority (interactive > agent > background), round-robin between lanes
-(one lane per conversation) inside a priority, FIFO inside a lane. On an exclusive
+Order: strict priority (interactive > agent > background); inside a priority a `first`
+ticket (Bastet's check, which a turn waits on) before the rest, oldest first; then
+round-robin between lanes (one lane per conversation), FIFO inside a lane. On an exclusive
 endpoint a lane whose next ticket is for the model that ran there last goes first, at
 most AFFINITY of that model in a row, then another model's: two conversations on two
 models swap models half as often. A ticket that cannot start
@@ -89,6 +90,7 @@ class Ticket:
     started: float | None = None
     granted: bool = False
     exclusive: bool = False             # a lease: the whole endpoint, nothing beside it
+    first: bool = False                 # served before the round-robin of its priority
     changed: anyio.Event = field(default_factory=anyio.Event)
 
     @property
@@ -131,7 +133,9 @@ class Scheduler:
         """Every waiting ticket in the order it would start if nothing were full."""
         out: list[Ticket] = []
         for p in Priority:
-            lanes = list(self._waiting[p].values())
+            out += sorted((t for q in self._waiting[p].values() for t in q if t.first),
+                          key=lambda t: t.id)
+            lanes = [[t for t in q if not t.first] for q in self._waiting[p].values()]
             # round-robin, one ticket of each lane a round, so a lane stays FIFO
             for rnd in range(max((len(q) for q in lanes), default=0)):
                 out += sorted((q[rnd] for q in lanes if rnd < len(q)), key=self._rank)
@@ -240,7 +244,7 @@ class Scheduler:
         lanes = self._waiting[t.priority]
         q = lanes[t.lane]
         q.remove(t)
-        if q:
+        if q and not t.first:
             lanes.move_to_end(t.lane)        # this lane had its go; the next lane is up
         else:
             del lanes[t.lane]

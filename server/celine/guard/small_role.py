@@ -53,7 +53,8 @@ async def complete(llm, text: str, body: dict, *, turn: dict | None = None,
                   llm.turn_priority.get(tid or "", Priority.AGENT),
                   conversation_id=turn["conversation_id"] if turn else conversation_id,
                   turn_id=tid, body=body,
-                  thinking=OFF, voice=False, fallback=False, label="Guard")
+                  thinking=OFF, voice=False, fallback=False, label="Guard",
+                  first=not background)
     parts: list[str] = []
     raw = None
     try:

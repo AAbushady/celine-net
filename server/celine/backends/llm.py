@@ -310,7 +310,8 @@ class LLM:
              thinking: str | None = None, images=None,
              wait: float | None = None,
              voice: bool = True, fallback: bool = True, keep_waiting: bool = False,
-             label: str | None = None, run_clock: HeldClock | None = None) -> "QueuedBackend":
+             label: str | None = None, run_clock: HeldClock | None = None,
+             first: bool = False) -> "QueuedBackend":
         """A backend for one task. `backend` given (a test double): that
         backend alone, queued but not routed. Else the task's models from Settings.
         `thinking`: the call's own level (settings/thinking.py), e.g. "off" for a
@@ -325,7 +326,8 @@ class LLM:
         to, held while they wait for a model. A call for a turn (`turn_id`: a tool's
         vision, Writing or models__ask call) credits its waits to the turn's clock and
         its run's, and in a Keep waiting turn it waits like the turn, until the turn's
-        Stop."""
+        Stop. `first`: its requests go before the others of their priority (queue.py
+        Ticket.first), for a short request a turn is blocked on."""
         if turn_id:
             self.turn_priority[turn_id] = priority
             if clock is not None:
@@ -346,7 +348,7 @@ class LLM:
                              clock=clock, body=body, thinking=thinking, images=images,
                              wait=wait, voice=voice, fallback=fallback,
                              keep_waiting=keep_waiting, label=label or _role_label(role),
-                             run_clock=run_clock)
+                             run_clock=run_clock, first=first)
 
     def forget_turn(self, turn_id: str) -> None:
         self.turn_priority.pop(turn_id, None)
@@ -483,9 +485,10 @@ class QueuedBackend:
                  body: dict[str, Any] | None = None, thinking: str | None = None,
                  images=None, shared: dict | None = None, wait: float | None = None,
                  voice: bool = True, fallback: bool = True, keep_waiting: bool = False,
-                 label: str = "", run_clock: HeldClock | None = None):
+                 label: str = "", run_clock: HeldClock | None = None, first: bool = False):
         self.llm = llm
         self.run_clock = run_clock
+        self.first = first
         self.label = label
         self.fixed = fixed
         self.role = role
@@ -563,7 +566,7 @@ class QueuedBackend:
                              shared=self._shared,
                              wait=self.wait, voice=self.voice, fallback=self.fallback,
                              keep_waiting=self.keep_waiting, label=self.label,
-                             run_clock=self.run_clock)
+                             run_clock=self.run_clock, first=self.first)
 
     async def _send(self, payload: dict[str, Any]) -> None:
         if self.emit is None:
@@ -776,7 +779,8 @@ class QueuedBackend:
             await self._per_hour(ref.partition("/")[0], label, model)
         ticket = Ticket(endpoint=endpoint, model=model, priority=self.priority,
                         lane=self.lane, role=self.role, label=self.label,
-                        conversation_id=self.conversation_id, turn_id=self.turn_id)
+                        conversation_id=self.conversation_id, turn_id=self.turn_id,
+                        first=self.first)
         waited = False
 
         async def on_wait(pos: Position) -> None:

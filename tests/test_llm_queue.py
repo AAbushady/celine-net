@@ -73,6 +73,33 @@ async def test_priority_order_interactive_agent_background():
     assert order == [it, ag, bg]
 
 
+async def test_a_guard_check_goes_before_the_lanes_of_its_priority_and_never_past_a_higher():
+    """Bastet's check (a `first` ticket), which a run's turn waits on, waits for no other
+    agent lane (a self-review's checks waited up to six minutes behind sub-agents), and
+    the user's own request still goes before it."""
+    s = Scheduler(StaticLimits(default_slots=1))
+    held = await hold(s, tk(A, "x"))
+    others = [tk(A, f"sub{n}") for n in range(3)]
+    check = Ticket(endpoint="e", model="m", priority=A, lane="run", first=True)
+    user = tk(I, "u")
+    order: list[Ticket] = []
+
+    async def one(t):
+        await s.acquire(t, timeout=5)
+        order.append(t)
+    async with anyio.create_task_group() as tg:
+        for t in (*others, check, user):
+            tg.start_soon(one, t)
+            await settle()
+        assert s.position(check).ahead == 1, "only the user's request is ahead of it"
+        s.release(held)
+        while len(order) < 5:
+            await settle()
+            if s.running:
+                s.release(s.running[0])
+    assert order == [user, check, *others]
+
+
 async def test_exclusive_endpoint_runs_one_model_at_a_time():
     s = Scheduler(StaticLimits(default_slots=4, exclusive_endpoints={"swap"}))
     a1 = await hold(s, tk(I, "x", model="A", endpoint="swap"))
