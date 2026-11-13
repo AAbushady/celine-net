@@ -28,12 +28,13 @@ def test_a_mood_fades_halfway_back_in_one_half_life_and_names_its_event():
     rows = [{"at": T0.isoformat(), "emotion": "angry", "strength": 1.0}]
     at_once = mind.current_mood(rows, base, 6, T0)
     later = mind.current_mood(rows, base, 6, T0 + timedelta(hours=6))
-    assert at_once == pytest.approx(mind.PAD["angry"])
-    assert later == pytest.approx(tuple(x / 2 for x in mind.PAD["angry"]))
-    # a weak event pulls only part of the way
+    third = tuple(x / 3 for x in mind.PAD["angry"])
+    assert at_once == pytest.approx(third), "a feeling moves the mood a third of its strength"
+    assert later == pytest.approx(tuple(x / 2 for x in third))
+    # a weak event pulls only part of that
     half = mind.current_mood([{**rows[0], "strength": 0.5}], base, 6, T0)
-    assert half == pytest.approx(tuple(x / 2 for x in mind.PAD["angry"]))
-    assert mind.mood_words(at_once, base) == ("hostile", "strong")
+    assert half == pytest.approx(tuple(x / 6 for x in mind.PAD["angry"]))
+    assert mind.mood_words(mind.PAD["angry"], base) == ("irritable", "strong")
     assert mind.mood_words(base, base) == ("neutral", ""), "the middle is in no octant"
     assert mind.mood_words((0.2, 0.2, 0.3), (0.2, 0.2, 0.3))[1] == "slight"
     # relieved after two embarrassed: the middle, never "hostile, strong"
@@ -43,6 +44,22 @@ def test_a_mood_fades_halfway_back_in_one_half_life_and_names_its_event():
     line = mind.describe_mood(rows, timezone.utc, T0 + timedelta(hours=1))
     assert line.startswith("mood: ") and "annoyed since 07:12: the build broke again" in line
     assert mind.describe_mood([], timezone.utc, T0) == ""
+
+
+def test_one_feeling_dents_a_good_mood_and_a_run_of_them_turns_it():
+    base = mind.BASELINE
+    rows = [{"at": (T0 + timedelta(minutes=n)).isoformat(), "emotion": "proud",
+             "strength": 0.8} for n in range(10)]
+    rows += [{"at": (T0 + timedelta(minutes=10 + n)).isoformat(), "emotion": "annoyed",
+              "strength": 0.5} for n in range(6)]
+
+    def word(n: int) -> str:
+        upto = rows[:n]
+        return mind.mood_words(mind.current_mood(upto, base, 6, mind._at(upto[-1]["at"])),
+                               base)[0]
+    assert word(10) == "lively"
+    assert word(11) == word(12) == "lively", "a refusal on a good day dents it"
+    assert word(16) == "irritable", "six in a row turn it"
 
 
 async def _agent(store, cfg):

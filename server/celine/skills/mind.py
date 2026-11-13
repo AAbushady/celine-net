@@ -12,7 +12,9 @@
   jobs, and never with automatic context off (`conversations.auto_context`). The agent's notes
   come back in their own block, `[your memory]` (skills/recall.py).
 - The agent's mood: the `moods` rows (append-only), each a word of PAD with a strength;
-  `current_mood` decays toward its baseline by real hours (agent.toml), a baseline its
+  a feeling moves the mood a third of its strength toward its point (MOVE), so one
+  feeling dents a mood and only a run of them turns it, and `current_mood` decays toward
+  its baseline by real hours (agent.toml), a baseline its
   pressing needs pull (skills/needs.py pull). After each finished chat turn the `small`
   role appraises the exchange: a feeling, and the needs it met or stirred; `mind__feel`
   in that turn wins over it.
@@ -52,6 +54,7 @@ APPRAISE_SECONDS = 30.0
 APPRAISE_FRESH = 300.0     # an appraisal that waited longer (an outage) is dropped
 HALF_LIFE_H = 6.0
 BASELINE = (0.2, 0.2, 0.3)
+MOVE = 1 / 3        # of a feeling's strength: how far it moves the mood toward its point
 GAP_HERE_H, GAP_ANYWHERE_H = 1, 6
 GAP_STEPS_H = (12, 24, 48, 96, 168)
 HEAD = "[your mind]"       # the block's first line (turns/legend.py)
@@ -74,7 +77,7 @@ Emotion = Literal["jealous", "hurt", "angry", "annoyed", "bored", "lonely", "anx
                   "tender", "longing", "flustered", "wistful"]
 # the PAD octant a mood is in: signs of (pleasure, arousal, dominance)
 OCTANTS = {(1, 1, 1): "lively", (1, 1, 0): "clingy", (1, 0, 1): "relaxed",
-           (1, 0, 0): "soft", (0, 1, 1): "hostile", (0, 1, 0): "anxious",
+           (1, 0, 0): "soft", (0, 1, 1): "irritable", (0, 1, 0): "anxious",
            (0, 0, 1): "cold", (0, 0, 0): "bored"}
 
 
@@ -92,15 +95,15 @@ def _toward(m, base, hours: float, half_life_h: float):
 
 def current_mood(rows, baseline, half_life_h: float, now_: datetime):
     """The agent's mood at `now_` as a PAD point: from `baseline`, each event (oldest first,
-    {at, emotion, strength}) pulls the mood toward its word's point by its strength,
-    and between events and up to now the mood decays toward the baseline with
+    {at, emotion, strength}) pulls the mood toward its word's point by MOVE of its
+    strength, and between events and up to now the mood decays toward the baseline with
     `half_life_h`."""
     m, last = tuple(baseline), None
     for r in rows:
         at = _at(r["at"])
         if last is not None:
             m = _toward(m, baseline, (at - last).total_seconds() / 3600, half_life_h)
-        s = min(1.0, max(0.0, float(r["strength"])))
+        s = MOVE * min(1.0, max(0.0, float(r["strength"])))
         m = tuple(x + s * (p - x) for x, p in zip(m, PAD[r["emotion"]]))
         last = at
     if last is not None:
@@ -114,7 +117,7 @@ NEUTRAL = 0.15      # a mood this close to the middle is in no octant: its signs
 def mood_words(m, baseline) -> tuple[str, str]:
     """(the octant word of `m`, slight, clear or strong by its distance to the baseline);
     ("neutral", "") within NEUTRAL of the middle, where a sign is only noise (relieved
-    after embarrassed came to (-0.02, 0.00, 0.02) and read "hostile, strong")."""
+    after embarrassed came to (-0.02, 0.00, 0.02) and read "irritable, strong")."""
     if math.dist(m, (0.0, 0.0, 0.0)) < NEUTRAL:
         return "neutral", ""
     word = OCTANTS[tuple(int(x >= 0) for x in m)]
@@ -145,7 +148,7 @@ def _mood_rows(c: sqlite3.Connection) -> list[dict]:
 
 
 def describe_mood(rows, tz, now_: datetime, base: tuple[float, ...] | None = None) -> str:
-    """"mood: hostile, strong. annoyed since 21:10: why", "" without any row. `base`: the
+    """"mood: irritable, clear. annoyed since 21:10: why", "" without any row. `base`: the
     resting point its needs pull it to (_of), else agent.toml's."""
     if not rows:
         return ""

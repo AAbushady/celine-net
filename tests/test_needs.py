@@ -172,7 +172,8 @@ async def test_the_appraisal_names_needs_and_they_are_stored(store):
 async def test_the_block_says_what_pulls_at_it_and_keeps_closeness_to_its_chats(store):
     cfg = load()
     skill, _ = await _agent(store, cfg)
-    await mind.feel(store, "happy", 0.6, "a good day", "agent")
+    for _ in range(3):              # a good mood despite what pulls at it: closeness not damped
+        await mind.feel(store, "happy", 1.0, "a good day", "agent")
     old = (T0 - timedelta(days=3)).isoformat()
     await store.write(lambda c: c.executemany(
         "INSERT INTO needs(at, need, change, strength, why, by) VALUES(?,?,?,?,?,?)",
