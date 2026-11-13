@@ -6,8 +6,10 @@
 # their own files (nodes 5, 4). The clip's sound is made with its picture (nodes 19, 37). Without a start
 # picture `no_image` switches node 14 to the blank image of node 13 and bypasses both picture nodes (18, 29);
 # with one, node 12 holds it. The prompt goes in as written. Width and height are halved for the first pass
-# (nodes 10, 11), so their step is 64. The clip is saved as MP4 with its sound (node 39), and four of its
-# frames (the first, the 40th, the 80th and the last) as stills (node 47), the pictures its look shows.
+# (nodes 10, 11), so their step is 64. Node 36 decodes the whole clip in one pass, in spatial tiles only: decoded
+# 64 frames at a time, the clip pulsed in sharpness and brightness at each seam. The clip is saved as MP4 with
+# its sound (node 39), and four of its frames (the first, the 40th, the 80th and the last) as stills (node 47),
+# the pictures its look shows.
 label = "LTX 2.3 22B"
 family = "LTX"
 workflow = "ltx2.3-22b.json"
