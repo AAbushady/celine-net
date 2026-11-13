@@ -820,7 +820,7 @@ class Router:
 
     def steers(self, pid: str) -> bool:
         """The provider's Feeling steering: with its probes on, the agent's state pushes its
-        replies too (affect.steer)."""
+        replies too (skills/mind.py pushes)."""
         options = (self.provider(pid) or {}).get("options") or {}
         return bool(options.get("affect", False) and options.get("affect_steer", False))
 
