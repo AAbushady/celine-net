@@ -43,7 +43,7 @@ export type Preset = {
   kind: Kind
   label: string
   family: string
-  task: 'generate' | 'edit' | 'music' | 'video'
+  task: 'generate' | 'edit' | 'music' | 'video' | 'sound'
   good_at: string
   prompting: string
   example: string

@@ -219,8 +219,10 @@ each input the app fills, and upload it. The placeholders are `{{prompt}}`, `{{s
 `{{lyrics}}`, `{{duration:30}}`, `{{instrumental:true}}` for music, and for video
 `{{prompt}}`, `{{seed}}`, `{{width:1280}}`, `{{height:704}}`, `{{length:121}}`, `{{fps:24}}`,
 `{{image}}` (a start picture: its node goes when there is none) and `{{no_image}}` (true
-when the clip has no start picture, for a switch or a bypass); after the colon is the
-default. Download workflow gives a preset back in the same form.
+when the clip has no start picture, for a switch or a bypass); a workflow with `{{clip}}`
+(the LoadVideo file of the agent's clip it makes the sound for) is a sound preset, which
+takes `{{prompt}}`, `{{seed}}`, `{{length:121}}` and `{{fps:24}}` from that clip; after the
+colon is the default. Download workflow gives a preset back in the same form.
 
 ### ComfyUI on demand
 

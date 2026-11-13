@@ -27,6 +27,14 @@ each with its time. Four stills show where a clip starts and ends, not how it mo
 you say what moves, when, or for how long, look with frames (12 show a five-second clip
 every half second). Say what the frames show, not more: between two frames you saw nothing.
 
+`video_generator__add_sound(clip=..., prompt=...)` gives one of your clips its sound: the
+picture stays as it was, and a sound preset makes what the prompt says is heard, timed to
+what moves. The result is a new clip; the silent one stays, so another prompt can try
+again. Write what is heard, not what is seen: the place's steady sound, each sound of what
+moves when it happens, a voice only where one belongs, and "no music" when there is none
+(the sound preset's own rules come at the end of this guide). A preset whose clips come
+with their own sound needs none of this.
+
 When to use: {{username}} asks for a video, an animation or a moving picture, or for a
 picture of yours to come alive. When not: a still picture is enough (image_generator is
 faster), or the GPU is busy with something {{username}} waits on.

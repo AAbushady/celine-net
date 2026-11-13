@@ -195,6 +195,7 @@ VERB = {
     "music_generator__generate": "Made music", "music_generator__read": "Checked the tracks",
     "music_generator__stop": "Stopped the music",
     "video_generator__generate": "Made a video", "video_generator__read": "Checked the clips",
+    "video_generator__add_sound": "Made a clip's sound",
     "video_generator__stop": "Stopped the video",
     "missions__update": "Updated the mission", "intercom__send": "Sent a message",
     "intercom__cancel": "Cancelled a message", "voice__send": "Sent a voice note",
@@ -909,9 +910,10 @@ def row(name: str, a: Args, d: dict, result: str, state: str, own: Own | None = 
         items = a.get("items")
         first = _dict(items[0]) if isinstance(items, list) and items else {}
         made = tool not in ("read", "stop")
-        label = MADE[skill][0] if made else \
+        label = ("Sound" if tool == "add_sound" else MADE[skill][0]) if made else \
             ("Checked the " if tool == "read" else "Stopped the ") + MADE[skill][1]
-        prompt = (_str(first.get("prompt")) or _str(first.get("style"))) if made else None
+        prompt = (_str(first.get("prompt")) or _str(first.get("style"))
+                  or _str(a.get("prompt"))) if made else None
         return " ".join(x for x in (label, prompt) if x)
     return _state_words(said, state, d, result)
 

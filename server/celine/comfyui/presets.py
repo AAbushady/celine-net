@@ -12,8 +12,9 @@ The TOML:
 - label; family (the model family), good_at (one or two sentences), prompting (how to
   write for it), example (a prompt or a style), each optional; workflow (the JSON file
   beside it);
-- task: images only, "generate" (a new image from text, the default) or "edit" (an
-  image changed by an instruction);
+- task: images "generate" (a new image from text, the default) or "edit" (an image
+  changed by an instruction); video "video" (a new clip, the default) or "sound" (one of
+  the agent's clips given its sound, its picture as it was);
 - [parameters.<name>]: the inputs the app fills, `inputs = [[node, input, key...], ...]`
   (a key reaches into an input that is an object). Optional: `choices` (the word Celine
   gives -> the node's value). The names of each kind are PARAMETERS;
@@ -96,6 +97,8 @@ PARAMETERS: dict[str, dict[str, tuple[str, str, str]]] = {
         "no_image": ("boolean", "No start image", "The app sets it true when the clip has no "
                                                   "start image, for a workflow that switches "
                                                   "its picture nodes off."),
+        "clip": ("video", "Clip", "The clip a sound preset makes the sound for; its picture "
+                                  "stays as it was."),
     },
 }
 # an edit's images: the parameter each fills and the field of its item it comes from
@@ -104,7 +107,9 @@ SOURCES = ("source", "source2", "source3", "source4")
 REQUIRED = {"generate": ("prompt", "seed", "width", "height"),
             "edit": ("prompt", "seed", "width", "height", "image"),
             "music": ("style", "seed"),
-            "video": ("prompt", "seed", "width", "height", "length", "fps")}
+            "video": ("prompt", "seed", "width", "height", "length", "fps"),
+            "sound": ("prompt", "seed", "clip", "length", "fps")}
+VIDEO_TASKS = ("video", "sound")
 FRAMES_MAX = 241        # a clip's frames at most: ten seconds at 24 per second
 FRAME_STEP = 4          # a video model takes step * n + 1 frames: 4 for Wan, 8 for LTX
 
@@ -131,7 +136,7 @@ class Preset:
     example: str
     workflow: dict[str, Any]
     parameters: dict[str, Param]
-    task: str = "generate"          # generate | edit | music
+    task: str = "generate"          # generate | edit | music | video | sound
     origin: str = "shipped"         # shipped | edited (a shipped one the user changed) | own
     proposed: bool = False          # an own one the agent proposed and the user approved
     source: dict[str, Any] = field(default_factory=dict)    # the TOML as read
@@ -185,9 +190,9 @@ class Preset:
 
     def missing(self, info: dict[str, Any]) -> str | None:
         """Why a server cannot run this preset, from its `/object_info` entries
-        ({class: entry or None}); None when it can. The source image of an edit is
-        uploaded per call, so its input is not checked."""
-        filled = {p[:2] for name in IMAGES if name in self.parameters
+        ({class: entry or None}); None when it can. The source image of an edit, and the
+        clip a sound is made for, are uploaded per call, so their inputs are not checked."""
+        filled = {p[:2] for name in (*IMAGES, "clip") if name in self.parameters
                   for p in self.parameters[name].inputs}
         for nid, node in self.workflow.items():
             cls = node["class_type"]
@@ -399,13 +404,14 @@ def build(kind: str, pid: str, data: dict[str, Any], workflow: dict[str, Any],
     family, good_at = text("family"), text("good_at")
     prompting, example = text("prompting"), text("example")
     task = "music" if kind == "music" else "video"
-    if kind == "images":
-        task = data.get("task", "generate")
-        if task not in TASKS:
-            bad.append(f"task is {' or '.join(TASKS)}.")
+    if kind in ("images", "video"):
+        allowed = TASKS if kind == "images" else VIDEO_TASKS
+        task = data.get("task", allowed[0])
+        if task not in allowed:
+            bad.append(f"task is {' or '.join(allowed)}.")
             return None
     elif "task" in data:
-        bad.append("task is for image presets only.")
+        bad.append("task is for image and video presets only.")
 
     params: dict[str, Param] = {}
     raw = data.get("parameters") or {}
@@ -507,7 +513,7 @@ def view(p: Preset) -> dict[str, Any]:
     """A preset as the UI shows it: everything but the workflow."""
     params = []
     for name, spec in p.parameters.items():
-        if name in IMAGES or name == "no_image":
+        if name in IMAGES or name in ("no_image", "clip"):
             continue
         kind, label, about = PARAMETERS[p.kind][name]
         entry: dict[str, Any] = {"name": name, "type": kind, "label": label,
@@ -523,12 +529,12 @@ def view(p: Preset) -> dict[str, Any]:
         "id": p.id, "kind": p.kind, "label": p.label, "family": p.family, "task": p.task,
         "good_at": p.good_at, "prompting": p.prompting, "example": p.example,
         "parameters": params}
-    if p.kind in SIZED:
+    if p.kind in SIZED and p.task != "sound":      # a sound takes its clip's size
         w, h = p.size
         out["size"] = {"width": w, "height": h, "step": p.size_step,
                        "max_pixels": p.max_pixels}
-        out["negative"] = p.takes("negative")
     if p.kind in SIZED:
+        out["negative"] = p.takes("negative")
         out["images"] = p.images
     if p.kind == "images":
         out["catalog"] = {"models": bool(p.models), "max_loras": p.max_loras} \
@@ -540,7 +546,7 @@ def view(p: Preset) -> dict[str, Any]:
 def docs(p: Preset, first: bool) -> str:
     """One preset in its guide: what it is for, how it takes a prompt, an example."""
     what = {"generate": "new images", "edit": "edits", "music": "music",
-            "video": "clips"}[p.task]
+            "video": "clips", "sound": "sound for clips"}[p.task]
     family = f" ({p.family})" if p.family else ""
     head = f"### `{p.id}`: {p.label}{family}, {what}{', the default' if first else ''}"
     lines = [head] + ([p.good_at] if p.good_at else [])
@@ -562,6 +568,11 @@ def docs(p: Preset, first: bool) -> str:
         if p.models or p.loras:
             facts.append("Takes a model" + (f" and up to {p.max_loras} LoRAs" if p.loras
                                            else "") + " (list_presets lists them).")
+    elif p.task == "sound":
+        facts.append("Gives one of your clips its sound (video_generator__add_sound): the "
+                     "picture stays as it was, the prompt says what is heard.")
+        facts.append("Reads a negative prompt." if p.takes("negative")
+                     else "Reads no negative prompt.")
     elif p.kind == "video":
         w, h = p.size
         frames, fps = int(p.default("length")), int(p.default("fps"))
@@ -597,7 +608,7 @@ class PresetError(CelineError):
 
 _PLACEHOLDER = re.compile(r"\{\{\s*([A-Za-z0-9_]+)\s*(?::(.*?))?\s*\}\}", re.S)
 # what the runtime fills on every run: a default would never be used
-ALWAYS = ("prompt", "style", "seed", *IMAGES, "no_image")
+ALWAYS = ("prompt", "style", "seed", *IMAGES, "no_image", "clip")
 # a default the runtime reads: the size, the length, the variant, the model file
 NEEDS_DEFAULT = ("width", "height", "duration", "mode", "model", "length", "fps")
 NOUN = {"images": "image", "music": "music", "video": "video"}
@@ -647,8 +658,8 @@ def placeholders(kind: str, wf: dict[str, Any]
                  ) -> tuple[dict[str, Any], dict[str, list[list[str]]], str]:
     """The workflow with each placeholder replaced by its default, the inputs each
     parameter fills ({name: [[node, input, key...]]}) and the task (an image placeholder
-    makes an edit). PresetError names every placeholder that is missing, unknown, inside
-    other text or without the default it needs."""
+    makes an edit, a clip placeholder a sound). PresetError names every placeholder that
+    is missing, unknown, inside other text or without the default it needs."""
     graph = copy.deepcopy(wf)
     found: dict[str, list[list[str]]] = {}
     given: dict[str, str | None] = {}
@@ -676,8 +687,8 @@ def placeholders(kind: str, wf: dict[str, Any]
 
     for nid, node in graph.items():
         walk(node["inputs"], [str(nid)])
-    task = kind if kind in ("music", "video") else (
-        "edit" if any(n in found for n in IMAGES) else "generate")
+    task = "music" if kind == "music" else ("sound" if "clip" in found else "video") \
+        if kind == "video" else ("edit" if any(n in found for n in IMAGES) else "generate")
     for name in REQUIRED[task]:
         if name not in found:
             what = PARAMETERS[kind][name][1].lower()
@@ -977,7 +988,7 @@ def drafted(kind: str, label: str, text: str, values: dict[str, Any] | None = No
     graph, found, task = placeholders(kind, parse_workflow(text))
     pid = pid or new_id(label)
     data: dict[str, Any] = {"label": label}
-    if kind == "images":
+    if kind in ("images", "video"):
         data["task"] = task
     data["parameters"] = {n: {"inputs": paths} for n, paths in found.items()}
     if proposed:
@@ -1000,7 +1011,7 @@ def replace_workflow(p: Preset, text: str) -> Preset:
     variants of a mode it still has are kept."""
     graph, found, task = placeholders(p.kind, parse_workflow(text))
     data = copy.deepcopy(p.source)
-    if p.kind == "images":
+    if p.kind in ("images", "video"):
         data["task"] = task
     params: dict[str, Any] = {}
     for name, paths in found.items():

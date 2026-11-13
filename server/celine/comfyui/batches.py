@@ -81,6 +81,7 @@ GPU_TRY = 20.0              # seconds such a call waits before it returns a batc
                             # waits for the GPU
 clock = time.monotonic      # the clock of an item's time and a batch's wait for the GPU
 _EXT = {"image/jpeg": ".jpg", "image/webp": ".webp"}    # a media type's file name end, else .png
+_CLIP_EXT = {"video/webm": ".webm"}                     # a clip's, else .mp4
 
 
 def _smaller(data: bytes, media_type: str, edge: int) -> tuple[bytes, str]:
@@ -413,6 +414,8 @@ class Batches:
                 item["duration"] = d
             if kind == "images":
                 await self._image_slot(item, raw, ordered, cid, own)
+            elif kind == "video" and raw.get("clip"):
+                await self._sound_slot(item, raw, ordered)
             elif kind == "video":
                 await self._clip_slot(item, raw, ordered, cid, own)
             else:
@@ -514,6 +517,32 @@ class Batches:
             shape = image_size(path.read_bytes()) if path.exists() else None
         item["width"], item["height"] = p.fit(raw.get("width"), raw.get("height"), shape)
 
+    async def _sound_slot(self, item: dict, raw: dict, ordered) -> None:
+        """A clip's sound: one of its clips (`clip`, its attachment's id) keeps its picture,
+        its rate and its size, and a sound preset makes what the prompt says is heard. The
+        model takes frame_step * n + 1 frames: a clip with more ends up to frame_step frames
+        sooner."""
+        if not item["prompt"].strip():
+            raise ImageError("The prompt is empty.")
+        aid = str(raw["clip"])
+        src = await clip_item(self.app.store, aid)
+        att = (src or {}).get("attachment") or {}
+        if src is None or not att.get("sha256") or not src.get("length") or not src.get("fps"):
+            raise ImageError(f"There is no clip {aid[:SHORT]}.")
+        name = str(raw.get("preset") or "").strip() or None
+        p, pid = self._pick("video", ordered, name, "sound", [])
+        step = p.frame_step
+        frames = (int(src["length"]) - 1) // step * step + 1
+        if frames <= step:
+            raise ImageError(f"Clip {aid[:SHORT]} has {src['length']} frames, fewer than "
+                             f"{p.label} takes ({step * 2 + 1} at least).")
+        item.update(preset=p.id, provider=pid, length=frames, fps=float(src["fps"]),
+                    width=att.get("width") or src.get("width"),
+                    height=att.get("height") or src.get("height"),
+                    sound_for={k: att[k] for k in ("id", "sha256", "filename", "media_type")})
+        if item.get("negative") and not p.takes("negative"):
+            item.pop("negative")
+
     async def _choose_now(self, item: dict, p, pid: str) -> None:
         """The model and LoRAs checked when the batch is made, not when the image
         renders: what is wrong fails now, where it sees it. The ids are stored as
@@ -550,7 +579,7 @@ class Batches:
         chain = [r for r in ordered.chain if of_task(r)]
         refs = [r for r in ordered.refs if of_task(r)]
         what = {"generate": "new images", "edit": "image edits", "music": "music",
-                "video": "video"}[task]
+                "video": "video", "sound": "sound for clips"}[task]
         if not chain:
             raise ImageError(f"No preset for {what} is set. {self.app.cfg.user} chooses "
                              f"presets in Settings, Media.")
@@ -864,9 +893,10 @@ class Batches:
                                               edge * SOURCE_SCALE)
 
     async def _clip(self, b: dict, item: dict, servers: "_Servers", note) -> None:
-        """One clip: its start picture uploaded (scaled down when large), the workflow run,
-        the clip stored as the item's attachment and its stills (the frames its look
-        shows) beside it, bound to the batch and out of the conversation's images."""
+        """One clip: its start picture uploaded (scaled down when large), or for a sound the
+        clip it is for, the workflow run, the clip stored as the item's attachment and its
+        stills (the frames its look shows) beside it, bound to the batch and out of the
+        conversation's images."""
         from .. import attachments
         p = self._preset("video", item)
         comfy, timeout = await servers.get(item["provider"], note)
@@ -876,6 +906,15 @@ class Batches:
                                   "length": item["length"], "fps": item["fps"]}
         if item.get("negative") and p.takes("negative"):
             values["negative"] = item["negative"]
+        if heard := item.get("sound_for"):
+            await note("Sending the clip to ComfyUI")
+            path = blob_path(self.app.cfg, heard["sha256"])
+            if not path.exists():
+                raise ImageError(f"The file of {heard['filename']} is no longer stored.")
+            data = await anyio.to_thread.run_sync(path.read_bytes)
+            values["clip"] = await comfy.upload(
+                data, f"celine-{uuid4().hex[:16]}{_CLIP_EXT.get(heard['media_type'], '.mp4')}",
+                heard["media_type"])
         if src := item.get("source"):
             await note("Sending the start picture to ComfyUI")
             data, media = await self._source(src, max(item["width"], item["height"]))

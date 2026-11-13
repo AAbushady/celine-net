@@ -60,7 +60,8 @@ def item_line(i: dict, cfg, lives: bool = False) -> str:
     label, size = _label_size(i)
     length = i.get("length") or 0
     secs = f"{length / i['fps']:.1f} s" if length and i.get("fps") else "its preset's length"
-    src = f" From picture {i['source']['id'][:SHORT]}." if i.get("source") else ""
+    src = f" From picture {i['source']['id'][:SHORT]}." if i.get("source") else \
+        f" Sound for clip {i['sound_for']['id'][:SHORT]}." if i.get("sound_for") else ""
     if i["state"] != "done":
         return (f"{n}. {label}, {size}, {secs}, seed {i['seed']}: "
                 f"{i.get('note') or i['state']}.{src}")
@@ -129,6 +130,44 @@ class VideoGenerator(Generator):
         from .places import place_of
         chat = await ctx.store.read(lambda c: place_of(c, ctx.conversation_id)) == "chat"
         return await batch_generate(self.app, ctx, "video", items, count, wait,
+                                    lambda b, s, waited=None: self._text(b, s, chat, waited))
+
+    @tool(read_only=False, destructive=False, open_world=True, timeout=batches_mod.WAIT_MAX)
+    async def add_sound(
+        self,
+        ctx: ToolContext,
+        clip: Annotated[str, "The clip's short id, like f5ef648c, from a batch's lines."],
+        prompt: Annotated[str, "What is heard, in the order it is heard: the sounds of what "
+                               "moves, of the place, a voice if any (the guide shows how)."],
+        negative: Annotated[str, "What to keep out of the sound, when the preset reads a "
+                                 "negative prompt."] = "",
+        seed: Annotated[int | None, "The same seed and prompt give the same sound. Empty: "
+                                    "a new one."] = None,
+        preset: Annotated[str, "A sound preset id. Empty: the first sound preset of the "
+                               "Video generation list."] = "",
+        wait: Annotated[bool, WAIT] = False,
+    ) -> ToolResult:
+        """Give one of your clips its sound with ComfyUI: the picture stays as it was, and
+        the prompt says what is heard. Load the guide first: it has the prompt rules. The
+        call returns at once with the batch id and its slot; the sound takes minutes. The
+        clip with its sound is a new clip in this conversation, and the silent one stays,
+        so another prompt can try again. When it is done, one message from the app says
+        so (none when wait=true already returned it done). Returns: the batch id and its
+        slot."""
+        got = await life.find(ctx.store, "video", clip.strip())
+        if isinstance(got, str):
+            return ToolResult(content=got, is_error=True)
+        row = await attachments.get(ctx.store, got["id"]) or {}
+        if row.get("life") == "cleared":
+            return ToolResult(content=attachments.cleared_line(
+                self.cfg, "video", row["id"], row["life_at"], ""), is_error=True)
+        item: dict = {"clip": got["id"], "prompt": prompt, "negative": negative,
+                      "preset": preset}
+        if seed is not None:
+            item["seed"] = seed
+        from .places import place_of
+        chat = await ctx.store.read(lambda c: place_of(c, ctx.conversation_id)) == "chat"
+        return await batch_generate(self.app, ctx, "video", [item], 1, wait,
                                     lambda b, s, waited=None: self._text(b, s, chat, waited))
 
     @tool()

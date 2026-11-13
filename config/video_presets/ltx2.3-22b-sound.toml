@@ -1,0 +1,43 @@
+# The sound of one of the agent's clips with LTX-2.3 22B dev in GGUF Q5_K_M: the clip (node 5) is encoded with
+# the model's video VAE and frozen (LTXVFreezeLatent, node 9), so only the audio beside it is made, 20 steps
+# with a separate audio guidance of 7 (LTXVDualCFGGuider, node 15), and the sound is put on the clip's own
+# frames (node 22). The model takes 8n + 1 frames: node 7 keeps the first `length` frames, which the app sets
+# to the clip's own count, cut down to the nearest 8n + 1. The clip with its sound is saved as MP4 (node 23),
+# and four of its frames as stills (node 31).
+label = "LTX 2.3 22B sound"
+family = "LTX"
+task = "sound"
+workflow = "ltx2.3-22b-sound.json"
+good_at = "Sound for a clip you made: footsteps, wind, rain, breathing, cloth, a room's hum, a voice, timed to what moves in it."
+prompting = """
+Write what is heard as one paragraph of plain sentences, in the order it is heard:
+1. The place and its steady sound: "a quiet bedroom at night, a faint hum of traffic outside"
+2. What moves and the sound it makes, when it happens: "her hand slides over the sheet with a soft rustle"
+3. A voice only if one belongs there, in quotes with who says it: She whispers: "come here"
+4. What is not there: "no music"
+
+Name each sound; one the prompt leaves out is the model's guess. Describe the sounds, not the
+picture: the clip already shows the picture, and the sound is made for it.
+"""
+example = "A quiet bedroom at night, a faint hum of traffic far outside. She shifts on the bed and the sheets rustle softly, then her breathing slows and deepens. No music."
+
+[frames]
+step = 8
+
+[parameters.prompt]
+inputs = [["12", "text"]]
+
+[parameters.negative]
+inputs = [["13", "text"]]
+
+[parameters.seed]
+inputs = [["18", "noise_seed"]]
+
+[parameters.clip]
+inputs = [["5", "file"]]
+
+[parameters.length]
+inputs = [["7", "length"], ["10", "frames_number"]]
+
+[parameters.fps]
+inputs = [["14", "frame_rate"], ["10", "frame_rate"], ["22", "fps"]]

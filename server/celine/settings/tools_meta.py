@@ -417,6 +417,10 @@ TOOLS: dict[str, dict[str, str]] = {
     "video_generator__generate": {"label": "Video generation: make clips",
                                   "summary": "Makes a batch of clips, one after the "
                                              "other, each shown in the chat once it is done."},
+    "video_generator__add_sound": {"label": "Video generation: give a clip its sound",
+                               "summary": "Makes a new clip from one of {{name}}'s clips, "
+                                          "with sound made for its picture; the silent one "
+                                          "stays."},
     "video_generator__read": {"label": "Video generation: check progress",
                               "summary": "Shows a batch's clips and their state."},
     "video_generator__stop": {"label": "Video generation: stop",

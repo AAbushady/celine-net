@@ -34,7 +34,8 @@ CHOICES = 20                # choices of one input shown
 FOUND = 40                  # classes one search lists
 TTL = 300.0                 # seconds a server's whole /object_info is reused
 NOBODY = "Nothing was proposed: nobody is here to approve it."
-TASKS = {"generate": "New images", "edit": "Edits", "music": "Music", "video": "Video"}
+TASKS = {"generate": "New images", "edit": "Edits", "music": "Music", "video": "Video",
+         "sound": "Sound for clips"}
 SKILL = {"images": "image_generator", "music": "music_generator", "video": "video_generator"}
 _infos: dict[str, tuple[float, dict]] = {}
 

@@ -26,7 +26,7 @@ import { BatchGallery, KeepButton, RetryItem, StopBatch, doneWords, madeImages, 
 import { Button, Card, CardGrid, Choice, ConfirmDialog, Dialog, Field, FileButton, Form, IconButton, InlineError, Input, ListRow, LoadingRow, NumberField, Picks, Player, Section, StateWord, Step, SubHead, Switch, TextArea } from '../../ui'
 import './settings.css'
 
-const TASK: Record<Preset['task'], string> = { generate: 'new images', edit: 'edits', music: 'music', video: 'clips' }
+const TASK: Record<Preset['task'], string> = { generate: 'new images', edit: 'edits', music: 'music', video: 'clips', sound: 'sound for clips' }
 const TITLE: Record<Kind, string> = { images: 'Images', music: 'Music', video: 'Video' }
 
 export function Presets({ kind, providers, roles, onChanged }: {
@@ -92,8 +92,11 @@ export function Presets({ kind, providers, roles, onChanged }: {
         <div className="preset-open">
           <Editor key={shownPreset.id} preset={shownPreset} onChanged={changed}
                   onRemoved={() => { setOpen(null); list.reload(); onChanged() }} />
-          <Generate key={`go:${shownPreset.id}`} preset={shownPreset} sources={(recent.data?.batches ?? []).flatMap(madeImages)}
-                    onStarted={recent.add} />
+          {/* a sound is made for one of the agent's clips: no try-it form */}
+          {shownPreset.task !== 'sound' && (
+            <Generate key={`go:${shownPreset.id}`} preset={shownPreset} sources={(recent.data?.batches ?? []).flatMap(madeImages)}
+                      onStarted={recent.add} />
+          )}
         </div>
       )}
       {(save.error || use.error) && <InlineError compact message={save.error ?? use.error} />}

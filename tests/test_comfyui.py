@@ -52,14 +52,16 @@ PROVIDERS = {
                          "moss-image-edit": {"label": "MOSS-Image edit"},
                          "yue2": {"label": "YuE2"},
                          "wan2.2-5b": {"label": "Wan 2.2 5B"},
-                         "ltx2.3-22b": {"label": "LTX 2.3 22B"}}},
+                         "ltx2.3-22b": {"label": "LTX 2.3 22B"},
+                         "ltx2.3-22b-sound": {"label": "LTX 2.3 22B sound"}}},
 }
 ROLES = {"chat": {"chain": ["swap/big"]},
          "image_generation": {"chain": ["comfy/anima-turbo", "comfy/krea2-turbo",
                                         "comfy/krea2-identity-edit",
                                         "comfy/moss-image-edit"]},
          "music_generation": {"chain": ["comfy/yue2"]},
-         "video_generation": {"chain": ["comfy/wan2.2-5b", "comfy/ltx2.3-22b"]}}
+         "video_generation": {"chain": ["comfy/wan2.2-5b", "comfy/ltx2.3-22b",
+                                        "comfy/ltx2.3-22b-sound"]}}
 
 
 def png(w: int, h: int) -> bytes:
@@ -445,6 +447,46 @@ async def test_an_ltx_clip_switches_its_picture_nodes_off_without_a_picture(app,
     ltx = presets.of("video")["ltx2.3-22b"]
     assert "no_image" not in [x["name"] for x in presets.view(ltx)["parameters"]]
     assert not any(f["key"] == "default.no_image" for f in presets.fields(ltx))
+
+
+async def test_a_clip_gets_its_sound_as_a_new_clip_and_the_silent_one_stays(app, store):
+    """video_generator__add_sound: the clip goes up to a sound preset, its picture as it was;
+    the model's 8n + 1 frames cut a 4n + 1 clip short; the new clip names the one it is
+    for, and the silent one is still there."""
+    skill = VideoGenerator(app.cfg)
+    skill.app = app
+    cid = await conversations.create(store)
+    ctx, _ = await _call(store, cid, "v1", "video_generator__generate")
+    r = await skill.generate(ctx, items=[{"prompt": "Snow blows across.", "seconds": 2.2}],
+                             wait=True)
+    assert not r.is_error, r.content
+    [b] = await batches_mod.list_batches(store, "video", conversation=cid)
+    silent = b["items"][0]
+    assert silent["length"] == 53 and silent["fps"] == 24, "Wan's 4n + 1 frames"
+    sid = silent["attachment"]["id"]
+
+    ctx2, _ = await _call(store, cid, "s1", "video_generator__add_sound")
+    r = await skill.add_sound(ctx2, clip=sid[:8], prompt="Wind howls, snow hisses. No music.",
+                          wait=True)
+    assert not r.is_error, r.content
+    g = app.fake.graphs[-1]
+    assert g["5"]["inputs"]["file"] == "celine-src.png", "the clip went up"
+    assert g["7"]["inputs"]["length"] == g["10"]["inputs"]["frames_number"] == 49, "8n + 1"
+    assert g["10"]["inputs"]["frame_rate"] == g["22"]["inputs"]["fps"] == 24
+    assert g["12"]["inputs"]["text"] == "Wind howls, snow hisses. No music."
+    assert f"Sound for clip {sid[:8]}." in r.content
+    batches = await batches_mod.list_batches(store, "video", conversation=cid)
+    sounded = batches[0]["items"][0]
+    assert sounded["preset"] == "ltx2.3-22b-sound" and sounded["sound_for"]["id"] == sid
+    assert sounded["attachment"]["id"] != sid
+    assert (await attachments.get(store, sid))["id"] == sid, "the silent clip stays"
+
+    missing = await skill.add_sound(ctx2, clip="deadbeef", prompt="rain")
+    assert missing.is_error
+    sound = presets.of("video")["ltx2.3-22b-sound"]
+    assert sound.task == "sound" and "size" not in presets.view(sound)
+    assert "clip" not in [x["name"] for x in presets.view(sound)["parameters"]]
+    assert "Gives one of your clips its sound" in presets.docs(sound, False)
 
 
 # ---- its call ------------------------------------------------------------------------
