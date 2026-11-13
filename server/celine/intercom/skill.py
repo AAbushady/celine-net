@@ -46,10 +46,8 @@ def _to_user_from_chat(c, cid: str, to: str, reply_to: int | None) -> bool:
             return ("user", None) in resolve(c, to, sender)[1]
         except (ValueError, KeyError, Refused):
             return False            # the send says what is wrong with the address
-    r = c.execute("SELECT from_addr, to_addr FROM intercom WHERE id=?",
-                  (reply_to,)).fetchone() if reply_to is not None else None
-    return r is not None and (r["from_addr"] == "user" or (
-        r["from_addr"] == sender and "user" in r["to_addr"].split(", ")))
+    goes = rows.reply_goes(c, sender, reply_to) if reply_to is not None else None
+    return goes is not None and "user" in goes.split(", ")
 
 
 def _short(text: str) -> str:

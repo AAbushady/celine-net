@@ -56,6 +56,20 @@ async def frozen(store, cfg, tool: str) -> tuple[str, ToolResult] | None:
     return _gated(cfg.substitute(FROZEN), tool, rule="frozen")
 
 
+async def addressed(store, cid: str, name: str, args: dict) -> dict:
+    """`args` as Bastet reads them: an intercom__send that answers a message with no `to`
+    gets the `to` the intercom gives it (intercom/store.py replies_to), so a reply to the
+    owner stays in the house (a self-review's reply to its owner's thread was judged a
+    send to other people)."""
+    reply_to = args.get("reply_to")
+    if name != "intercom__send" or str(args.get("to") or "").strip() or \
+            not isinstance(reply_to, int) or isinstance(reply_to, bool):
+        return args
+    from ..intercom.store import reply_goes
+    to = await store.read(lambda c: reply_goes(c, f"agent:{cid}", reply_to))
+    return {**args, "to": to} if to else args
+
+
 async def at_call(turn: dict, call: dict, spec, args: dict, *, store, cfg, registry,
                   token, jobs=None, progress=None) -> Gate:
     """Bastet on `call` (its `args` parsed, `spec` its ToolSpec), in the mode of its
@@ -68,7 +82,8 @@ async def at_call(turn: dict, call: dict, spec, args: dict, *, store, cfg, regis
     if gm == "off":
         return Gate()
     mcp = facts.mcp_of(registry, call["name"])
-    gcall = {**call, "args": args, "description": spec.description,
+    gcall = {**call, "args": await addressed(store, cid, call["name"], args),
+             "description": spec.description,
              "read_only": spec.annotations.read_only,
              "sends": mcp.sends if mcp is not None else None, "own": device_hosts(cfg)}
     request = turn.get("request") or []

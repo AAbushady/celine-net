@@ -15,6 +15,19 @@ OPENING = "chat_opening:"
 STARTED = "chat_from:"      # kv: a chat intercom__start_chat made -> the conversation it came from
 
 
+def replies_to(r, from_addr: str) -> str:
+    """Where a reply from `from_addr` to message `r` goes without a `to`: to the sender
+    of `r`, or where `r` went when it is `from_addr`'s own."""
+    return r["to_addr"] if r["from_addr"] == from_addr else r["from_addr"]
+
+
+def reply_goes(c: sqlite3.Connection, from_addr: str, reply_to: int) -> str | None:
+    """replies_to for message `reply_to`, None when there is no such message."""
+    r = c.execute("SELECT from_addr, to_addr FROM intercom WHERE id=?",
+                  (reply_to,)).fetchone()
+    return replies_to(r, from_addr) if r is not None else None
+
+
 def insert(c: sqlite3.Connection, from_addr: str, to: str, kind: str, text: str, *,
            subject: str | None = None, data: dict | None = None, wake: bool = True,
            due_at: str | None = None, until_at: str | None = None,
@@ -35,7 +48,7 @@ def insert(c: sqlite3.Connection, from_addr: str, to: str, kind: str, text: str,
         thread, subject = r["thread"], subject or r["subject"]
         if not to.strip():
             # a host script's sender: resolve makes it the user
-            to = r["to_addr"] if r["from_addr"] == from_addr else r["from_addr"]
+            to = replies_to(r, from_addr)
     stored, targets = resolve(c, to, from_addr, store)
     if reply_to is None and turn is not None:
         reply_to = follows(c, from_addr, stored, turn)
