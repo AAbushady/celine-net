@@ -267,9 +267,9 @@ class Dispatcher:
             if data.get("state") == "running" and data.get("backend"):
                 await turns.set_backend(store, turn["id"], data["backend"], data["model"])
 
-        async def affect(steering: bool) -> dict:
+        async def affect(steering: bool, probes: list[str]) -> dict:
             from ..affect import fields
-            return await fields(store, cid, steering)
+            return await fields(store, cid, steering, probes)
 
         from ..attachments import Images
         # the agent's own turn: a provider with Feeling probes on reads it, and with Feeling

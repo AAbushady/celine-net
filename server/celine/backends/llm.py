@@ -127,9 +127,9 @@ _LOAD_FAILED = ("exited prematurely", "failed to start", "unable to load", "out 
                 "cudamalloc failed")
 
 Emit = Callable[[dict[str, Any]], Awaitable[None]]
-# the request field of one of the agent's own replies, given whether its provider steers
-# (affect.fields)
-AffectFields = Callable[[bool], Awaitable[dict[str, Any]]]
+# the request field of one of the agent's own replies, given whether its provider steers and
+# the probes it reads (affect.fields)
+AffectFields = Callable[[bool, list[str]], Awaitable[dict[str, Any]]]
 
 
 # the time limits of the tool calls (turns/tools.py) and background completions
@@ -848,7 +848,8 @@ class QueuedBackend:
             pid = ref.partition("/")[0] if ref is not None else ""
             self._shared["affect"] = None
             if self.affect is not None and pid and self.llm.router.probes(pid):
-                asked = await self.affect(self.llm.router.steers(pid))
+                asked = await self.affect(self.llm.router.steers(pid),
+                                          self.llm.router.probe_names(pid))
                 self._shared["affect"] = asked.get("affect")
                 body = {**(body or {}), **asked}
             self._shared["request"] = _request_of(backend, messages, sent, body, model)

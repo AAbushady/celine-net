@@ -824,6 +824,13 @@ class Router:
         options = (self.provider(pid) or {}).get("options") or {}
         return bool(options.get("affect", False) and options.get("affect_steer", False))
 
+    def probe_names(self, pid: str) -> list[str]:
+        """The provider's Probes: the feelings its server reads on each reply, by its names
+        (affect.PROBES when the setting is left as it came)."""
+        from ..affect import PROBES
+        named = ((self.provider(pid) or {}).get("options") or {}).get("affect_probes")
+        return [str(n) for n in named] if isinstance(named, list) and named else list(PROBES)
+
     def full(self, pid: str) -> str | None:
         """The sentence while provider `pid` used its Requests per hour, else None."""
         cap, now = self.per_hour(pid), self.now()

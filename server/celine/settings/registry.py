@@ -26,6 +26,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..affect import PROBES
 from ..config import BackendConfig, Problem
 from . import kinds as kinds_mod
 from .files import Invalid
@@ -147,6 +148,10 @@ OPTION_WORDS: dict[str, dict[str, Any]] = {
                      "help": "{{name}}'s mood and needs push each of {{name}}'s own replies "
                              "from inside the model: a low mood writes lower, a tired one "
                              "sleepier. At most a tint."},
+    "affect_probes": {"label": "Probes", "needs": "affect",
+                      "help": "The feelings read on each reply, by the names the server gives "
+                              "them. The server refuses a request that names one it does not "
+                              "have, so add a name only once the server has it."},
 }
 
 
@@ -178,7 +183,8 @@ OPTIONS: dict[str, dict[str, tuple]] = {
     "ollama": {**_COMMON, "keep_alive": ("str", "", None)},
     # affect: the server runs the affect patch, the agent's turns ask it for readings;
     # affect_steer: they carry the pushes of its state too (affect.py)
-    "openai": {**_COMMON, "affect": ("bool", False, None), "affect_steer": ("bool", False, None)},
+    "openai": {**_COMMON, "affect": ("bool", False, None), "affect_steer": ("bool", False, None),
+               "affect_probes": ("list", list(PROBES), None)},
     "anthropic": dict(_COMMON),
     # timeout: the most one item of a batch may take in ComfyUI; shares_gpu_with: the
     # id of a llama-swap provider on the same GPU (backends/llm.py gpu_lease); on_demand:

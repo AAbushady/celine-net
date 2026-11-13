@@ -67,15 +67,18 @@ async def body_of(llm, **kw):
 PUSH = [{"name": "tired", "scale": 0.3}]
 
 
-async def asked(steering: bool) -> dict:
+async def asked(steering: bool, probes: list[str]) -> dict:
     """affect.fields as a turn binds it, with a state that pushes tired."""
-    return {"affect": {"probe": list(affect.PROBES), **({"steer": PUSH} if steering else {})}}
+    return {"affect": {"probe": list(probes), **({"steer": PUSH} if steering else {})}}
 
 
 async def test_only_the_agents_own_turn_on_a_provider_with_probes_asks_for_readings(llm):
     assert (await body_of(llm, affect=asked))["affect"] == {"probe": list(affect.PROBES)}
     assert "affect" not in await body_of(llm), "a guard check, a title, the appraisal"
     options = llm.cfg.settings.providers["brain"]["options"]
+    options["affect_probes"] = ["lonely", "lonely_clean"]
+    assert (await body_of(llm, affect=asked))["affect"] == {
+        "probe": ["lonely", "lonely_clean"]}, "the Probes setting names what is read"
     options["affect_steer"] = True
     assert (await body_of(llm, affect=asked))["affect"]["steer"] == PUSH, "steering on"
     options["affect"] = False
@@ -83,6 +86,18 @@ async def test_only_the_agents_own_turn_on_a_provider_with_probes_asks_for_readi
     llm.cfg.settings.roles["chat"] = {"chain": ["plain/small"]}
     options["affect"] = True
     assert "affect" not in await body_of(llm, affect=asked), "a server without the patch"
+
+
+async def test_a_reading_keeps_the_probes_its_request_asked(store):
+    cid = await conversations.create(store)
+    mid, _, _ = await user_says(store, cid, "hi")
+    raw = {"affect": {"probe": {"lonely": {"mean": 0.2, "last": 0.1},
+                                "lonely_clean": {"mean": 0.3, "last": 0.2},
+                                "longing": {"mean": 0.9, "last": 0.9}}}}
+    await affect.keep(store, cid, None, mid, raw, {"probe": ["lonely", "lonely_clean"]})
+    row = await store.read(lambda c: c.execute(
+        "SELECT readings FROM affect_readings WHERE message_id=?", (mid,)).fetchone())
+    assert set(json.loads(row[0])) == {"lonely", "lonely_clean"}, "longing was not asked"
 
 
 def test_the_state_pushes_a_tint_and_never_longing():

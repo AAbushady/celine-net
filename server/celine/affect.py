@@ -1,14 +1,15 @@
 """Feeling probes and steering: a server running the affect patch reads directions of feeling
 from the agent's own activations while it writes, sends the readings with the reply, and can
 add those directions to them (steering). A provider with Feeling probes on (its `affect`
-option, settings/registry.py) gets `"affect": {"probe": PROBES}` on every request of the
-agent's own turns (turns/dispatcher.py binds them with `fields`); with Feeling steering on too
-(`affect_steer`), the request also carries `"steer": [{name, scale}]`, the pushes of its mood
-and needs then (skills/mind.py `pushes`, which its [your mind] block names on that turn). The
-reply's top-level `affect` ({probe: {name: {mean, last}},
-tokens, layers, poles}) comes back in Done.raw, and `keep` stores the readings with what was
-steered, one row per reply message (affect_readings). Nothing reads them back into the agent
-yet."""
+option, settings/registry.py) gets `"affect": {"probe": [...]}` on every request of the
+agent's own turns (turns/dispatcher.py binds them with `fields`), the names its Probes option
+lists (PROBES as it came; the server refuses a name it does not have). With Feeling steering
+on too (`affect_steer`), the request also carries `"steer": [{name, scale}]`, the pushes of
+its mood and needs then (skills/mind.py `pushes`, which its [your mind] block names on that
+turn). The reply's top-level `affect` ({probe: {name: {mean, last}}, tokens, layers, poles})
+comes back in Done.raw, and `keep` stores the readings of the probes asked with what was
+steered, one row per reply message (affect_readings). Nothing reads them back into the agent:
+no probe is validated as a feeling, they are raw values."""
 from __future__ import annotations
 
 import json
@@ -18,16 +19,17 @@ from typing import Any
 
 from .core.ids import now
 
-# the directions read: the patch's longing is never asked for, at the agent's own request
-# (it read unreliably, and what is not read cannot creep into anything)
+# the directions read as the Probes setting comes: the patch's longing is never asked for, at
+# the agent's own request (it read unreliably, and what is not read cannot creep into anything)
 PROBES = ("valence", "arousal", "dominance", "tired", "lonely")
 
 
-async def fields(store, cid: str, steering: bool,
+async def fields(store, cid: str, steering: bool, probes: list[str] | tuple[str, ...] = PROBES,
                  now_: datetime | None = None) -> dict[str, Any]:
-    """The request field of one of the agent's own replies in conversation `cid`: the probes,
-    and with `steering` the pushes of its state now (an empty list is left out)."""
-    ask: dict[str, Any] = {"probe": list(PROBES)}
+    """The request field of one of the agent's own replies in conversation `cid`: the probes
+    its provider reads, and with `steering` the pushes of its state now (an empty list is
+    left out)."""
+    ask: dict[str, Any] = {"probe": list(probes)}
     if steering:
         from .skills.mind import point_and_levels, pushes
         from .skills.places import place_of
@@ -44,15 +46,17 @@ def _number(v: Any) -> float | None:
     return float(v)
 
 
-def readings(raw: dict | None) -> tuple[dict[str, Any], int] | None:
-    """The readings of a reply's raw answer and the tokens they cover, None when it has
-    none. A probe the server could not compute is null."""
+def readings(raw: dict | None, asked: list[str] | tuple[str, ...] = PROBES
+             ) -> tuple[dict[str, Any], int] | None:
+    """The readings of a reply's raw answer for the probes `asked`, and the tokens they
+    cover, None when it has none. A probe the server could not compute is null; one not
+    asked is not kept."""
     a = (raw or {}).get("affect")
     if not isinstance(a, dict) or not isinstance(a.get("probe"), dict):
         return None
     probe = a["probe"]
     out: dict[str, Any] = {}
-    for name in PROBES:
+    for name in asked:
         r = probe.get(name)
         mean = _number(r.get("mean")) if isinstance(r, dict) else None
         last = _number(r.get("last")) if isinstance(r, dict) else None
@@ -64,8 +68,8 @@ def readings(raw: dict | None) -> tuple[dict[str, Any], int] | None:
 async def keep(store, cid: str, turn_id: str | None, mid: str, raw: dict | None,
                sent: dict | None = None) -> None:
     """Store the readings of reply `mid`, when its raw answer has them, with the pushes its
-    request carried (`sent`: the request's `affect` field)."""
-    got = readings(raw)
+    request carried (`sent`: the request's `affect` field, its probes the ones kept)."""
+    got = readings(raw, (sent or {}).get("probe") or PROBES)
     if got is None:
         return
     values, tokens = got
