@@ -592,7 +592,8 @@ async def appraise(app, cid: str, tid: str, backend=None) -> dict | None:
         read = await store.read(_read)
         _mood, point, _felt = _of(cfg, read, now_, "chat")
         lv = needs.levels(read[1], now_)
-        for need, change, s in needs.appraised(got["needs"], "chat", lv, point):
+        for need, change, s in needs.appraised(got["needs"], "chat", lv, point,
+                                               f"{f['said']}\n{f['reply']}"):
             await needs.note(store, need, change, s, got["why"], "appraisal", f["reply_id"])
     return got
 

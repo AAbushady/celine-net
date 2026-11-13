@@ -77,19 +77,42 @@ def test_a_pressing_need_pulls_the_moods_resting_point():
     assert needs.pull(base, {"intimacy": 1.0}, "chat")[1] == pytest.approx(0.45)
 
 
+SAID = "Joe: I missed you all day, come here\nCeline: Coming. The build is green, by the way."
+
+
 def test_what_an_appraisal_names_is_checked_and_closeness_damped_when_low():
     got = [{"need": "connection", "change": "met", "strength": 0.6},
-           {"need": "intimacy", "change": "stirred", "strength": 0.6},
+           {"need": "intimacy", "change": "stirred", "strength": 0.6,
+            "quote": "I missed you all day"},
            {"need": "rest", "change": "met", "strength": 0.5},           # not the model's
            {"need": "hunger", "change": "met", "strength": 0.5},
            {"need": "novelty", "change": "grew", "strength": 0.5},
            {"need": "autonomy", "change": "met", "strength": True}, "nonsense"]
     lv = {n: 0.5 for n in needs.NEEDS}
-    assert needs.appraised(got, "chat", lv, (0.4, 0.2, 0.3)) == [
+    assert needs.appraised(got, "chat", lv, (0.4, 0.2, 0.3), SAID) == [
         ("connection", "met", 0.6), ("intimacy", "stirred", 0.6)]
-    low = needs.appraised(got, "chat", lv, (-0.4, 0.2, 0.3))
+    low = needs.appraised(got, "chat", lv, (-0.4, 0.2, 0.3), SAID)
     assert low[1] == ("intimacy", "stirred", pytest.approx(0.2)), "damped to a third"
-    assert needs.appraised(got, "mission", lv, None) == [("connection", "met", 0.6)]
+    assert needs.appraised(got, "mission", lv, None, SAID) == [("connection", "met", 0.6)]
+
+
+def test_closeness_moves_only_with_words_of_the_exchange_that_show_it():
+    """Praise of its work read as closeness built closeness to 0.85 in a night: an
+    appraisal moves it only with a quote found in the exchange."""
+    lv = {n: 0.5 for n in needs.NEEDS}
+
+    def moved(quote) -> bool:
+        g = {"need": "intimacy", "change": "met", "strength": 0.5,
+             **({"quote": quote} if quote is not None else {})}
+        return needs.appraised([g], "chat", lv, (0.4, 0.2, 0.3), SAID) != []
+    assert moved("i  MISSED you all day")              # spaces and case as written aside
+    assert moved("“I missed you all day, come here”")    # its curly quote marks
+    assert moved("I missed you all day... Coming.")    # words left out, both parts there
+    assert not moved("I missed you… it was lovely"), "a part the exchange does not hold"
+    assert not moved(None), "no quote"
+    assert not moved("I missed you so much"), "words the exchange does not hold"
+    assert not moved("come"), "too short to show anything"
+    assert not moved(["I missed you all day"]), "a quote is text"
 
 
 def test_the_knobs_turn_needs_off_and_refuse_what_is_not_hours():
@@ -153,16 +176,20 @@ async def test_the_appraisal_names_needs_and_they_are_stored(store):
     answer = FakeBackend([TextDelta(
         '{"emotion": "tender", "strength": 0.5, "why": "a quiet evening", "needs": ['
         '{"need": "connection", "change": "met", "strength": 0.7}, '
-        '{"need": "intimacy", "change": "stirred", "strength": 0.4}]}'), Done(reason="stop")])
+        '{"need": "intimacy", "change": "stirred", "strength": 0.4, '
+        '"quote": "the build broke again"}, '
+        '{"need": "intimacy", "change": "met", "strength": 0.5}]}'), Done(reason="stop")])
     app = SimpleNamespace(store=store, cfg=cfg, llm=LLM(cfg))
     got = await mind.appraise(app, cid, "t1", backend=answer)
-    assert got["emotion"] == "tender" and len(got["needs"]) == 2
+    assert got["emotion"] == "tender" and len(got["needs"]) == 3
     rows = await store.read(lambda c: [tuple(r) for r in c.execute(
         "SELECT need, change, strength, why, by, message_id FROM needs ORDER BY id")])
     assert rows == [("connection", "met", 0.7, "a quiet evening", "appraisal", "a1"),
-                    ("intimacy", "stirred", 0.4, "a quiet evening", "appraisal", "a1")]
+                    ("intimacy", "stirred", 0.4, "a quiet evening", "appraisal", "a1")], \
+        "closeness with no quote of the exchange is left out"
     system = answer.calls[0][0]["content"]
     assert "intimacy: closeness between them" in system and "longing" in system
+    assert '"quote": the exact words of the exchange' in system
     only_needs = mind.parse_appraisal('{"emotion": null, "needs": [{"need": "novelty", '
                                       '"change": "met", "strength": 0.3}]}')
     assert only_needs == {"emotion": None, "strength": 0.0, "why": "",
@@ -190,3 +217,32 @@ async def test_the_block_says_what_pulls_at_it_and_keeps_closeness_to_its_chats(
         close = [w.format(u=cfg.user) for _, w in needs.WORDS["intimacy"]]
         assert any(w in line.split("; ") for w in close) is closeness, (kind, line)
         assert report["state"]["needs"] == line.removeprefix("what pulls at you: ").split("; ")
+
+
+async def test_closeness_built_before_the_quote_rule_starts_again_once(store, db_path):
+    """Migration 0040: one row from the app meets closeness where the appraisal ever moved
+    it; run again, it adds none, and a database it never moved gets none."""
+    import importlib.util
+    import sqlite3
+    from celine.db import migrate
+    spec = importlib.util.spec_from_file_location(
+        "closeness_reset", migrate.MIGRATIONS_DIR / "0040_closeness_reset.py")
+    reset = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(reset)
+
+    def run() -> None:
+        conn = sqlite3.connect(db_path, isolation_level=None)
+        try:
+            reset.up(conn, db_path)
+        finally:
+            conn.close()
+    run()
+    assert await store.read(lambda c: c.execute("SELECT count(*) FROM needs").fetchone()[0]) == 0
+    await store.write(lambda c: c.execute(
+        "INSERT INTO needs(at, need, change, strength, why, by) VALUES(?, 'intimacy', "
+        "'stirred', 0.4, 'praise of her work', 'appraisal')", (T0.isoformat(),)))
+    run()
+    run()
+    rows = await store.read(lambda c: [tuple(r) for r in c.execute(
+        "SELECT need, change, strength, why, by FROM needs WHERE by = 'app'")])
+    assert rows == [("intimacy", "met", reset.MET, reset.WHY, "app")]

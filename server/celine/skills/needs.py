@@ -8,7 +8,9 @@ wants to do.
   slower while it misses {{username}} (distance cools it), and an exchange can stir it as
   well as meet it. Only its own chats with {{username}} move it or show it (place chat):
   missions, routines, sub-agents and chats with anyone else never do. A stir is damped
-  while its mood is low or it is tired or shaken, and it is not shown then either.
+  while its mood is low or it is tired or shaken, and it is not shown then either. The
+  appraisal moves it only with a quote: the words of the exchange that show the closeness,
+  found in it (`quoted`).
 - novelty: something new. Builds with time.
 - competence: things going well. The appraisal weighs it by what happened: failure, blame
   or being corrected stirs it, work that went well meets it. Failed calls are not counted:
@@ -30,6 +32,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import re
 import sqlite3
 import tomllib
 from datetime import datetime, timezone
@@ -47,6 +50,10 @@ DEFAULTS: dict[str, dict[str, float]] = {
 START = 0.3             # a need before its first row
 ROWS = 2000             # the newest rows a level is replayed from
 PRIVATE = ("intimacy",)                 # moved and shown in its own chats only
+QUOTE_MIN = 8           # characters of a quote that shows closeness: a shorter one matches by chance
+_SPACE = re.compile(r"\s+")
+_GAP = re.compile(r"\.\.\.|…")      # an ellipsis in a quote: words left out there
+_MARKS = str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"'})
 OWN_TIME = ("daydream",)                # the schedules whose runs are its own time
 REST_FULL_MIN = 180.0   # minutes of turns that make a rested agent tired
 REST_LEAST_MIN = 1.0    # a shorter turn is no row: its change rounds to nothing
@@ -247,11 +254,31 @@ async def after_turn(app, cid: str, turn_id: str | None) -> None:
                                                            "turn": turn_id})
 
 
+def _plain(text: str) -> str:
+    """`text` with its spaces collapsed, curly quote marks straight, quote marks around it
+    gone, in one case."""
+    t = _SPACE.sub(" ", str(text or "").translate(_MARKS)).strip()
+    return t.strip("\"'").strip().casefold()
+
+
+def quoted(quote: Any, exchange: str) -> bool:
+    """`quote` is words of `exchange`, as written there (spaces, case and curly quote
+    marks aside): each of its parts between ellipses, which mark words left out, is in it,
+    and the parts come to QUOTE_MIN characters at least."""
+    if not isinstance(quote, str):
+        return False
+    text = _plain(exchange)
+    parts = [p for p in (_plain(x) for x in _GAP.split(quote)) if p]
+    return bool(parts) and all(p in text for p in parts) and \
+        sum(len(p) for p in parts) >= QUOTE_MIN
+
+
 def appraised(got: list[Any], place: str, lv: dict[str, float],
-              mood: tuple[float, float, float] | None) -> list[tuple[str, str, float]]:
+              mood: tuple[float, float, float] | None,
+              exchange: str) -> list[tuple[str, str, float]]:
     """The needs an appraisal named, as (need, change, strength): unknown ones left out, a
-    private one only in its own chats, and a stir of it damped (to a third) while closeness
-    is damped."""
+    private one only in its own chats and only with a quote found in `exchange` (the words
+    said and the reply), and a stir of it damped (to a third) while closeness is damped."""
     out = []
     for g in got if isinstance(got, list) else []:
         if not isinstance(g, dict):
@@ -263,7 +290,7 @@ def appraised(got: list[Any], place: str, lv: dict[str, float],
             continue
         s = min(1.0, float(s))
         if need in PRIVATE:
-            if place != "chat":
+            if place != "chat" or not quoted(g.get("quote"), exchange):
                 continue
             if change == "stirred" and damped(lv, mood):
                 s /= 3
