@@ -85,6 +85,7 @@ class Fake:
         self.llm: LLM | None = None
         self.lease_at_free: bool | None = None
         self.queued = anyio.Event()
+        self.uploaded = b""                 # the last clip that went up, as it came
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         host, path, method = request.url.host, request.url.path, request.method
@@ -107,9 +108,13 @@ class Fake:
             if cls in self.lacks:            # a combo whose list lacks the preset's file
                 spec["input"]["required"][self.lacks[cls]] = [["something-else.safetensors"]]
             return httpx.Response(200, json={cls: spec})
-        if path == "/upload/image":
-            return httpx.Response(200, json={"name": "celine-src.png", "subfolder": "",
-                                             "type": "input"})
+        if path == "/upload/image":           # a clip goes up as a clip, kept as it came
+            name = "celine-src.png"
+            if b'.mp4"' in request.content:
+                name, body = "celine-in.mp4", request.content
+                start = body.find(b"\x00\x00\x00\x18ftypmp42")
+                self.uploaded = body[start:body.find(b".mp4", start) + 4]
+            return httpx.Response(200, json={"name": name, "subfolder": "", "type": "input"})
         if path == "/prompt":
             self.graphs.append(json.loads(request.content)["prompt"])
             self.queued.set()
@@ -134,8 +139,14 @@ class Fake:
             outputs = {"9": out}
             if any(n["class_type"] == "SaveVideo" for n in g.values()):
                 # the clip under `images` as SaveVideo lists it, then its stills; a short
-                # clip's last two can be the same frame
-                outputs = {"12": {"images": [{"filename": "wan_00001.mp4", "type": "output",
+                # clip's last two can be the same frame. A clip LoadVideo was given comes
+                # first, as ComfyUI lists it: a preview of type input
+                loaded = [n["inputs"]["file"] for n in g.values()
+                          if n["class_type"] == "LoadVideo"]
+                outputs = {**({"5": {"images": [{"filename": loaded[0], "type": "input"}],
+                                     "animated": [True]}} if loaded else {}),
+                           "12": {"images": [{"filename": f"clip_{len(self.graphs)}.mp4",
+                                              "type": "output",
                                               "metadata": {"kind": "video", "width": 1280,
                                                            "height": 704, "duration": 2.04}}],
                                   "animated": [True]},
@@ -146,9 +157,12 @@ class Fake:
                 "outputs": outputs}})
         if path == "/view":
             name = request.url.params["filename"]
-            if name.endswith(".mp4"):
-                return httpx.Response(200, content=b"\x00\x00\x00\x18ftypmp42" + b"x" * 64,
+            if name == "celine-in.mp4":            # the clip it was given, as it came
+                return httpx.Response(200, content=self.uploaded,
                                       headers={"content-type": "video/mp4"})
+            if name.endswith(".mp4"):              # each clip its own bytes
+                return httpx.Response(200, content=b"\x00\x00\x00\x18ftypmp42" + b"x" * 64
+                                      + name.encode(), headers={"content-type": "video/mp4"})
             if name.startswith("still_"):
                 return httpx.Response(200, content=png(1280, 704) + name.encode(),
                                       headers={"content-type": "image/png"})
@@ -449,12 +463,20 @@ async def test_an_ltx_clip_switches_its_picture_nodes_off_without_a_picture(app,
     assert not any(f["key"] == "default.no_image" for f in presets.fields(ltx))
 
 
-async def test_a_clip_gets_its_sound_as_a_new_clip_and_the_silent_one_stays(app, store):
+async def test_a_clip_gets_its_sound_as_a_new_clip_and_the_silent_one_stays(app, store,
+                                                                          monkeypatch):
     """video_generator__add_sound: the clip goes up to a sound preset, its picture as it was;
-    the model's 8n + 1 frames cut a 4n + 1 clip short; the new clip names the one it is
-    for, and the silent one is still there."""
+    the model's 8n + 1 frames cut a 4n + 1 clip short; the new clip is the one the workflow
+    saved (not the clip LoadVideo lists as its input) and has a sound track, it names the
+    one it is for, and the silent one is still there. A result without a sound track
+    fails with that reason (bug #66: the input came back as the made clip)."""
     skill = VideoGenerator(app.cfg)
     skill.app = app
+    tracks = {"n": 1}
+
+    async def audio_streams(data: bytes) -> int:
+        return tracks["n"]
+    monkeypatch.setattr(frames_mod, "audio_streams", audio_streams)
     cid = await conversations.create(store)
     ctx, _ = await _call(store, cid, "v1", "video_generator__generate")
     r = await skill.generate(ctx, items=[{"prompt": "Snow blows across.", "seconds": 2.2}],
@@ -470,7 +492,7 @@ async def test_a_clip_gets_its_sound_as_a_new_clip_and_the_silent_one_stays(app,
                           wait=True)
     assert not r.is_error, r.content
     g = app.fake.graphs[-1]
-    assert g["5"]["inputs"]["file"] == "celine-src.png", "the clip went up"
+    assert g["5"]["inputs"]["file"] == "celine-in.mp4", "the clip went up"
     assert g["7"]["inputs"]["length"] == g["10"]["inputs"]["frames_number"] == 49, "8n + 1"
     assert g["10"]["inputs"]["frame_rate"] == g["22"]["inputs"]["fps"] == 24
     assert g["12"]["inputs"]["text"] == "Wind howls, snow hisses. No music."
@@ -479,7 +501,16 @@ async def test_a_clip_gets_its_sound_as_a_new_clip_and_the_silent_one_stays(app,
     sounded = batches[0]["items"][0]
     assert sounded["preset"] == "ltx2.3-22b-sound" and sounded["sound_for"]["id"] == sid
     assert sounded["attachment"]["id"] != sid
+    assert sounded["attachment"]["sha256"] != silent["attachment"]["sha256"], \
+        "the clip the workflow saved, not the one it was given"
     assert (await attachments.get(store, sid))["id"] == sid, "the silent clip stays"
+
+    tracks["n"] = 0
+    ctx3, _ = await _call(store, cid, "s2", "video_generator__add_sound")
+    r = await skill.add_sound(ctx3, clip=sid[:8], prompt="Rain.", wait=True)
+    batches = await batches_mod.list_batches(store, "video", conversation=cid)
+    [failed] = batches[0]["items"]
+    assert failed["state"] == "failed" and "without a sound track" in failed["error"]
 
     missing = await skill.add_sound(ctx2, clip="deadbeef", prompt="rain")
     assert missing.is_error

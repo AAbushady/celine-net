@@ -51,6 +51,16 @@ async def _run(*cmd: str) -> bytes:
     return done.stdout
 
 
+async def audio_streams(data: bytes) -> int:
+    """How many audio streams the clip `data`, an MP4, has."""
+    with tempfile.TemporaryDirectory(prefix="celine-frames-") as tmp:
+        clip = Path(tmp) / "clip.mp4"
+        clip.write_bytes(data)
+        probe = json.loads(await _run("ffprobe", "-v", "error", "-select_streams", "a",
+                                      "-show_entries", "stream=index", "-of", "json", str(clip)))
+        return len(probe.get("streams") or [])
+
+
 async def sample(data: bytes, n: int) -> tuple[int, list[Frame]]:
     """(how many frames the clip `data`, an MP4, has; `n` of them, spread evenly from its
     first to its last)."""

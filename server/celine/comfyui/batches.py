@@ -930,6 +930,8 @@ class Batches:
         if clip is None:
             raise ImageError("The workflow finished without a clip.")
         data, media_type = await comfy.output(clip)
+        if heard:
+            await self._heard(data, heard)
         meta = clip.get("metadata") or {}
         ext = ".webm" if "webm" in media_type else ".mp4"
         row = await self._store(b, data, f"{p.id}-{item['seed']}{ext}",
@@ -949,6 +951,21 @@ class Batches:
                 batch_id=b["id"])
             frames.append({k: got[k] for k in ("id", "sha256", "filename", "media_type")})
         item["frames"] = frames
+
+    @staticmethod
+    async def _heard(data: bytes, heard: dict) -> None:
+        """A sound's clip is made only when it is not the clip it was made for and it has a
+        sound track: ImageError naming which, else nothing."""
+        from . import frames
+        if hashlib.sha256(data).hexdigest() == heard["sha256"]:
+            raise ImageError("The workflow gave back the clip it was given, with no sound "
+                             "made for it.")
+        try:
+            tracks = await frames.audio_streams(data)
+        except frames.FramesError as e:
+            raise ImageError(f"Its sound track could not be checked: {e}") from None
+        if not tracks:
+            raise ImageError("The workflow made a clip without a sound track.")
 
     async def _song(self, b: dict, item: dict, servers: "_Servers", note) -> None:
         p = self._preset("music", item)

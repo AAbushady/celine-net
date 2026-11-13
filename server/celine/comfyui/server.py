@@ -450,11 +450,12 @@ def _plain(text: Any) -> str:
 
 def _output_refs(outputs: dict[str, Any]) -> list[dict[str, Any]]:
     """Every file a prompt saved, in its nodes' order: images, clips (SaveVideo lists its
-    file under `images` with metadata kind video) and audio."""
+    file under `images` with metadata kind video) and audio. A file it was given is not
+    one it made: LoadVideo lists the clip it loaded as a preview of type input."""
     return [item for out in outputs.values()
             for key in ("images", "video", "audio")
             for item in (out.get(key) or [])
-            if isinstance(item, dict) and item.get("filename")]
+            if isinstance(item, dict) and item.get("filename") and item.get("type") != "input"]
 
 
 _CLIP = (".mp4", ".webm", ".mov", ".mkv")
