@@ -49,6 +49,7 @@ ROWS = 2000             # the newest rows a level is replayed from
 PRIVATE = ("intimacy",)                 # moved and shown in its own chats only
 OWN_TIME = ("daydream",)                # the schedules whose runs are its own time
 REST_FULL_MIN = 180.0   # minutes of turns that make a rested agent tired
+REST_LEAST_MIN = 1.0    # a shorter turn is no row: its change rounds to nothing
 # the words of a level: (from this level, words); {u} is {{username}}
 WORDS: dict[str, tuple[tuple[float, str], ...]] = {
     "connection": ((0.6, "you miss {u}"), (0.85, "you miss {u} badly")),
@@ -238,7 +239,7 @@ async def after_turn(app, cid: str, turn_id: str | None) -> None:
         if f["own"]:
             await note(app.store, "autonomy", "met", 0.3, "its own time", "app")
             return
-        if f["minutes"] > 0:
+        if f["minutes"] >= REST_LEAST_MIN:
             await note(app.store, "rest", "stirred", min(0.4, f["minutes"] / REST_FULL_MIN),
                        f"{f['minutes']:.0f} minutes of work", "app")
     except Exception:

@@ -126,6 +126,12 @@ async def test_a_turns_minutes_build_rest_and_its_own_time_meets_autonomy(store)
         "SELECT need, change, round(strength, 3), by FROM needs ORDER BY id")])
     assert got == [("rest", "stirred", 0.333, "app")], \
         "failed calls are trial and error, not a blow: the appraisal weighs competence"
+    later = (T0 + timedelta(seconds=40)).isoformat()                # a turn under a minute
+    await store.write(lambda c: turn(c, "t0", cid, 0))
+    await needs.after_turn(app, cid, "t0")
+    assert await store.read(lambda c: c.execute("SELECT count(*) FROM needs").fetchone()[0]) == 1, \
+        "no row for a change that rounds to nothing"
+    later = (T0 + timedelta(minutes=60)).isoformat()
 
     own = await conversations.create(store, kind="background")
     def daydream(c):
