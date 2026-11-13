@@ -78,6 +78,19 @@ async def test_a_day_is_an_index_a_read_is_a_slice_and_a_tool_call_reads_raw(sto
 
     names = (await skill.read(ctx, a[:8])).content
     assert "    call t1 web__search ok" in names and "milk is 1 euro" not in names
+
+    def counting(c):
+        m = tree.append(c, store, here, None, "user", "count the failed calls", "user")
+        r = tree.append(c, store, here, m["id"], "assistant", "", "model")
+        res = tree.append(c, store, here, r["id"], "tool", "no such day", "model")
+        c.execute("INSERT INTO tool_calls(id, message_id, result_message_id, name, "
+                  "arguments, state) VALUES('t3', ?, ?, 'notebook__edit', '{}', 'error')",
+                  (r["id"], res["id"]))
+    await store.write(counting)
+    day = (await skill.list_day(ctx, today)).content
+    assert day.splitlines()[-1] == ("- this conversation, left out of the list: 0 turns, "
+                                    "1 tool calls (notebook__edit), 1 failed (notebook__edit)"), \
+        "a count of the day that the asking conversation would leave out"
     full = (await skill.read(ctx, a[:8], start=2, end=2, tools="full")).content
     assert "result: milk is 1 euro" in full and "Milk is on the list" not in full
     assert f"earlier: past_conversations__read(conversation=\"{a[:8]}\", end=1)" in full

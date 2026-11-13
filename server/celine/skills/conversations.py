@@ -72,6 +72,18 @@ def _job(k) -> str:
     return f", job {k['job'][:8]} {k['job_state']}" if k["job"] else ""
 
 
+def _calls(calls: list[dict]) -> str:
+    """"5 tool calls (3 shell__run, notebook__read, web__search), 1 failed (shell__run)"."""
+    names = Counter(c["name"] for c in calls)
+    failed = [c for c in calls if c["state"] in ("error", "interrupted")]
+    out = f"{len(calls)} tool calls"
+    if names:
+        out += f" ({', '.join(f'{n} {k}' if k > 1 else n for n, k in names.most_common())})"
+    if failed:
+        out += f", {len(failed)} failed ({', '.join(c['name'] for c in failed)})"
+    return out
+
+
 def _items(c: sqlite3.Connection, cid: str) -> list[dict]:
     """The conversation's active path as it reads it: one item per user message and
     per answer with words or tools, numbered from 1, each with its tool calls."""
@@ -189,8 +201,9 @@ class PastConversations:
         title, the message numbers of that day, turns, the tool calls with their names
         and the ones that failed, a run's try with its outcome (a failed one is a draft,
         not a source), a last turn that failed or was cut, the first and the last line.
-        The current conversation is left out, and the archived ones while Lock archived
-        chats is on. Read one further with past_conversations__read."""
+        The current conversation is left out of the list, and one line after it counts its
+        turns and tool calls of that day; the archived ones are left out while Lock
+        archived chats is on. Read one further with past_conversations__read."""
         try:
             day = dt.date.fromisoformat(str(date).strip())
         except ValueError:
@@ -199,25 +212,24 @@ class PastConversations:
         tz = zone(self.cfg)
         lo, hi = (iso(dt.datetime.combine(d, dt.time(), tz))
                   for d in (day, day + dt.timedelta(days=1)))
-        rows = await ctx.store.read(lambda c: self._day(c, lo, hi, ctx.conversation_id, kind))
-        if not rows:
-            of = f" {kind}" if kind else ""
+        here = ctx.conversation_id
+        rows, mine = await ctx.store.read(lambda c: (self._day(c, lo, hi, here, kind),
+                                                     self._mine(c, lo, hi, here, kind)))
+        of = f" {kind}" if kind else ""
+        if not rows and mine is None:
             return ToolResult(content=f"No{of} conversation of yours has messages on {day}.")
-        out = [f"{day}: {len(rows)} conversation{'s' if len(rows) != 1 else ''}"]
+        out = [f"{day}: {len(rows)} conversation{'s' if len(rows) != 1 else ''}" if rows
+               else f"{day}: no other{of} conversation of yours has messages then"]
         for r in rows:
-            calls = r["calls"]
-            names = Counter(c["name"] for c in calls)
-            failed = [c for c in calls if c["state"] in ("error", "interrupted")]
             line = (f"- {r['id'][:8]} {r['kind']} \"{r['title'] or 'Untitled'}\": "
                     f"#{r['first']} to #{r['last']}, {r['turns']} turns, "
-                    f"{len(calls)} tool calls")
-            if names:
-                line += f" ({', '.join(f'{n} {k}' if k > 1 else n for n, k in names.most_common())})"
-            if failed:
-                line += f", {len(failed)} failed ({', '.join(c['name'] for c in failed)})"
+                    f"{_calls(r['calls'])}")
             if r["ended"]:
                 line += f", {r['ended']}"
             out += [line, f"  first: {r['first_line']}", f"  last: {r['last_line']}"]
+        if mine is not None:
+            out.append(f"- this conversation, left out of the list: {mine['turns']} turns, "
+                       f"{_calls(mine['calls'])}")
         text = "\n".join(out)
         from ..backends import tokens
         budget = int(ctx.max_output_tokens or READ_TOKENS)
@@ -264,6 +276,20 @@ class PastConversations:
                          f"{', '.join(facts)}" + (f"\n  last: {r['last']}" if r["last"] else ""))
         return ToolResult(content=self.cfg.substitute("\n".join(lines)),
                           display={"conversations": len(rows)})
+
+    def _mine(self, c: sqlite3.Connection, lo: str, hi: str, here: str,
+              kind: str | None) -> dict | None:
+        """The current conversation's turns and tool calls between lo and hi, None when it
+        has no message then or is not of `kind`."""
+        if kind and (c.execute(f"SELECT {KIND_SQL} FROM conversations c WHERE c.id = ?",
+                               (here,)).fetchone() or [None])[0] != kind:
+            return None
+        items = [i for i in _items(c, here) if lo <= i["message"]["created_at"] < hi]
+        if not items:
+            return None
+        turns = c.execute("SELECT count(*) FROM turns WHERE conversation_id = ? AND "
+                          "created_at >= ? AND created_at < ?", (here, lo, hi)).fetchone()[0]
+        return {"turns": turns, "calls": [k for i in items for k in i["calls"]]}
 
     def _day(self, c: sqlite3.Connection, lo: str, hi: str, here: str,
              kind: str | None = None) -> list[dict]:
