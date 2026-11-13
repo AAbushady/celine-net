@@ -18,8 +18,9 @@ from typing import Any
 
 from .core.ids import now
 
-# every direction the patch has; longing reads unreliably and stays out of what acts on them
-PROBES = ("valence", "arousal", "dominance", "tired", "lonely", "longing")
+# the directions read: the patch's longing is never asked for, at the agent's own request
+# (it read unreliably, and what is not read cannot creep into anything)
+PROBES = ("valence", "arousal", "dominance", "tired", "lonely")
 
 
 async def fields(store, cid: str, steering: bool,

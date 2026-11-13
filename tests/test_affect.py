@@ -114,12 +114,14 @@ async def test_the_fields_steer_from_the_mood_now(store):
 def test_a_probe_the_server_could_not_compute_is_null():
     raw = {"affect": {"probe": {"valence": {"mean": 0.4, "last": -0.1}, "tired": None,
                                 "lonely": {"mean": float("nan"), "last": None},
-                                "arousal": {"mean": True, "last": "x"}},
+                                "arousal": {"mean": True, "last": "x"},
+                                "longing": {"mean": 0.9, "last": 0.9}},
                       "tokens": 37}}
     values, tokens = affect.readings(raw)
     assert values["valence"] == {"mean": 0.4, "last": -0.1} and tokens == 37
     assert values["tired"] is values["lonely"] is values["arousal"] is None
-    assert values["longing"] is None, "a probe it did not send"
+    assert values["dominance"] is None, "a probe it did not send"
+    assert "longing" not in affect.PROBES and "longing" not in values, "never asked, never kept"
     assert affect.readings({"model": "big"}) is None and affect.readings(None) is None
 
 
