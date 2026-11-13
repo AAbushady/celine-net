@@ -125,6 +125,34 @@ def mood_words(m, baseline) -> tuple[str, str]:
     return word, "slight" if d < 0.15 else "clear" if d < 0.4 else "strong"
 
 
+# steering (affect.py): what its state pushes into the model while it writes, on the
+# server's calibration (0.25 to 0.5 a tint, 1.0 unmistakable, past it its words degrade)
+STEER_MOST = 0.75           # the most one push is
+DOMINANCE_MOST = 0.5        # dominance bends it sooner than the rest
+STEER_LEAST = 0.1           # a smaller push is left out
+# the need behind each push of a need; a need pushes only above where needs start
+NEED_PUSHES = (("rest", "tired"), ("connection", "lonely"))
+
+
+def pushes(point: tuple[float, ...] | None, levels: dict[str, float]) -> list[dict]:
+    """The pushes its state gives a reply. Its mood (a PAD point, None without a feeling yet)
+    outside NEUTRAL pushes valence, arousal and dominance by its coordinates; a need above
+    where needs start pushes its direction by how far it is above (rest: tired, connection:
+    lonely). Each at most STEER_MOST (dominance DOMINANCE_MOST); a push under STEER_LEAST is
+    left out; longing is never pushed."""
+    out: dict[str, float] = {}
+    if point is not None and math.dist(point, (0.0, 0.0, 0.0)) >= NEUTRAL:
+        p, a, d = point
+        out["valence"], out["arousal"] = p * STEER_MOST, a * STEER_MOST
+        out["dominance"] = max(-DOMINANCE_MOST, min(DOMINANCE_MOST, d * STEER_MOST))
+    for need, name in NEED_PUSHES:
+        level = levels.get(need)
+        if level is not None and level > needs.START:
+            out[name] = (level - needs.START) / (1 - needs.START) * STEER_MOST
+    return [{"name": n, "scale": round(max(-STEER_MOST, min(STEER_MOST, s)), 3)}
+            for n, s in out.items() if abs(s) >= STEER_LEAST]
+
+
 @functools.cache
 def _knobs() -> tuple[tuple[float, ...], float]:
     """(mood_baseline, mood_half_life_h) from the shipped agent.toml (config/agent/), read
@@ -142,14 +170,41 @@ def _knobs() -> tuple[tuple[float, ...], float]:
 
 
 def _mood_rows(c: sqlite3.Connection) -> list[dict]:
+    """The newest 50 feelings, oldest first, each with the conversation it was felt in and
+    that one's kind (None for a feeling with no message)."""
     return [dict(r) for r in c.execute(
-        "SELECT * FROM (SELECT id, at, emotion, strength, why FROM moods ORDER BY at DESC, "
-        "id DESC LIMIT 50) ORDER BY at, id")]
+        "SELECT * FROM (SELECT f.id, f.at, f.emotion, f.strength, f.why, "
+        "m.conversation_id AS cid, cv.kind AS kind FROM moods f "
+        "LEFT JOIN messages m ON m.id = f.message_id "
+        "LEFT JOIN conversations cv ON cv.id = m.conversation_id "
+        "ORDER BY f.at DESC, f.id DESC LIMIT 50) ORDER BY at, id")]
 
 
-def describe_mood(rows, tz, now_: datetime, base: tuple[float, ...] | None = None) -> str:
-    """"mood: irritable, clear. annoyed since 21:10: why", "" without any row. `base`: the
-    resting point its needs pull it to (_of), else agent.toml's."""
+# where a feeling or a status came from, by the kind of its conversation, when it is not the
+# one the agent reads it in: its mood and status are one across its conversations
+ELSEWHERE = {"chat": "in another chat", "mission": "in a mission",
+             "agent": "in one of your agents", "background": "in a background run"}
+
+
+def elsewhere(cid: str | None, kind: str | None, here: str | None) -> str:
+    """" in another chat" for something from a conversation other than `here`, "" for one
+    from `here` or from none."""
+    return f" {ELSEWHERE[kind]}" if cid and cid != here and kind in ELSEWHERE else ""
+
+
+def _set_in(c: sqlite3.Connection, shown: dict, here: str | None) -> str:
+    """Where its status was set, when that is another conversation than `here`."""
+    cid = shown.get("conversation")
+    row = c.execute("SELECT kind FROM conversations WHERE id=?", (cid,)).fetchone() \
+        if cid else None
+    return elsewhere(cid, row[0] if row else None, here)
+
+
+def describe_mood(rows, tz, now_: datetime, base: tuple[float, ...] | None = None,
+                  here: str | None = None) -> str:
+    """"mood: irritable, clear. annoyed since 21:10: why", "" without any row; a feeling from
+    another conversation than `here` says where ("annoyed since 21:10 in a mission: why").
+    `base`: the resting point its needs pull it to (_of), else agent.toml's."""
     if not rows:
         return ""
     shipped, half = _knobs()
@@ -160,7 +215,8 @@ def describe_mood(rows, tz, now_: datetime, base: tuple[float, ...] | None = Non
         at = _at(r["at"])
         if float(r["strength"]) > 0.3 and (now_ - at).total_seconds() < 4 * half * 3600:
             why = " ".join(str(r["why"] or "").split())
-            out += f" {r['emotion']} since {clock(at, tz, now_)}" + (f": {why}" if why else "")
+            out += (f" {r['emotion']} since {clock(at, tz, now_)}"
+                    + elsewhere(r.get("cid"), r.get("kind"), here) + (f": {why}" if why else ""))
             break
     return out
 
@@ -170,15 +226,16 @@ def _read(c: sqlite3.Connection) -> tuple[list[dict], list[dict]]:
 
 
 def _of(cfg, read: tuple[list[dict], list[dict]], now_: datetime,
-        place: str) -> tuple[str, tuple[float, ...] | None, list[str]]:
-    """(its mood in words, resting where its needs pull it; its mood as a point, None
-    without a feeling yet; the needs it feels, in words) at `now_` in `place`."""
+        place: str, here: str | None = None) -> tuple[str, tuple[float, ...] | None, list[str]]:
+    """(its mood in words, resting where its needs pull it, a feeling from elsewhere than
+    conversation `here` saying where; its mood as a point, None without a feeling yet; the
+    needs it feels, in words) at `now_` in `place`."""
     mood_rows, need_rows = read
     lv = needs.levels(need_rows, now_)
     shipped, half = _knobs()
     base = needs.pull(shipped, lv, place)
     m = current_mood(mood_rows, base, half, now_) if mood_rows else None
-    return (describe_mood(mood_rows, zone(cfg), now_, base), m,
+    return (describe_mood(mood_rows, zone(cfg), now_, base, here), m,
             needs.felt(lv, place, m, cfg.user))
 
 
@@ -204,15 +261,15 @@ def needs_line(app) -> str:
     return "; ".join(_of(app.cfg, _sync(app), datetime.now(timezone.utc), "background")[2])
 
 
-async def _state(store, cfg, now_: datetime,
-                 place: str) -> tuple[str, tuple[float, ...] | None, list[str]]:
-    return _of(cfg, await store.read(_read), now_, place)
+async def _state(store, cfg, now_: datetime, place: str,
+                 here: str | None = None) -> tuple[str, tuple[float, ...] | None, list[str]]:
+    return _of(cfg, await store.read(_read), now_, place, here)
 
 
 async def point_and_levels(store, now_: datetime,
                            place: str) -> tuple[tuple[float, ...] | None, dict[str, float]]:
     """Its mood as a point (None without a feeling yet), resting where its needs pull it in
-    `place`, and each need's level, at `now_`: what steers its replies (affect.steer)."""
+    `place`, and each need's level, at `now_`: what steers its replies (pushes)."""
     mood_rows, need_rows = await store.read(_read)
     lv = needs.levels(need_rows, now_)
     shipped, half = _knobs()
@@ -376,14 +433,19 @@ class Mind:
             return None
         tz, now_ = zone(cfg), _at(at)
         lines = [HEAD]
-        mood, _point, felt = await _state(store, cfg, now_, f["place"])
+        here = ctx.conversation_id
+        mood, _point, felt = await _state(store, cfg, now_, f["place"], here)
         if mood:
             lines.append(mood)
         if felt:
             lines.append("what pulls at you: " + "; ".join(felt))
+        steering = await self._steering(store, here, now_, f["place"])
+        if steering:
+            lines.append(steering)
         shown = await get_mood(store)
         status_h = (now_ - _at(shown["set_at"])).total_seconds() / 3600 if shown else None
-        lines.append(f"your status: {shown['text']}, set {_ago(status_h * 3600)}"
+        set_in = await store.read(lambda c: _set_in(c, shown, here)) if shown else ""
+        lines.append(f"your status: {shown['text']}, set {_ago(status_h * 3600)}{set_in}"
                      if shown else "your status: none set")
         gap = []
         here_h = (now_ - _at(f["here"])).total_seconds() / 3600 if f["here"] else None
@@ -408,7 +470,7 @@ class Mind:
         # the block only when something in it changed since the last whole one it sees
         # (a pause here is always news); else nothing, the report alone
         state = {"mood": mood, "needs": felt, "gap": _gap_bucket(anywhere_h), "model": model,
-                 "down": down, "bastet": bastet,
+                 "down": down, "bastet": bastet, "steer": steering,
                  "status": [shown["text"] if shown else None, _gap_bucket(status_h)]}
         full = state != f["last"] or bool(unfrozen) or (
             here_h is not None and here_h > GAP_HERE_H)
@@ -424,6 +486,20 @@ class Mind:
         chain = llm.router.chain("chat", cid)
         bc = llm.router.backend_config(chain[0]) if chain else None
         return bc.model if bc is not None else None
+
+    async def _steering(self, store, cid: str, now_: datetime, place: str) -> str:
+        """The pushes its state adds to this turn's model (pushes, sent by affect.fields), as
+        one line, when the provider of the conversation's first model has Feeling steering
+        on; else ""."""
+        llm = getattr(self.app, "llm", None)
+        chain = llm.router.chain("chat", cid) if llm is not None else []
+        if not chain or not llm.router.steers(chain[0].partition("/")[0]):
+            return ""
+        given = pushes(*await point_and_levels(store, now_, place))
+        if not given:
+            return ""
+        return ("steering on this turn, the app's pushes from your mood and needs: "
+                + ", ".join(f"{p['name']} {p['scale']:+.2f}" for p in given))
 
     def _down(self, place: str) -> list[str]:
         from ..settings.tools_meta import SKILLS

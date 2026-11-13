@@ -18,7 +18,7 @@ from celine.backends.router import ProviderState
 from celine.conversations import store as conversations
 from celine.core.bus import EventBus
 from celine.core.cancel import Token
-from celine.skills import Registry
+from celine.skills import Registry, mind
 from celine.turns import store as turns
 from celine.turns.runner import run_turn
 from settings_fixtures import scratch
@@ -87,19 +87,18 @@ async def test_only_the_agents_own_turn_on_a_provider_with_probes_asks_for_readi
 
 def test_the_state_pushes_a_tint_and_never_longing():
     start = {"rest": 0.3, "connection": 0.3}
-    assert affect.steer((0.05, 0.0, 0.05), start) == [], "a neutral mood, needs at their start"
-    assert affect.steer(None, start) == [], "no feeling yet"
-    low = affect.steer((-0.6, -0.2, -0.9), {"rest": 0.65, "connection": 0.3})
+    assert mind.pushes((0.05, 0.0, 0.05), start) == [], "a neutral mood, needs at their start"
+    assert mind.pushes(None, start) == [], "no feeling yet"
+    low = mind.pushes((-0.6, -0.2, -0.9), {"rest": 0.65, "connection": 0.3})
     assert low == [{"name": "valence", "scale": -0.45}, {"name": "arousal", "scale": -0.15},
                    {"name": "dominance", "scale": -0.5}, {"name": "tired", "scale": 0.375}]
-    apart = affect.steer((0.1, 0.1, 0.1), {"rest": 0.0, "connection": 1.0})
+    apart = mind.pushes((0.1, 0.1, 0.1), {"rest": 0.0, "connection": 1.0})
     assert apart == [{"name": "lonely", "scale": 0.75}], "pushes under 0.1 left out"
     assert all(p["name"] != "longing" for p in low + apart)
 
 
 async def test_the_fields_steer_from_the_mood_now(store):
     from datetime import datetime, timezone
-    from celine.skills import mind
     at = datetime(2026, 11, 13, 12, 0, tzinfo=timezone.utc)
     cid = await conversations.create(store)
     assert await affect.fields(store, cid, True, now_=at) == {

@@ -52,7 +52,8 @@ class _Her:
         await self.store.write(rows)
         skill = mind.Mind(self.cfg)
         router = SimpleNamespace(chain=lambda role, cid: [self.model],
-                                 backend_config=lambda b: SimpleNamespace(model=b))
+                                 backend_config=lambda b: SimpleNamespace(model=b),
+                                 steers=lambda pid: False)
         skill.app = SimpleNamespace(store=self.store, cfg=self.cfg, registry=None,
                                     llm=SimpleNamespace(router=router))
         skill._down = lambda place: list(self.down)

@@ -105,6 +105,53 @@ async def test_the_block_shows_the_agents_status_and_when_it_set_it(store):
     assert "\nyour status: \U0001f50d\U0001f4da, set 6 hours ago" in user
 
 
+async def test_a_feeling_or_status_from_another_conversation_says_where(store):
+    """Its mood and status are one across its conversations; from another one they say
+    where, so the block never passes them off as this conversation's."""
+    cfg = load()
+    _, reg = await _agent(store, cfg)
+    here, other = await conversations.create(store), await conversations.create(store)
+    mission = await conversations.create(store, kind="mission")
+    there, _, _ = await user_says(store, mission, "go")
+    await mind.feel(store, "annoyed", 0.9, "the build broke", "agent", there)
+    await mind.store_mood(store, "\U0001f527", other)
+    _, tid, _ = await user_says(store, here, "hello")
+    chain = await store.read(lambda c: tree.path(c, here))
+    await message_context.ensure(store, cfg, reg, here, tid, message_context.unsent(chain))
+    built = await context.build(store, cfg, FakeBackend(), here, system="S", tools=[])
+    user = [m["content"] for m in built.messages if m["role"] == "user"][0]
+    assert " in a mission: the build broke" in user
+    assert "\nyour status: \U0001f527, set " in user and " in another chat\n" in user + "\n"
+    mine, _, _ = await user_says(store, here, "still there?")
+    await mind.feel(store, "proud", 0.9, "fixed it", "agent", mine)
+    rows = await store.read(mind._mood_rows)
+    line = mind.describe_mood(rows, timezone.utc, datetime.now(timezone.utc), here=here)
+    assert "proud since " in line and " in " not in line.split("proud since ")[1], "from here"
+
+
+async def test_the_steering_line_shows_only_while_steering_is_on(store):
+    cfg = load()
+    skill, _ = await _agent(store, cfg)
+    on = {"steers": False}
+    skill.app.llm = SimpleNamespace(router=SimpleNamespace(
+        chain=lambda role, cid: ["brain/big"], steers=lambda pid: on["steers"],
+        backend_config=lambda ref: None))
+    cid = await conversations.create(store)
+    for _ in range(3):
+        await mind.feel(store, "lonely", 1.0, "nobody wrote", "agent")
+    mid, _, _ = await user_says(store, cid, "hi")
+    ctx = ToolContext(cid, "t", "", store, cfg, None)  # type: ignore[arg-type]
+    message = {"id": mid, "role": "user", "content": "hi",
+               "created_at": datetime.now(timezone.utc).isoformat()}
+    text, _ = await skill.message_context(ctx, message)
+    assert "steering on this turn" not in text, "steering off: no line"
+    on["steers"] = True
+    text, report = await skill.message_context(ctx, message)
+    line = next(x for x in text.splitlines() if x.startswith("steering on this turn"))
+    assert "valence -" in line and "longing" not in line
+    assert report["state"]["steer"] == line
+
+
 async def test_no_block_with_automatic_context_off(store):
     cfg = load()
     _, reg = await _agent(store, cfg)
