@@ -216,7 +216,10 @@ your own workflow: export it with Export (API), put a placeholder as the whole v
 each input the app fills, and upload it. The placeholders are `{{prompt}}`, `{{seed}}`,
 `{{width:1024}}`, `{{height:1024}}` (a new image), `{{image}}` to `{{image4}}` (an edit),
 `{{negative}}`, `{{model:file}}`, `{{mode:value}}` for images and `{{style}}`, `{{seed}}`,
-`{{lyrics}}`, `{{duration:30}}`, `{{instrumental:true}}` for music; after the colon is the
+`{{lyrics}}`, `{{duration:30}}`, `{{instrumental:true}}` for music, and for video
+`{{prompt}}`, `{{seed}}`, `{{width:1280}}`, `{{height:704}}`, `{{length:121}}`, `{{fps:24}}`,
+`{{image}}` (a start picture: its node goes when there is none) and `{{no_image}}` (true
+when the clip has no start picture, for a switch or a bypass); after the colon is the
 default. Download workflow gives a preset back in the same form.
 
 ### ComfyUI on demand

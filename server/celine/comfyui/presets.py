@@ -93,6 +93,9 @@ PARAMETERS: dict[str, dict[str, tuple[str, str, str]]] = {
         "fps": ("number", "Frames per second", "How fast the frames play."),
         "image": ("image", "Start image", "The picture the clip starts from; its node goes "
                                           "when there is none."),
+        "no_image": ("boolean", "No start image", "The app sets it true when the clip has no "
+                                                  "start image, for a workflow that switches "
+                                                  "its picture nodes off."),
     },
 }
 # an edit's images: the parameter each fills and the field of its item it comes from
@@ -504,7 +507,7 @@ def view(p: Preset) -> dict[str, Any]:
     """A preset as the UI shows it: everything but the workflow."""
     params = []
     for name, spec in p.parameters.items():
-        if name in IMAGES:
+        if name in IMAGES or name == "no_image":
             continue
         kind, label, about = PARAMETERS[p.kind][name]
         entry: dict[str, Any] = {"name": name, "type": kind, "label": label,
@@ -594,7 +597,7 @@ class PresetError(CelineError):
 
 _PLACEHOLDER = re.compile(r"\{\{\s*([A-Za-z0-9_]+)\s*(?::(.*?))?\s*\}\}", re.S)
 # what the runtime fills on every run: a default would never be used
-ALWAYS = ("prompt", "style", "seed", *IMAGES)
+ALWAYS = ("prompt", "style", "seed", *IMAGES, "no_image")
 # a default the runtime reads: the size, the length, the variant, the model file
 NEEDS_DEFAULT = ("width", "height", "duration", "mode", "model", "length", "fps")
 NOUN = {"images": "image", "music": "music", "video": "video"}

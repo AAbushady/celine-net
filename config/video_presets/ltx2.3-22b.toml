@@ -1,0 +1,61 @@
+# LTX-2.3 22B in ComfyUI, run as ComfyUI's own LTX-2.3 templates run it: the dev checkpoint in
+# fp8 with the distilled LoRA at 0.5, the Gemma 3 12B text encoder, two passes (8 steps at half
+# size, then the x2 latent upscaler and 3 steps at full size) at CFG 1, and the clip's sound
+# made with its picture through the model's audio VAE (nodes 18, 36). Without a start picture
+# `no_image` switches node 13 to the blank image of node 12 and bypasses both picture nodes
+# (17, 27); with one, node 11 holds it. The prompt goes in as written: the templates' prompt
+# rewriter (TextGenerateLTX2Prompt) is not in this workflow. Width and height are halved for
+# the first pass (nodes 9, 10), so their step is 64. The clip is saved as MP4 with its sound
+# (node 38), and four of its frames (the first, the 40th, the 80th and the last) as stills
+# (node 46), the pictures its look shows.
+label = "LTX 2.3 22B"
+family = "LTX"
+workflow = "ltx2.3-22b.json"
+good_at = "Clips with their own sound, from a prompt or a picture of yours: speech, footsteps, rain, music in the scene, timed to what moves."
+prompting = """
+Write the prompt as one paragraph of plain sentences that tell what happens in order, like a
+shot in a script:
+1. The subject and what it looks like: "a woman in a grey wool coat with short dark hair"
+2. What happens, in the order it happens: "she walks to the window, stops, and turns to the camera"
+3. The place and the light: "a small apartment at night, warm lamp light, rain on the glass"
+4. The camera: "the camera pushes in slowly and holds", or "a static medium shot"
+5. What is heard and when: "rain taps on the window, the floorboards creak under her steps"
+6. Speech in quotes, with who says it: She says: "It's still raining."
+
+Name every sound the clip should have: the model makes the sound from the prompt, and a
+sound the prompt leaves out is the model's guess. One clear motion and one camera move read
+better than several. From a picture (`source`), say what changes and what is heard: the
+picture already sets the subject, the place and the light.
+"""
+example = "A woman in a grey wool coat with short dark hair walks to the window of a small apartment at night, stops, and turns to the camera. Warm lamp light, rain running down the glass. The camera pushes in slowly and holds on her face. Rain taps on the window and the floorboards creak under her steps. She says quietly: \"It's still raining.\""
+
+[size]
+step = 64
+max_pixels = 1000000
+
+[frames]
+step = 8
+
+[parameters.prompt]
+inputs = [["6", "text"]]
+
+[parameters.seed]
+inputs = [["20", "noise_seed"]]
+
+[parameters.width]
+inputs = [["9", "values.a"], ["12", "width"], ["14", "resize_type.width"]]
+
+[parameters.height]
+inputs = [["10", "values.a"], ["12", "height"], ["14", "resize_type.height"]]
+
+[parameters.length]
+inputs = [["16", "length"], ["18", "frames_number"]]
+
+[parameters.fps]
+inputs = [["8", "frame_rate"], ["18", "frame_rate"], ["37", "fps"]]
+
+[parameters.image]
+inputs = [["11", "image"]]
+
+[parameters.no_image]
+inputs = [["13", "switch"], ["17", "bypass"], ["27", "bypass"]]

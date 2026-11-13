@@ -51,14 +51,15 @@ PROVIDERS = {
                          "krea2-identity-edit": {"label": "Krea 2 identity edit"},
                          "moss-image-edit": {"label": "MOSS-Image edit"},
                          "yue2": {"label": "YuE2"},
-                         "wan2.2-5b": {"label": "Wan 2.2 5B"}}},
+                         "wan2.2-5b": {"label": "Wan 2.2 5B"},
+                         "ltx2.3-22b": {"label": "LTX 2.3 22B"}}},
 }
 ROLES = {"chat": {"chain": ["swap/big"]},
          "image_generation": {"chain": ["comfy/anima-turbo", "comfy/krea2-turbo",
                                         "comfy/krea2-identity-edit",
                                         "comfy/moss-image-edit"]},
          "music_generation": {"chain": ["comfy/yue2"]},
-         "video_generation": {"chain": ["comfy/wan2.2-5b"]}}
+         "video_generation": {"chain": ["comfy/wan2.2-5b", "comfy/ltx2.3-22b"]}}
 
 
 def png(w: int, h: int) -> bytes:
@@ -407,6 +408,43 @@ async def test_a_clip_is_stored_with_its_stills_kept_with_it_and_looked_at(app, 
     g = app.fake.graphs[-1]
     assert g["7"]["inputs"]["image"] == "celine-src.png" and g["8"]["inputs"]["start_image"]
     assert g["8"]["inputs"]["width"] < g["8"]["inputs"]["height"], "the picture's shape"
+
+
+async def test_an_ltx_clip_switches_its_picture_nodes_off_without_a_picture(app, store):
+    """LTX's picture nodes cannot simply go like Wan's start image: without a picture
+    `no_image` switches them to a blank and bypasses them; with one, the picture runs
+    through them."""
+    skill = VideoGenerator(app.cfg)
+    skill.app = app
+    cid = await conversations.create(store)
+    ctx, _ = await _call(store, cid, "v1", "video_generator__generate")
+    r = await skill.generate(ctx, items=[{"prompt": "Rain on the window.", "seconds": 2,
+                                          "preset": "ltx2.3-22b"}], wait=True)
+    assert not r.is_error, r.content
+    g = app.fake.graphs[-1]
+    assert "11" not in g and "on_false" not in g["13"]["inputs"], "no picture: its node goes"
+    assert g["13"]["inputs"]["switch"] is True
+    assert g["17"]["inputs"]["bypass"] is True and g["27"]["inputs"]["bypass"] is True
+    assert g["16"]["inputs"]["length"] == g["18"]["inputs"]["frames_number"] == 49, "8n + 1"
+    assert g["9"]["inputs"]["values.a"] == 1280 and g["10"]["inputs"]["values.a"] == 704
+
+    made_ctx, _ = await _call(store, cid, "i1")
+    pic = ImageGenerator(app.cfg)
+    pic.app = app
+    await pic.generate(made_ctx, items=[{"prompt": "1girl"}], wait=True)
+    [ib] = await batches_mod.list_batches(store, "images", conversation=cid)
+    src = ib["items"][0]["attachment"]
+    ctx2, _ = await _call(store, cid, "v2", "video_generator__generate")
+    r = await skill.generate(ctx2, items=[{"prompt": "Her hair moves.", "preset": "ltx2.3-22b",
+                                           "source": src["id"][:8]}], wait=True)
+    assert not r.is_error, r.content
+    g = app.fake.graphs[-1]
+    assert g["11"]["inputs"]["image"] == "celine-src.png" and g["13"]["inputs"]["on_false"]
+    assert g["13"]["inputs"]["switch"] is False
+    assert g["17"]["inputs"]["bypass"] is False and g["27"]["inputs"]["bypass"] is False
+    ltx = presets.of("video")["ltx2.3-22b"]
+    assert "no_image" not in [x["name"] for x in presets.view(ltx)["parameters"]]
+    assert not any(f["key"] == "default.no_image" for f in presets.fields(ltx))
 
 
 # ---- its call ------------------------------------------------------------------------

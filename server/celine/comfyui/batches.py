@@ -881,6 +881,8 @@ class Batches:
             data, media = await self._source(src, max(item["width"], item["height"]))
             values["image"] = await comfy.upload(
                 data, f"celine-{uuid4().hex[:16]}{_EXT.get(media, '.png')}", media)
+        if p.takes("no_image"):
+            values["no_image"] = "image" not in values
         graph = p.build(values)
         if p.takes("image") and "image" not in values:      # no picture: its node goes
             graph = presets_mod.unwire(graph, p.parameters["image"].inputs[0][0])
