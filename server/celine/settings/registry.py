@@ -139,6 +139,10 @@ OPTION_WORDS: dict[str, dict[str, Any]] = {
     "cloud": {"label": "Cloud",
               "help": "A server outside your network. {{name}} asks you before sending work "
                       "to one of its models you did not pick."},
+    "affect": {"label": "Feeling probes",
+               "help": "The server runs the affect patch: for each of {{name}}'s own replies "
+                       "it reads feelings from the model's activations, and the app keeps the "
+                       "readings."},
 }
 
 
@@ -168,7 +172,8 @@ OPTIONS: dict[str, dict[str, tuple]] = {
     "tabby": dict(_COMMON),
     "llama-server": dict(_COMMON),
     "ollama": {**_COMMON, "keep_alive": ("str", "", None)},
-    "openai": dict(_COMMON),
+    # affect: the server runs the affect patch, the agent's turns ask it for readings (affect.py)
+    "openai": {**_COMMON, "affect": ("bool", False, None)},
     "anthropic": dict(_COMMON),
     # timeout: the most one item of a batch may take in ComfyUI; shares_gpu_with: the
     # id of a llama-swap provider on the same GPU (backends/llm.py gpu_lease); on_demand:

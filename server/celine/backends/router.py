@@ -813,6 +813,11 @@ class Router:
         model in its list (True) or waits for it (False)."""
         return bool(((self.provider(pid) or {}).get("options") or {}).get("next_when_full", True))
 
+    def probes(self, pid: str) -> bool:
+        """The provider's Feeling probes: its server reads feelings while the agent writes
+        (affect.py)."""
+        return bool(((self.provider(pid) or {}).get("options") or {}).get("affect", False))
+
     def full(self, pid: str) -> str | None:
         """The sentence while provider `pid` used its Requests per hour, else None."""
         cap, now = self.per_hour(pid), self.now()

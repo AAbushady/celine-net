@@ -268,7 +268,8 @@ class Dispatcher:
                 await turns.set_backend(store, turn["id"], data["backend"], data["model"])
 
         from ..attachments import Images
-        return self.llm.bind(fixed, role="chat", priority=priority,
+        # the agent's own turn: a provider with Feeling probes on reads it (affect.py)
+        return self.llm.bind(fixed, role="chat", priority=priority, affect=True,
                              run_clock=run.get("clock") if run is not None else None,
                              fallback=not user and run is None,
                              keep_waiting=turn.get("reason") == "keep_waiting",

@@ -10,7 +10,7 @@ from ..backends.base import (
 )
 import anyio
 
-from .. import prompts
+from .. import affect, prompts
 from ..core.store import Store
 from ..errors import mask
 from ..skills import tool_rows
@@ -700,6 +700,8 @@ async def _stream_one(store, cid, tid, parent, backend, messages, tools, token,
                                         done.reason if done else None,
                                         raw=done.raw if done else None,
                                         thinking=done.thinking if done else None)
+    if done is not None:
+        await affect.keep(store, cid, tid, mid, done.raw)
     if token.cancelled and not any(s["name"] for s in acc.values()):
         mid = await _left(store, cid, mid, parts, thinking)
     if done and not token.cancelled and not quiet and not said and not "".join(parts) and \

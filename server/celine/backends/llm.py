@@ -311,7 +311,7 @@ class LLM:
              wait: float | None = None,
              voice: bool = True, fallback: bool = True, keep_waiting: bool = False,
              label: str | None = None, run_clock: HeldClock | None = None,
-             first: bool = False) -> "QueuedBackend":
+             first: bool = False, affect: bool = False) -> "QueuedBackend":
         """A backend for one task. `backend` given (a test double): that
         backend alone, queued but not routed. Else the task's models from Settings.
         `thinking`: the call's own level (settings/thinking.py), e.g. "off" for a
@@ -327,7 +327,9 @@ class LLM:
         vision, Writing or models__ask call) credits its waits to the turn's clock and
         its run's, and in a Keep waiting turn it waits like the turn, until the turn's
         Stop. `first`: its requests go before the others of their priority (queue.py
-        Ticket.first), for a short request a turn is blocked on."""
+        Ticket.first), for a short request a turn is blocked on. `affect`: the agent's own
+        turn, whose requests to a provider with Feeling probes on ask for the readings
+        (affect.py)."""
         if turn_id:
             self.turn_priority[turn_id] = priority
             if clock is not None:
@@ -348,7 +350,7 @@ class LLM:
                              clock=clock, body=body, thinking=thinking, images=images,
                              wait=wait, voice=voice, fallback=fallback,
                              keep_waiting=keep_waiting, label=label or _role_label(role),
-                             run_clock=run_clock, first=first)
+                             run_clock=run_clock, first=first, affect=affect)
 
     def forget_turn(self, turn_id: str) -> None:
         self.turn_priority.pop(turn_id, None)
@@ -485,10 +487,12 @@ class QueuedBackend:
                  body: dict[str, Any] | None = None, thinking: str | None = None,
                  images=None, shared: dict | None = None, wait: float | None = None,
                  voice: bool = True, fallback: bool = True, keep_waiting: bool = False,
-                 label: str = "", run_clock: HeldClock | None = None, first: bool = False):
+                 label: str = "", run_clock: HeldClock | None = None, first: bool = False,
+                 affect: bool = False):
         self.llm = llm
         self.run_clock = run_clock
         self.first = first
+        self.affect = affect
         self.label = label
         self.fixed = fixed
         self.role = role
@@ -566,7 +570,7 @@ class QueuedBackend:
                              shared=self._shared,
                              wait=self.wait, voice=self.voice, fallback=self.fallback,
                              keep_waiting=self.keep_waiting, label=self.label,
-                             run_clock=self.run_clock, first=self.first)
+                             run_clock=self.run_clock, first=self.first, affect=self.affect)
 
     async def _send(self, payload: dict[str, Any]) -> None:
         if self.emit is None:
@@ -832,8 +836,13 @@ class QueuedBackend:
                 watch["starting"] = True
                 await self._send({"state": "loading", "model": model, "endpoint": label})
             sent = tools if backend.supports_tools else []
-            self._shared["request"] = _request_of(backend, messages, sent, self.body, model)
-            kw: dict[str, Any] = {"body": self.body} if self.body else {}
+            body = self.body
+            if self.affect and ref is not None and \
+                    self.llm.router.probes(ref.partition("/")[0]):
+                from .. import affect
+                body = {**(body or {}), **affect.body()}
+            self._shared["request"] = _request_of(backend, messages, sent, body, model)
+            kw: dict[str, Any] = {"body": body} if body else {}
             if model != backend.model:
                 kw["model"] = model
             inner = backend.stream(messages, sent, **kw)

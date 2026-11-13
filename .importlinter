@@ -19,6 +19,7 @@ source_modules =
 forbidden_modules =
     celine.__main__
     celine.activity
+    celine.affect
     celine.agent
     celine.api
     celine.approvals
