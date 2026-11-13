@@ -1,5 +1,5 @@
-"""Model files the agent finds and asks for: LoRAs, diffusion models, VAEs and text encoders
-from Civitai or Hugging Face, downloaded by the comfy helper of a ComfyUI that starts on demand
+"""Model files the agent finds and asks for: LoRAs, diffusion models, checkpoints, VAEs, text
+encoders and latent upscalers from Civitai or Hugging Face, downloaded by the comfy helper of a ComfyUI that starts on demand
 (comfyui/server.py; its routes /models/search, /models/read, /models/picture,
 /models/look, /models, /models/jobs/<id>, /models/files/<path>). The value that names one
 file is comfyui/hubs.py's.
@@ -15,7 +15,8 @@ hub marks it mature). A request (`ModelFiles.request`, image_generator__request_
    checkpoint where models go, a VAE where VAEs go), the preset has a place for it, and
    nothing is there or asked for already under its name.
 2. A file the preset's workflow names in a loader (`named`: a diffusion model, a LoRA, a
-   VAE or a text encoder, by the file's name) goes where the workflow names it, so a preset
+   checkpoint, a VAE, a text encoder or a latent upscaler, by the file's name) goes where
+   the workflow names it, so a preset
    the agent proposed with files ComfyUI lacks gets them one by one. Any other LoRA or
    model goes under the preset's first catalog folder for its kind (`place`):
    loras/<prefix><name> or diffusion_models/<prefix><name>, its name made plain. The id
@@ -73,17 +74,22 @@ log = logging.getLogger("celine.comfyui")
 S = ModelFileState
 ASK_FOR = 24 * 3600.0       # seconds the user's card waits for an answer
 FOLLOW = 5.0                # seconds between looks at a download
-FOLDERS = {"lora": "loras/", "model": "diffusion_models/", "vae": "vae/",
-           "text_encoder": "text_encoders/"}
-WHAT = {"lora": "LoRA", "model": "model", "vae": "VAE", "text_encoder": "text encoder"}
+FOLDERS = {"lora": "loras/", "model": "diffusion_models/", "checkpoint": "checkpoints/",
+           "vae": "vae/", "text_encoder": "text_encoders/",
+           "latent_upscaler": "latent_upscale_models/"}
+WHAT = {"lora": "LoRA", "model": "model", "checkpoint": "checkpoint", "vae": "VAE",
+        "text_encoder": "text encoder", "latent_upscaler": "latent upscaler"}
 FIELD = {"lora": "loras", "model": "model"}      # the generate field that takes its id
 SEARCH = ("lora", "model")                       # what a hub search looks for
 LORA_TYPES = {"lora", "locon", "dora"}           # Civitai's types a LoRA loader takes
 MODEL_TYPES = {"checkpoint"}
 VAE_TYPES = {"vae"}
 # a loader's input that names a file, and the kind of file it takes
-NAMED = {"unet_name": "model", "lora_name": "lora", "vae_name": "vae", "clip_name": "text_encoder",
-         "clip_name1": "text_encoder", "clip_name2": "text_encoder", "clip_name3": "text_encoder"}
+NAMED = {"unet_name": "model", "lora_name": "lora", "vae_name": "vae", "ckpt_name": "checkpoint",
+         "clip_name": "text_encoder", "clip_name1": "text_encoder", "clip_name2": "text_encoder",
+         "clip_name3": "text_encoder", "text_encoder": "text_encoder"}
+# an input whose name other loaders use for other folders: by its loader
+NAMED_IN = {("LatentUpscaleModelLoader", "model_name"): "latent_upscaler"}
 KEY_SAID = {                # the helper's refusals about the Civitai key, by their code
     "civitai_key_missing": "This file needs a Civitai key, which {user} sets in Settings, "
                            "Media.",
@@ -183,12 +189,12 @@ def named(p: presets_mod.Preset, name: str) -> tuple[str, str] | None:
     want = name.strip().lower()
     for node in p.workflow.values():
         for key, value in (node.get("inputs") or {}).items():
-            if key not in NAMED or not isinstance(value, str):
+            kind = NAMED.get(key) or NAMED_IN.get((str(node.get("class_type")), key))
+            if kind is None or not isinstance(value, str):
                 continue
             if value.rsplit("/", 1)[-1].lower() != want or ".." in value or \
                     not re.fullmatch(r"[A-Za-z0-9._/-]+\.safetensors", value):
                 continue
-            kind = NAMED[key]
             return kind, f"{FOLDERS[kind]}{value}"
     return None
 
@@ -231,6 +237,8 @@ def _type_problem(kind: str, look: dict) -> str | None:
     if is_kind is None:
         return (f"Civitai lists this file as {t or 'no type'}: only a LoRA, a checkpoint or "
                 f"a VAE is taken.")
+    if is_kind == "model" and kind == "checkpoint":
+        return None                 # Civitai's checkpoints are a loader's whole checkpoint too
     if is_kind != kind:
         return (f"Civitai lists this file as a {t}, so it goes where a preset takes "
                 f"{WHAT[is_kind]}s: ask with kind=\"{is_kind}\".")
@@ -342,7 +350,8 @@ class ModelFiles:
         is a refusal, the call's display)."""
         app, user = self.app, self.app.cfg.user
         if kind not in FOLDERS:
-            return "kind is lora, model, vae or text_encoder.", True, None
+            return (f"kind is {', '.join(list(FOLDERS)[:-1])} or {list(FOLDERS)[-1]}.", True,
+                    None)
         p = preset_of(preset)
         if p is None:
             return (f"There is no image or video preset {preset!r}: "

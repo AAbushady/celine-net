@@ -1433,3 +1433,22 @@ def test_frames_are_picked_evenly_from_the_first_to_the_last_once_each():
     assert frames_mod.picks(10, 1) == [0] and frames_mod.picks(1, 4) == [0]
     assert frames_mod.picks(4, 12) == [0, 1, 2, 3], "no frame twice"
     assert frames_mod.picks(0, 3) == []
+
+
+def test_a_video_presets_frame_step_is_its_own():
+    """Wan takes 4n + 1 frames and LTX 8n + 1: a video preset says its step ([frames] step,
+    4 when left out), and the editor shows it."""
+    import tomllib
+    from pathlib import Path
+    root = Path(presets.__file__).resolve().parents[3] / "config" / "video_presets"
+    data = tomllib.loads((root / "wan2.2-5b.toml").read_text(encoding="utf-8"))
+    workflow = json.loads((root / "wan2.2-5b.json").read_text(encoding="utf-8"))
+    bad: list[str] = []
+    wan = presets.build("video", "wan", dict(data), workflow, bad)
+    assert wan is not None and wan.frame_step == 4, bad
+    ltx = presets.build("video", "ltx", {**data, "frames": {"step": 8}}, workflow, bad)
+    assert ltx is not None and ltx.frame_step == 8 and bad == []
+    assert presets.values(ltx)["frames.step"] == 8
+    assert any(f["key"] == "frames.step" for f in presets.fields(ltx))
+    assert presets.build("video", "x", {**data, "frames": {"step": 0}}, workflow, bad) is None
+    assert any(b.startswith("frames has step") for b in bad)

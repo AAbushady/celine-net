@@ -334,9 +334,11 @@ VALUES = ("The editor's values, by the keys read_preset shows (family, good_at, 
           "Empty: none.")
 REPLACES = "The id of a preset you proposed before, to replace it. Empty: a new preset."
 PROPOSE_WHY = "Why, in one sentence, shown to {{username}} with the preset."
-MODEL_KIND = ("lora: a LoRA. model: a diffusion model. vae: a VAE. text_encoder: a text "
-              "encoder. A LoRA or model of the preset's own folder is given later in loras or "
-              "model; a file the preset's workflow names is used by the preset itself.")
+MODEL_KIND = ("lora: a LoRA. model: a diffusion model. checkpoint: a whole checkpoint "
+              "(ckpt_name). vae: a VAE. text_encoder: a text encoder. latent_upscaler: a "
+              "latent upscaler. A LoRA or model of the preset's own folder is given later in "
+              "loras or model; a file the preset's workflow names is used by the preset "
+              "itself.")
 MODEL_FILE = ("Which file: the file value search_models or read_model printed "
               "(civitai:<version>, civitai:<version>/<file>, hf:<owner>/<name>/<path>), a "
               "Civitai page address with modelVersionId, or a Hugging Face file's address.")
@@ -773,7 +775,8 @@ class ImageGenerator(Generator):
         ctx: ToolContext,
         preset: Annotated[str, "The preset the file is for, by its id from list_presets (a "
                                "video preset's from video_generator__read_preset)."],
-        kind: Annotated[Literal["lora", "model", "vae", "text_encoder"], MODEL_KIND],
+        kind: Annotated[Literal["lora", "model", "checkpoint", "vae", "text_encoder",
+                                "latent_upscaler"], MODEL_KIND],
         file: Annotated[str, MODEL_FILE],
         why: Annotated[str, MODEL_WHY],
     ) -> ToolResult:

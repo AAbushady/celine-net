@@ -498,8 +498,9 @@ class Batches:
             s = raw["seconds"]
             if isinstance(s, bool) or not isinstance(s, (int, float)) or s <= 0:
                 raise ImageError("seconds is how long the clip lasts, a number above 0.")
-            # Wan takes 4n + 1 frames
-            frames = int(round(s * fps / 4)) * 4 + 1
+            # the model takes frame_step * n + 1 frames (Wan 4, LTX 8)
+            step = p.frame_step
+            frames = int(round(s * fps / step)) * step + 1
         if frames > presets_mod.FRAMES_MAX:
             raise ImageError(f"{frames} frames is past the most a clip has, "
                              f"{presets_mod.FRAMES_MAX} ({presets_mod.FRAMES_MAX / fps:.0f} s "

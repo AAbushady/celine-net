@@ -302,7 +302,7 @@ class ModelFile(Answer):
     """A model file that came by request, or a request still on its way (model_files.py)."""
     path: str = Field(description="where it is under the models folder")
     id: str = Field(description="what a batch's loras or model takes")
-    kind: Literal["lora", "model", "vae", "text_encoder"] | None
+    kind: Literal["lora", "model", "checkpoint", "vae", "text_encoder", "latent_upscaler"] | None
     size: int | None = Field(description="bytes")
     at: str | None = Field(description="when it came, or when it was asked for")
     preset: str | None

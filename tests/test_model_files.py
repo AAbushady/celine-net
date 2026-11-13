@@ -926,3 +926,27 @@ async def test_the_civitai_key_goes_to_the_helper_and_the_app_keeps_nothing_of_i
         assert not f.is_file() or CIVITAI_KEY.encode() not in f.read_bytes(), f
     for rec in caplog.records:
         assert CIVITAI_KEY not in rec.getMessage() and CIVITAI_KEY not in str(vars(rec))
+
+
+def test_an_ltx_workflows_checkpoint_text_encoder_and_upscaler_go_where_it_names_them():
+    """LTX loads a whole checkpoint (ckpt_name, three loaders), its text encoder by
+    `text_encoder` and a latent upscaler by `model_name`, a name other loaders use for
+    other folders: by its loader only."""
+    from types import SimpleNamespace
+    ltx = SimpleNamespace(workflow={
+        "1": {"class_type": "CheckpointLoaderSimple",
+              "inputs": {"ckpt_name": "ltx-2.3-22b-distilled-fp8.safetensors"}},
+        "2": {"class_type": "LTXAVTextEncoderLoader",
+              "inputs": {"text_encoder": "gemma_3_12B_it_fp4_mixed.safetensors",
+                         "ckpt_name": "ltx-2.3-22b-distilled-fp8.safetensors"}},
+        "3": {"class_type": "LatentUpscaleModelLoader",
+              "inputs": {"model_name": "ltx-2.3-spatial-upscaler-x2-1.1.safetensors"}},
+        "4": {"class_type": "UpscaleModelLoader",
+              "inputs": {"model_name": "4x_ultrasharp.safetensors"}}})
+    assert model_files.named(ltx, "LTX-2.3-22B-DISTILLED-FP8.safetensors") == \
+        ("checkpoint", "checkpoints/ltx-2.3-22b-distilled-fp8.safetensors")
+    assert model_files.named(ltx, "gemma_3_12B_it_fp4_mixed.safetensors") == \
+        ("text_encoder", "text_encoders/gemma_3_12B_it_fp4_mixed.safetensors")
+    assert model_files.named(ltx, "ltx-2.3-spatial-upscaler-x2-1.1.safetensors") == \
+        ("latent_upscaler", "latent_upscale_models/ltx-2.3-spatial-upscaler-x2-1.1.safetensors")
+    assert model_files.named(ltx, "4x_ultrasharp.safetensors") is None, "another loader's folder"

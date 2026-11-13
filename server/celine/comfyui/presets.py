@@ -103,6 +103,7 @@ REQUIRED = {"generate": ("prompt", "seed", "width", "height"),
             "music": ("style", "seed"),
             "video": ("prompt", "seed", "width", "height", "length", "fps")}
 FRAMES_MAX = 241        # a clip's frames at most: ten seconds at 24 per second
+FRAME_STEP = 4          # a video model takes step * n + 1 frames: 4 for Wan, 8 for LTX
 
 
 class ImageError(Exception):
@@ -133,6 +134,7 @@ class Preset:
     source: dict[str, Any] = field(default_factory=dict)    # the TOML as read
     size_step: int = STEP
     max_pixels: int = PIXELS_MAX
+    frame_step: int = FRAME_STEP     # a clip of it has frame_step * n + 1 frames ([frames] step)
     # the catalog (image_catalog.py)
     models: tuple[str, ...] = ()
     loras: tuple[str, ...] = ()
@@ -384,7 +386,7 @@ def build(kind: str, pid: str, data: dict[str, Any], workflow: dict[str, Any],
         return v.strip()
 
     known = {"label", "family", "good_at", "prompting", "example", "workflow", "task",
-             "parameters", "size", "catalog", "proposed"}
+             "parameters", "size", "frames", "catalog", "proposed"}
     for k in data:
         if k not in known:
             bad.append(f"{k} is not a preset setting.")
@@ -440,6 +442,13 @@ def build(kind: str, pid: str, data: dict[str, Any], workflow: dict[str, Any],
             isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in size.values()):
         bad.append("size has step and max_pixels, whole numbers above 0.")
         size = {}
+    frames = data.get("frames") or {}
+    if not isinstance(frames, dict) or set(frames) - {"step"} or not all(
+            isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 32
+            for v in frames.values()):
+        bad.append("frames has step, a whole number from 1 to 32: the model takes "
+                   "step * n + 1 frames.")
+        frames = {}
 
     cat = data.get("catalog") or {}
     if not isinstance(cat, dict):
@@ -483,7 +492,8 @@ def build(kind: str, pid: str, data: dict[str, Any], workflow: dict[str, Any],
         task=task, origin=origin, proposed=origin == "own" and data.get("proposed") is True,
         source=copy.deepcopy(data),
         size_step=int(size.get("step", STEP)),
-        max_pixels=int(size.get("max_pixels", PIXELS_MAX)), models=models, loras=loras,
+        max_pixels=int(size.get("max_pixels", PIXELS_MAX)),
+        frame_step=int(frames.get("step", FRAME_STEP)), models=models, loras=loras,
         lora_after=lora_after, sampler=sampler, text=text_in, max_loras=max_loras,
         full_settings=dict(full), hub_base=str(cat.get("hub_base") or "").strip())
 
@@ -554,7 +564,7 @@ def docs(p: Preset, first: bool) -> str:
         frames, fps = int(p.default("length")), int(p.default("fps"))
         facts.append(f"Size {w}x{h}, sides in steps of {p.size_step}. {frames} frames at "
                      f"{fps} a second ({frames / fps:.1f} s) by default, at most "
-                     f"{FRAMES_MAX}.")
+                     f"{FRAMES_MAX}, in steps of {p.frame_step} plus one.")
         facts.append("Reads a negative prompt." if p.takes("negative")
                      else "Reads no negative prompt.")
         if p.takes("image"):
@@ -746,7 +756,10 @@ def fields(p: Preset) -> list[dict[str, Any]]:
             {"key": "size.max_pixels", "label": "Largest frame" if p.kind == "video"
              else "Largest image", "type": "number", "unit": "megapixels", "min": 0.1}]
     if p.kind == "video":
-        out.append(HUB_BASE)
+        out += [{"key": "frames.step", "label": "Frame step", "type": "number", "unit": "frames",
+                 "min": 1, "max": 32, "help": "The model takes this many frames times a "
+                                             "whole number, plus one: 4 for Wan, 8 for LTX."},
+                HUB_BASE]
     if p.kind == "images":
         out += [
             {"key": "catalog.models", "label": "Models", "type": "text",
@@ -786,7 +799,7 @@ def values(p: Preset) -> dict[str, Any]:
         out.update({"size.step": p.size_step,
                     "size.max_pixels": round(p.max_pixels / 1e6, 2)})
     if p.kind == "video":
-        out["catalog.hub_base"] = p.hub_base
+        out.update({"frames.step": p.frame_step, "catalog.hub_base": p.hub_base})
     if p.kind == "images":
         out.update({
             "catalog.models": ", ".join(p.models), "catalog.loras": ", ".join(p.loras),
@@ -863,6 +876,11 @@ def edited(p: Preset, new: dict[str, Any]) -> tuple[dict[str, Any], dict[str, An
                 size["step"] = int(v)
             else:
                 size["max_pixels"] = int(round(float(v) * 1e6))
+        elif key == "frames.step":
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not 1 <= v <= 32:
+                bad.append("The frame step is a whole number from 1 to 32.")
+            else:
+                data.setdefault("frames", {})["step"] = int(v)
         elif key in ("catalog.models", "catalog.loras"):
             cat[key.removeprefix("catalog.")] = [x.strip() for x in str(v or "").split(",")
                                                  if x.strip()]
