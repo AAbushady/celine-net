@@ -25,7 +25,8 @@ from celine.boot import load
 from celine.conversations import store as conversations, tree
 from celine.core.bus import EventBus
 from celine.core.services import Services
-from celine.comfyui import api as comfy_api, batches as batches_mod, presets, server
+from celine.comfyui import api as comfy_api, batches as batches_mod, frames as frames_mod, \
+    presets, server
 from celine.image_catalog import Catalog, Resource
 from celine.jobs.jobs import Jobs
 from celine.skills import Registry, ToolContext, build as build_registry
@@ -365,6 +366,32 @@ async def test_a_clip_is_stored_with_its_stills_kept_with_it_and_looked_at(app, 
     look = await skill.look(ctx, clips=[clip["id"][:8]])
     assert "3 stills, first to last: She turns to the window." in look.content
     assert [s["id"] for s in look.display["see"]] == [f["id"] for f in item["frames"]]
+
+    # frames sampled from the clip itself, each with its time, kept with the call alone
+    asked = []
+
+    async def sample(data: bytes, n: int):
+        asked.append((len(data) > 0, n))
+        return 49, [frames_mod.Frame(i, round(i / 24, 2), b"\xff\xd8 frame %d" % i)
+                    for i in frames_mod.picks(49, n)]
+    monkeypatch.setattr(frames_mod, "sample", sample)
+    look = await skill.look(ctx, clips=[clip["id"][:8]], frames=3)
+    assert not look.is_error and asked == [(True, 3)], look.content
+    assert "3 of its 49 frames, first to last: She turns to the window." in look.content
+    assert look.content.splitlines()[-3:] == ["   frame 1: 0 s (frame 1 of 49)",
+                                              "   frame 2: 1 s (frame 25 of 49)",
+                                              "   frame 3: 2 s (frame 49 of 49)"]
+    seen = look.display["see"]
+    assert len(seen) == 3 and all(s["media_type"] == "image/jpeg" for s in seen)
+    assert not await attachments.images(store, cid), "kept with the call, not the chat's"
+    too_many = await skill.look(ctx, clips=[clip["id"][:8]], frames=frames_mod.MOST + 1)
+    assert too_many.is_error and f"at most {frames_mod.MOST}" in too_many.content
+
+    async def broken(data: bytes, n: int):
+        raise frames_mod.FramesError("ffmpeg is not in the app's image.")
+    monkeypatch.setattr(frames_mod, "sample", broken)
+    look = await skill.look(ctx, clips=[clip["id"][:8]], frames=4)
+    assert look.is_error and "its frames could not be sampled: ffmpeg is not" in look.content
 
     # from a picture: the picture goes up and starts the clip, its shape sets the size
     made_ctx, _ = await _call(store, cid, "i1")
@@ -1399,3 +1426,10 @@ async def test_a_call_hears_once_when_its_batch_is_done_and_how_long_it_waited(o
     assert len(await _notices(store)) == 2, "one notice each"
     assert to == f"agent:{cid}" and text.startswith(
         f"Batch {b['id'][:8]} waited 30 s for the GPU and is done: 1 of 1 made.\n1. track ")
+
+
+def test_frames_are_picked_evenly_from_the_first_to_the_last_once_each():
+    assert frames_mod.picks(121, 5) == [0, 30, 60, 90, 120]
+    assert frames_mod.picks(10, 1) == [0] and frames_mod.picks(1, 4) == [0]
+    assert frames_mod.picks(4, 12) == [0, 1, 2, 3], "no frame twice"
+    assert frames_mod.picks(0, 3) == []

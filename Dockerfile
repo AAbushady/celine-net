@@ -41,6 +41,9 @@ zipfile.ZipFile(io.BytesIO(data)).extract('bw', '/out')" && chmod 755 /out/bw
 
 # ---- runtime -------------------------------------------------------------------------
 FROM python:3.14.7-slim-trixie
+# ffmpeg: the frames video_generator__look samples from a clip (comfyui/frames.py)
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 RUN useradd --uid 1000 --create-home celine && mkdir /data && chown celine:celine /data
 COPY --link --from=bw /out/bw /usr/local/bin/bw
 WORKDIR /app

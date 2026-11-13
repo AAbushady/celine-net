@@ -4,16 +4,18 @@ music.
 The agent's call starts the batch in the app's task group and returns at once with one slot
 per clip; the batch fills the slots in place as each clip is made, and a message from the
 app says when it is done. A clip may start from a picture (`source`, named as an image
-edit's source is). It cannot watch a clip: `look` shows it the stills its preset saves
-with each clip (the first frame, two in between and the last), the way image_generator's
-look shows a picture, with no copy kept.
+edit's source is). `look` shows it a clip: the stills its preset saves with each clip (the
+first frame, two in between and the last), the way image_generator's look shows a picture,
+with no copy kept; or, with `frames`, that many frames sampled evenly from the clip itself
+(comfyui/frames.py), each with its time, kept with the call alone, so it sees how a clip
+moves and not only where it starts and ends.
 """
 from __future__ import annotations
 
 from typing import Annotated, Literal, Required, TypedDict
 
 from .. import attachments, vision
-from ..comfyui import batches as batches_mod, life, presets as presets_mod
+from ..comfyui import batches as batches_mod, frames as frames_mod, life, presets as presets_mod
 from . import ToolContext, ToolResult, guide, tool, described
 from .images import (LABEL, MODEL_FILE, MODEL_KIND, MODEL_WHY, NODE, NODE_SEARCH, PRESET_PART,
                      PROPOSE_WHY, REPLACES, REPORTS, VALUES, WAIT, WORKFLOW, Generator,
@@ -174,12 +176,19 @@ class VideoGenerator(Generator):
                               "order."] = "",
         question: Annotated[str | None, "What you want to know, when your model cannot see "
                                         "images and another describes the stills."] = None,
+        frames: Annotated[int | None, "How many frames to sample from each clip, evenly "
+                                      "from its first to its last, each with its time: "
+                                      f"what moves and when. {frames_mod.MOST} at most of "
+                                      "all the clips together. Left out: the four stills "
+                                      "its preset saved."] = None,
     ) -> ToolResult:
-        """Look at clips you made through their stills: for each clip its first frame,
-        two in between and its last, in order, the way a picture's look shows it. Look
-        before you say what a clip shows. Example: video_generator__look(
-        clips=["f5ef648c"]). Returns: one line per clip and its stills, or their
-        descriptions when your model cannot see images."""
+        """Look at clips you made: for each clip its four stills (its first frame, two
+        in between and its last), or with `frames` that many frames sampled from the clip
+        itself, each with its time, in order. Four stills show where a clip starts and
+        ends, not how it moves: before you say what moves, when or for how long, look
+        with frames. Example: video_generator__look(clips=["f5ef648c"], frames=12).
+        Returns: one line per clip and per frame, or their descriptions when your model
+        cannot see images."""
         refs = [str(r).strip() for r in clips or () if str(r).strip()]
         lines: list[str] = []
         batch = (batch or "").strip()
@@ -195,6 +204,11 @@ class VideoGenerator(Generator):
         elif not refs:
             return ToolResult(content="Give clips, by their short ids, or a batch id.",
                               is_error=True)
+        if frames is not None and not 1 <= frames * len(refs) <= frames_mod.MOST:
+            return ToolResult(content=f"frames times the clips is at most "
+                                      f"{frames_mod.MOST}: {frames} frames of {len(refs)} "
+                                      f"clip{'' if len(refs) == 1 else 's'} is "
+                                      f"{frames * len(refs)}.", is_error=True)
         sees = await attachments.turn_sees_images(self.cfg, ctx)
         llm = self.app.llm if self.app is not None else None
         shown: list[dict] = []
@@ -213,6 +227,10 @@ class VideoGenerator(Generator):
                                                       row["life_at"], ""))
                 continue
             item = await batches_mod.clip_item(ctx.store, got["id"])
+            if frames is not None:
+                lines += await self._sampled(ctx, got["id"], row, item or {}, frames,
+                                             len(done), shown, sees, llm, question)
+                continue
             stills = [f for f in (item or {}).get("frames") or []
                       if attachments.blob_path(self.cfg, f["sha256"]).exists()]
             n = len(done)
@@ -234,6 +252,33 @@ class VideoGenerator(Generator):
             return ToolResult(content="\n".join(lines), is_error=True)
         return ToolResult(content="\n".join(lines),
                           display={"count": len(shown), **({"see": shown} if sees else {})})
+
+    async def _sampled(self, ctx: ToolContext, aid: str, row: dict, item: dict, n: int,
+                       k: int, shown: list[dict], sees: bool, llm, question) -> list[str]:
+        """Clip `aid`'s lines with `n` frames sampled from it (comfyui/frames.py), each
+        kept with the call alone (as browser__look keeps a screen) and named in `shown`."""
+        short = aid[:SHORT]
+        path = attachments.blob_path(self.cfg, row.get("sha256") or "")
+        if not path.exists():
+            return [f"{k}. clip {short}: its file is no longer stored."]
+        try:
+            total, got = await frames_mod.sample(path.read_bytes(), n)
+        except frames_mod.FramesError as e:
+            return [f"{k}. clip {short}: its frames could not be sampled: {e}"]
+        label, size = _label_size(item)
+        lines = [f"{k}. clip {short}: {label}, {size}, {len(got)} of its {total} frames, "
+                 f"first to last: {item.get('prompt') or ''}".rstrip()]
+        for j, f in enumerate(got, 1):
+            kept = await attachments.save_generated(
+                self.cfg, ctx.store, f.jpeg, f"{short}-{f.index:04d}.jpg", "image/jpeg",
+                ctx.tool_call_id or None, in_message=False)
+            shown.append({x: kept[x] for x in ("id", "filename", "sha256", "media_type")})
+            line = f"   frame {j}: {f.seconds:g} s (frame {f.index + 1} of {total})"
+            if not sees:
+                line += ": " + await vision.describe(llm, f.jpeg, ctx.conversation_id,
+                                                      ctx.turn_id, question)
+            lines.append(line)
+        return lines
 
     # ---- model files (comfyui/model_files.py) --------------------------------------------
 

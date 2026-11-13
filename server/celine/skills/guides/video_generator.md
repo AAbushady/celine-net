@@ -21,9 +21,11 @@ by itself, so answer now and do not poll `video_generator__read` for it. It show
 batch at any time, when there is a reason to look; `video_generator__stop` stops one;
 what was made stays.
 
-You cannot watch a clip. `video_generator__look` shows you its stills: the first frame,
-two in between and the last, in order. Look before you say what a clip shows, and say
-what you saw in the stills, not more.
+`video_generator__look` shows you a clip: its four stills (the first frame, two in
+between and the last), or with `frames` that many frames sampled evenly from the clip,
+each with its time. Four stills show where a clip starts and ends, not how it moves: before
+you say what moves, when, or for how long, look with frames (12 show a five-second clip
+every half second). Say what the frames show, not more: between two frames you saw nothing.
 
 When to use: {{username}} asks for a video, an animation or a moving picture, or for a
 picture of yours to come alive. When not: a still picture is enough (image_generator is
