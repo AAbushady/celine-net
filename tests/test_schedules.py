@@ -952,11 +952,15 @@ def _write(note: str, content: str) -> list:
 NOTE = "diary/2026-10-10-review.md"     # {{date}} on _one_run's clock
 
 
-async def _one_run(store, cfg, backend, clock=None) -> dict:
-    """One run of a self-review with a note."""
+async def _one_run(store, cfg, backend, clock=None, *skills) -> dict:
+    """One run of a self-review with a note; `skills` beside the notebook's."""
     cfg.schedules = {"review": _s("review", "0 4 * * *", "Review the night.",
                                   label="Self-review", note="diary/{{date}}-review.md")}
-    async with _scheduler(store, cfg, _app(store, cfg, backend), backend,
+    app = _app(store, cfg, backend)
+    for skill in skills:
+        app.registry.add(skill)
+        skill.app = app
+    async with _scheduler(store, cfg, app, backend,
                           clock or Clock(datetime(2026, 10, 10, 4, tzinfo=UTC))) as sched:
         run = await sched.run_now("review")
         await sched.tick()
@@ -1024,8 +1028,29 @@ async def test_a_note_the_agent_wrote_then_went_on_past_is_the_result_and_the_ru
                       "Diagnosis": [TextDelta("corrected diagnosis"), Done(reason="stop")]})
     row = await _one_run(store, cfg, backend, clock)
     assert (row["state"], row["result"]) == ("done", draft)
-    assert row["error"] == f"The note {NOTE} was last written before the run's last tool call."
+    assert row["error"] == f"The note {NOTE} was last written before 1 later tool call: " \
+                           "notebook__read."
     assert unstamped(note.read_text()).strip() == draft, "its note stays as it wrote it"
+
+
+async def test_its_status_and_another_note_after_the_note_say_nothing_about_it(store, cfg):
+    """Bug #63: the self-review writes its note, sets its status, writes its diary and
+    answers. Nothing came into the run after the note, so the run says nothing of it."""
+    from celine.skills import mind
+    review = "# Self-review\n\nWent well: the search."
+
+    def call(name: str, args: dict) -> list:
+        return [ToolCallDelta(index=0, id=name, name=name, arguments=json.dumps(args)),
+                Done(reason="tool_calls")]
+    backend = Writer({"Review the night": _write(NOTE, review),
+                      f"Saved {NOTE}": call("mind__set_status", {"text": "\U0001f319"}),
+                      "Shown:": _write("diary/2026-10-10.md", "A quiet night."),
+                      "Saved diary/2026-10-10.md": [TextDelta("Done."), Done(reason="stop")]})
+    row = await _one_run(store, cfg, backend, None, mind.Mind(cfg))
+    calls = await store.read(lambda c: [tuple(r) for r in c.execute(
+        "SELECT name, state FROM tool_calls ORDER BY rowid")])
+    assert [s for _, s in calls] == ["ok"] * 3, calls
+    assert (row["state"], row["result"], row["error"]) == ("done", review, None)
 
 
 async def test_a_new_note_gets_its_answer_whole(store, cfg):

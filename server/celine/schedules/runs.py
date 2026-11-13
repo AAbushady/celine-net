@@ -495,6 +495,10 @@ def _said(c: sqlite3.Connection, cid: str) -> tuple[str, bool]:
     return (words, True) if words else (last_answer(c, cid), False)
 
 
+# tool calls that bring nothing into a run: after its note they leave the note whole
+QUIET = frozenset({"mind__set_status", "mind__feel", "mind__think"})
+
+
 def _of_note(args: str, note: str) -> bool:
     """`args`, a stored tool call's arguments, name the notebook path `note`."""
     try:
@@ -1088,21 +1092,25 @@ class Scheduler:
         return any(_of_note(args, note) for (args,) in rows)
 
     async def _stale(self, cid: str, note: str) -> str | None:
-        """`note`, which the run wrote: the sentence when ok tool calls ran after its last
-        write of it and the note is older than the last of them; else None."""
+        """`note`, which the run wrote: the sentence naming the ok tool calls after its last
+        write of it when the note is older than the last of them; else None. A call that
+        brings nothing into the run (QUIET, a write of another note) does not count: the
+        self-review's status and diary came after its note on every run (bug #63)."""
         rows = await self.app.store.read(lambda c: c.execute(
             "SELECT tc.name, tc.arguments, tc.finished_at FROM tool_calls tc JOIN messages m "
             "ON m.id = tc.message_id WHERE m.conversation_id=? AND tc.state='ok' ORDER BY "
             "tc.finished_at", (cid,)).fetchall())
-        later: list[str] = []
+        later: list[tuple[str, str]] = []
         for name, args, at in rows:
-            later = [] if name in ("notebook__write", "notebook__edit") and \
-                _of_note(args, note) else later + [at]
-        if not later or self._note_touched(note, later[-1]):
+            if name in ("notebook__write", "notebook__edit"):
+                later = [] if _of_note(args, note) else later
+            elif name not in QUIET:
+                later.append((name, at))
+        if not later or self._note_touched(note, later[-1][1]):
             return None
         n = len(later)
-        calls = "last tool call" if n == 1 else f"last {n} tool calls"
-        return f"The note {note} was last written before the run's {calls}."
+        return (f"The note {note} was last written before {n} later tool "
+                f"call{'' if n == 1 else 's'}: {', '.join(dict.fromkeys(x for x, _ in later))}.")
 
     async def _write_note(self, cid: str, path: str, answer: str, s, day: str) -> str | None:
         """The agent's answer into the notebook at `path`: a note there already gets it appended
