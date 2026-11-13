@@ -161,6 +161,17 @@ async def test_an_insert_under_a_replace_joins_it_and_end_is_the_bottom(store, c
         "- coffee: yes\n- tea: no\n")
 
 
+async def test_an_anchor_copied_with_its_pipe_is_the_anchor(store, cfg):
+    """notebook__read prints `3:ab| text`; an anchor copied with the `|` is still the anchor
+    (report #64 blamed two failed edits on it, and both were hashes no line had)."""
+    nb = Notebook(cfg)
+    ctx = _ctx("c", store, cfg)
+    a = await _note(nb, ctx)
+    out = await nb.edit(ctx, "opinions/food.md",
+                        [{"op": "replace", "start": f"{a[3]}| ", "text": "- pizza: fine"}])
+    assert not out.is_error, out.content
+
+
 async def test_an_anchor_that_does_not_match_names_the_line_as_it_is(store, cfg):
     """The agent sent hashes it made up ("12:xx"): the answer names the anchor the line
     has, the nearest line with that hash when there is one, and the line count past the
