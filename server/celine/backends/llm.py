@@ -127,6 +127,9 @@ _LOAD_FAILED = ("exited prematurely", "failed to start", "unable to load", "out 
                 "cudamalloc failed")
 
 Emit = Callable[[dict[str, Any]], Awaitable[None]]
+# the request field of one of the agent's own replies, given whether its provider steers
+# (affect.fields)
+AffectFields = Callable[[bool], Awaitable[dict[str, Any]]]
 
 
 # the time limits of the tool calls (turns/tools.py) and background completions
@@ -311,7 +314,7 @@ class LLM:
              wait: float | None = None,
              voice: bool = True, fallback: bool = True, keep_waiting: bool = False,
              label: str | None = None, run_clock: HeldClock | None = None,
-             first: bool = False, affect: bool = False) -> "QueuedBackend":
+             first: bool = False, affect: AffectFields | None = None) -> "QueuedBackend":
         """A backend for one task. `backend` given (a test double): that
         backend alone, queued but not routed. Else the task's models from Settings.
         `thinking`: the call's own level (settings/thinking.py), e.g. "off" for a
@@ -328,8 +331,8 @@ class LLM:
         its run's, and in a Keep waiting turn it waits like the turn, until the turn's
         Stop. `first`: its requests go before the others of their priority (queue.py
         Ticket.first), for a short request a turn is blocked on. `affect`: the agent's own
-        turn, whose requests to a provider with Feeling probes on ask for the readings
-        (affect.py)."""
+        turn: a request to a provider with Feeling probes on carries the field it builds, the
+        pushes with them where the provider has Feeling steering on (affect.py)."""
         if turn_id:
             self.turn_priority[turn_id] = priority
             if clock is not None:
@@ -488,7 +491,7 @@ class QueuedBackend:
                  images=None, shared: dict | None = None, wait: float | None = None,
                  voice: bool = True, fallback: bool = True, keep_waiting: bool = False,
                  label: str = "", run_clock: HeldClock | None = None, first: bool = False,
-                 affect: bool = False):
+                 affect: AffectFields | None = None):
         self.llm = llm
         self.run_clock = run_clock
         self.first = first
@@ -557,6 +560,11 @@ class QueuedBackend:
     def first_token(self) -> float | None:
         """Seconds from the last call's slot to its first event, None before one."""
         return self._shared.get("first_token")
+
+    @property
+    def affect_sent(self) -> dict | None:
+        """The `affect` field the last call's request carried, None without one."""
+        return self._shared.get("affect")
 
     def for_message(self, message_id: str | None,
                     thinking: str | None = None) -> "QueuedBackend":
@@ -837,10 +845,12 @@ class QueuedBackend:
                 await self._send({"state": "loading", "model": model, "endpoint": label})
             sent = tools if backend.supports_tools else []
             body = self.body
-            if self.affect and ref is not None and \
-                    self.llm.router.probes(ref.partition("/")[0]):
-                from .. import affect
-                body = {**(body or {}), **affect.body()}
+            pid = ref.partition("/")[0] if ref is not None else ""
+            self._shared["affect"] = None
+            if self.affect is not None and pid and self.llm.router.probes(pid):
+                asked = await self.affect(self.llm.router.steers(pid))
+                self._shared["affect"] = asked.get("affect")
+                body = {**(body or {}), **asked}
             self._shared["request"] = _request_of(backend, messages, sent, body, model)
             kw: dict[str, Any] = {"body": body} if body else {}
             if model != backend.model:

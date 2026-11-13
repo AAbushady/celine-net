@@ -209,6 +209,17 @@ async def _state(store, cfg, now_: datetime,
     return _of(cfg, await store.read(_read), now_, place)
 
 
+async def point_and_levels(store, now_: datetime,
+                           place: str) -> tuple[tuple[float, ...] | None, dict[str, float]]:
+    """Its mood as a point (None without a feeling yet), resting where its needs pull it in
+    `place`, and each need's level, at `now_`: what steers its replies (affect.steer)."""
+    mood_rows, need_rows = await store.read(_read)
+    lv = needs.levels(need_rows, now_)
+    shipped, half = _knobs()
+    base = needs.pull(shipped, lv, place)
+    return (current_mood(mood_rows, base, half, now_) if mood_rows else None), lv
+
+
 async def _mood_now(store, cfg, now_: datetime, place: str = "background") -> str:
     return (await _state(store, cfg, now_, place))[0]
 

@@ -818,6 +818,12 @@ class Router:
         (affect.py)."""
         return bool(((self.provider(pid) or {}).get("options") or {}).get("affect", False))
 
+    def steers(self, pid: str) -> bool:
+        """The provider's Feeling steering: with its probes on, the agent's state pushes its
+        replies too (affect.steer)."""
+        options = (self.provider(pid) or {}).get("options") or {}
+        return bool(options.get("affect", False) and options.get("affect_steer", False))
+
     def full(self, pid: str) -> str | None:
         """The sentence while provider `pid` used its Requests per hour, else None."""
         cap, now = self.per_hour(pid), self.now()

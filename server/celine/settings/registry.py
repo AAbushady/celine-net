@@ -143,6 +143,10 @@ OPTION_WORDS: dict[str, dict[str, Any]] = {
                "help": "The server runs the affect patch: for each of {{name}}'s own replies "
                        "it reads feelings from the model's activations, and the app keeps the "
                        "readings."},
+    "affect_steer": {"label": "Feeling steering", "needs": "affect",
+                     "help": "{{name}}'s mood and needs push each of {{name}}'s own replies "
+                             "from inside the model: a low mood writes lower, a tired one "
+                             "sleepier. At most a tint."},
 }
 
 
@@ -172,8 +176,9 @@ OPTIONS: dict[str, dict[str, tuple]] = {
     "tabby": dict(_COMMON),
     "llama-server": dict(_COMMON),
     "ollama": {**_COMMON, "keep_alive": ("str", "", None)},
-    # affect: the server runs the affect patch, the agent's turns ask it for readings (affect.py)
-    "openai": {**_COMMON, "affect": ("bool", False, None)},
+    # affect: the server runs the affect patch, the agent's turns ask it for readings;
+    # affect_steer: they carry the pushes of its state too (affect.py)
+    "openai": {**_COMMON, "affect": ("bool", False, None), "affect_steer": ("bool", False, None)},
     "anthropic": dict(_COMMON),
     # timeout: the most one item of a batch may take in ComfyUI; shares_gpu_with: the
     # id of a llama-swap provider on the same GPU (backends/llm.py gpu_lease); on_demand:

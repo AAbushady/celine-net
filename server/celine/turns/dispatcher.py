@@ -267,9 +267,14 @@ class Dispatcher:
             if data.get("state") == "running" and data.get("backend"):
                 await turns.set_backend(store, turn["id"], data["backend"], data["model"])
 
+        async def affect(steering: bool) -> dict:
+            from ..affect import fields
+            return await fields(store, cid, steering)
+
         from ..attachments import Images
-        # the agent's own turn: a provider with Feeling probes on reads it (affect.py)
-        return self.llm.bind(fixed, role="chat", priority=priority, affect=True,
+        # the agent's own turn: a provider with Feeling probes on reads it, and with Feeling
+        # steering on its state pushes it (affect.py)
+        return self.llm.bind(fixed, role="chat", priority=priority, affect=affect,
                              run_clock=run.get("clock") if run is not None else None,
                              fallback=not user and run is None,
                              keep_waiting=turn.get("reason") == "keep_waiting",

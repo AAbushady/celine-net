@@ -701,7 +701,7 @@ async def _stream_one(store, cid, tid, parent, backend, messages, tools, token,
                                         raw=done.raw if done else None,
                                         thinking=done.thinking if done else None)
     if done is not None:
-        await affect.keep(store, cid, tid, mid, done.raw)
+        await affect.keep(store, cid, tid, mid, done.raw, getattr(backend, "affect_sent", None))
     if token.cancelled and not any(s["name"] for s in acc.values()):
         mid = await _left(store, cid, mid, parts, thinking)
     if done and not token.cancelled and not quiet and not said and not "".join(parts) and \

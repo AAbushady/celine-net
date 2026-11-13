@@ -32,7 +32,7 @@ The map of the code and the rules it follows.
 | `kb/` | knowledge bases: the chat archive, documents, instant and semantic search, the connectors' feed |
 | `settings/` | `var/settings` and `var/secrets`: shapes, validation, `registry.py` (every setting), `features.py` (the feature catalog and probes), `services.py` (box addresses), `prompts.py` (Settings, Advanced, Prompts: the user's edits in var/prompts) |
 | `agent.py`, `prompts.py` | the agent's row: name, pronouns, persona, talk, voice, portrait; `text(__file__, name)` reads a `.md` beside the module that sends it |
-| `affect.py` | feeling probes: what the agent's own replies read on a provider with Feeling probes on (a server with the affect patch), kept per reply |
+| `affect.py` | feeling probes and steering: what the agent's own replies read on a provider with Feeling probes on (a server with the affect patch), kept per reply, and with Feeling steering on the pushes of its mood and needs |
 | `missions/`, `sub_agents/` | missions and sub-agents: `sub_agents/skill.py` the tool, `store.py` its queries, `report.py` the report up, `cli.py` an agent CLI in the box, `drone.py` opencode on a device, `api.py` the routes |
 | `devices.py`, `plugins.py` | the agent's devices (plugins with a `[drones]` block); plugins, base and yours, and the keys of a `plugin.toml` (MANIFEST) |
 | `plans/` | the plan, one per conversation |
