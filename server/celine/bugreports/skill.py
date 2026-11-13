@@ -39,19 +39,28 @@ class BugReport:
                             "a small thing."],
         what: Annotated[str, "What happened and what you expected instead, with the error "
                              "text if there was one."],
+        checked: Annotated[str, "What you ran or read to confirm it before filing: the call, "
+                                "the log or the file, and what it showed."],
         where: Annotated[str, "Where you saw it: the tool, the routine or the conversation "
                               "and message number."] = "",
         wish: Annotated[str, "What would fix it or what you want instead."] = "",
+        anyway: Annotated[bool, "File it although an open report has a title like it or "
+                                "its title names one."] = False,
     ) -> ToolResult:
         """File a problem with the app itself for {{username}} to review later: a tool
         that fails or misleads, a limit that is wrong, something you miss. One report
-        per problem. It goes to {{username}} at once as an intercom message from this
-        conversation; their reply comes here.
+        per problem: a report whose title is like an open report's, or names one by
+        number, is refused, with the call that adds to that report's thread.
+        It goes to {{username}} at once as an intercom message from this conversation;
+        their reply comes here.
         Returns: its number and your other open reports."""
-        title, what = " ".join(title.split()), what.strip()
+        title, what, checked = " ".join(title.split()), what.strip(), checked.strip()
         if not title or not what:
             return ToolResult(content="Nothing filed: a report needs a title and what "
                                       "happened.", is_error=True)
+        if not checked:
+            return ToolResult(content="Nothing filed: checked says what you ran or read to "
+                                      "confirm the problem.", is_error=True)
         if severity not in reports.SEVERITIES:
             return ToolResult(content="Nothing filed: severity is high, medium or low.",
                               is_error=True)
@@ -59,11 +68,25 @@ class BugReport:
         if len(title) > reports.TITLE_MAX:
             return ToolResult(content=f"Nothing filed: the title is at most "
                                       f"{reports.TITLE_MAX} characters.", is_error=True)
-        if max(len(what), len(where), len(wish)) > reports.TEXT_MAX:
-            return ToolResult(content=f"Nothing filed: what, where and wish are at most "
-                                      f"{reports.TEXT_MAX:,} characters each.", is_error=True)
-        row = await ctx.store.write(lambda c: reports.file(
-            c, ctx.store, ctx.conversation_id, title, severity, what, where, wish))
+        if max(len(what), len(checked), len(where), len(wish)) > reports.TEXT_MAX:
+            return ToolResult(content=f"Nothing filed: what, checked, where and wish are at "
+                                      f"most {reports.TEXT_MAX:,} characters each.",
+                              is_error=True)
+
+        def fn(c):
+            known = [] if anyway else reports.like(c, title)
+            return (None, known) if known else (reports.file(
+                c, ctx.store, ctx.conversation_id, title, severity, what, checked, where,
+                wish), [])
+        row, known = await ctx.store.write(fn)
+        if row is None:
+            return ToolResult(content="\n".join(
+                ["Nothing filed: it adds to your open "
+                 + ("report" if len(known) == 1 else "reports") + ":"]
+                + [f"#{r['id']} {r['title']} (its thread: message #{r['thread']})"
+                   for r in known]
+                + ["Add to one with intercom__send(reply_to=<its message>, text=...), or file "
+                   "this as its own problem with anyway=true."]), is_error=True)
         others = [r for r in await ctx.store.read(lambda c: reports.listing(c, "open"))
                   if r["id"] != row["id"]]
         lines = [f"Filed bug report #{row['id']} ({severity}): {row['title']}. It went to "

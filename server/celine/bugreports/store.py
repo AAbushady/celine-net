@@ -4,6 +4,7 @@ it there like any reply; they close it on that thread. Every change tells the Ev
 list (`events.added {kind: bugreport}`) and the open pages (`intercom.state`)."""
 from __future__ import annotations
 
+import re
 import sqlite3
 
 from ..core.ids import now
@@ -14,18 +15,27 @@ SEVERITIES = ("high", "medium", "low")
 WORDS = {"high": "High", "medium": "Medium", "low": "Low"}
 TITLE_MAX = 160         # the file tool's title says this number too
 TEXT_MAX = 4000
+ALIKE = 0.3             # of two titles' words, the share both have that makes them alike
+WORD = re.compile(r"[\w']+")
+NUMBER = re.compile(r"#(\d+)")
+STOP = frozenset("""the and for with that this from into not are was were has have had but its one can
+cannot can't does doesn't don't any all only when then than out after before what which who how why still
+also just there their them they you your mine own about again like isn't won't never every each same new
+old get gets got""".split())
 
 
 def view(r: sqlite3.Row) -> dict:
     return {"id": r["id"], "conversation_id": r["conversation_id"], "title": r["title"],
-            "severity": r["severity"], "what": r["what"], "where": r["place"],
-            "wish": r["wish"], "state": r["state"], "thread": r["thread"],
+            "severity": r["severity"], "what": r["what"], "checked": r["checked"],
+            "where": r["place"], "wish": r["wish"], "state": r["state"], "thread": r["thread"],
             "created_at": r["created_at"], "closed_at": r["closed_at"]}
 
 
 def message(r: dict) -> tuple[str, str]:
     """The first message of report `r`'s thread: (subject, text)."""
     lines = [f"{WORDS[r['severity']]}: {r['what']}"]
+    if r["checked"]:
+        lines.append(f"Checked: {r['checked']}")
     if r["where"]:
         lines.append(f"Where: {r['where']}")
     if r["wish"]:
@@ -48,13 +58,13 @@ def shelve(c: sqlite3.Connection, store, r: dict) -> None:
 
 
 def file(c: sqlite3.Connection, store, cid: str, title: str, severity: str, what: str,
-         where: str, wish: str) -> dict:
+         checked: str, where: str, wish: str) -> dict:
     """Inside a write: a new open report and its thread, a message from conversation
     `cid` to the user. -> its view."""
     rid = c.execute(
-        "INSERT INTO bugreports(conversation_id, title, severity, what, place, wish, "
-        "created_at) VALUES (?,?,?,?,?,?,?)",
-        (cid, title, severity, what, where, wish, now())).lastrowid
+        "INSERT INTO bugreports(conversation_id, title, severity, what, checked, place, wish, "
+        "created_at) VALUES (?,?,?,?,?,?,?,?)",
+        (cid, title, severity, what, checked, where, wish, now())).lastrowid
     subject, text = message(get(c, rid))
     iid = intercom.insert(c, f"agent:{cid}", "user", "message", text, subject=subject,
                           store=store)
@@ -91,6 +101,28 @@ def listing(c: sqlite3.Connection, state: str | None = None) -> list[dict]:
     if state:
         sql, args = sql + " WHERE state = ?", [state]
     return [view(r) for r in c.execute(sql + " ORDER BY created_at DESC, id DESC", args)]
+
+
+def _words(title: str) -> set[str]:
+    return {w for w in WORD.findall(title.lower()) if len(w) >= 3 and w not in STOP}
+
+
+def like(c: sqlite3.Connection, title: str) -> list[dict]:
+    """The open reports a new report titled `title` adds to: the ones it names by number
+    ("Correction to my bug #24"), then the ones whose titles share ALIKE of their words
+    with it, most alike first (#38 and #39, the same bug filed a minute apart, share 0.41;
+    no two different problems among the agent's first 62 reached 0.25)."""
+    mine = _words(title)
+    open_ = listing(c, "open")
+    named = {int(n) for n in NUMBER.findall(title)}
+    scored = []
+    for r in open_:
+        theirs = _words(r["title"])
+        share = len(mine & theirs) / len(mine | theirs) if mine | theirs else 0.0
+        if share >= ALIKE and r["id"] not in named:
+            scored.append((share, r))
+    return [r for r in open_ if r["id"] in named] + \
+        [r for _, r in sorted(scored, key=lambda x: -x[0])]
 
 
 def close(c: sqlite3.Connection, store, rid: int) -> dict | None:

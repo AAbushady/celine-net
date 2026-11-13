@@ -35,7 +35,8 @@ async def _file(store, cfg, cid, **kw) -> object:
     ctx = ToolContext(conversation_id=cid, turn_id="", tool_call_id="", store=store,
                       config=cfg, emit=emit, max_output_tokens=8000)
     args = {"title": "read cuts results", "severity": "high",
-            "what": "past_conversations__read cut a 9k result.", **kw}
+            "what": "past_conversations__read cut a 9k result.",
+            "checked": "read it again: cut at 4k", **kw}
     return await BugReport(cfg).file(ctx, **args)
 
 
@@ -65,8 +66,8 @@ async def test_a_report_is_a_thread_he_closes_and_events_lists_it_once(store, cf
     first = await store.read(lambda c: rows.thread(c, 1))
     assert [(m["from"], m["to"], m["subject"], m["text"]) for m in first] == [
         (f"agent:{cid}", "user", "Bug #1: read cuts results",
-         "High: past_conversations__read cut a 9k result.\n\nWhere: self-review\n\n"
-         "Wish: keep the whole result")]
+         "High: past_conversations__read cut a 9k result.\n\nChecked: read it again: cut at 4k"
+         "\n\nWhere: self-review\n\nWish: keep the whole result")]
     waiting = await store.read(lambda c: rows.threads(c, "user", unread=True, received=True))
     assert sorted(t["thread"] for t in waiting) == [1, 2], "each report waits for them"
 
@@ -125,7 +126,7 @@ async def test_continue_in_a_chat_moves_the_thread_into_a_new_chat_with_the_agen
     assert held == [
         "Joe continued Intercom thread #1 in this chat. The thread:\n\n"
         '[From you (#1, "Bug #1: read cuts results")]\n'
-        "High: past_conversations__read cut a 9k result.\n\n"
+        "High: past_conversations__read cut a 9k result.\n\nChecked: read it again: cut at 4k\n\n"
         '[From Joe (#2, re #1, "Bug #1: read cuts results")]\nwhich chat was it?']
     assert turns == 0, "it lands without waking it; their first line does"
     notice = await store.read(lambda c: rows.view(c, c.execute(
@@ -156,6 +157,34 @@ async def test_a_field_over_its_limit_is_refused_and_names_it_never_cut(store, c
     assert r.is_error and "at most 4,000 characters" in r.content
     r = await _file(store, cfg, cid, what="w" * 4000)
     assert not r.is_error
+
+
+async def test_a_report_like_an_open_one_or_naming_it_is_refused_with_its_thread(store, cfg):
+    """#38 and #39 were the same bug filed a minute apart, and corrections of the agent's open
+    reports came as new reports; both go to the open report's thread instead."""
+    cid = await conversations.create(store, "a chat")
+    first = ('Tool time limit (180s) is the wall that kills one models__ask probe; "timed out '
+             'after 180s" reads like a broken model')
+    again = ("models__ask failed at the 180s tool time limit; error text does not name the "
+             "limit, so it reads like a dead model")
+    assert not (await _file(store, cfg, cid, title=first)).is_error
+    same = await _file(store, cfg, cid, title=again)
+    assert same.is_error and same.content.splitlines() == [
+        "Nothing filed: it adds to your open report:",
+        f"#1 {first} (its thread: message #1)",
+        "Add to one with intercom__send(reply_to=<its message>, text=...), or file this as "
+        "its own problem with anyway=true."]
+    named = await _file(store, cfg, cid, title="Correction to my bug #1: the wall is 300 s")
+    assert named.is_error and f"#1 {first}" in named.content
+    other = await _file(store, cfg, cid, title="Civitai search cannot be scoped to a video preset")
+    assert not other.is_error, "a different problem files"
+    forced = await _file(store, cfg, cid, title=again, anyway=True)
+    assert forced.content.startswith("Filed bug report #3"), "anyway files it"
+    unchecked = await _file(store, cfg, cid, title="tabs cap", checked=" ")
+    assert unchecked.is_error and "checked says what you ran or read" in unchecked.content
+    await store.write(lambda c: [reports.close(c, store, n) for n in (1, 3)])
+    assert not (await _file(store, cfg, cid, title=again)).is_error, \
+        "a closed report's problem can come back"
 
 
 async def test_closing_with_why_tells_the_agent_in_the_thread_and_its_list_shows_it(store, cfg):

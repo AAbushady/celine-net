@@ -88,7 +88,7 @@ async def test_a_bug_report_a_mission_filed_is_its_own_thread_in_the_intercom(st
     night = await conversations.create(store, "Night", kind="mission")
     await missions.create(store, night, {"name": "Night", "terminal": "n", "brief": "b"})
     report = await store.write(lambda c: bugs.file(
-        c, store, night, "Writes come back short", "high", "A write lost its end.", "", ""))
+        c, store, night, "Writes come back short", "high", "A write lost its end.", "", "", ""))
     got = await waits.items(SimpleNamespace(store=store, approvals=None, connectors=None))
     assert got == [], "a thread is no item of the list"
     [t] = await store.read(lambda c: rows.threads(c, "user", unread=True, received=True))

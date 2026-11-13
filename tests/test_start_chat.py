@@ -82,7 +82,7 @@ async def test_a_second_chat_from_the_same_place_starts_and_lists_the_first(stor
 async def test_an_open_bug_report_of_the_last_day_is_listed_for_the_agent_to_judge(store):
     _, skill, bg, ctx = await _setup(store)
     rid = (await store.write(lambda c: bugs.file(c, store, bg, "Shell wedge", "high",
-                                                 "it hangs", "", "")))["id"]
+                                                 "it hangs", "", "", "")))["id"]
     out = await skill.start_chat(ctx, title="Shell wedge", text="The shell hangs.")
     assert not out.is_error and f'bug #{rid} "Shell wedge" (open, ' in out.content
     assert "it hangs" in out.content
