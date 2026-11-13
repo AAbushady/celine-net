@@ -422,11 +422,11 @@ async def test_an_ltx_clip_switches_its_picture_nodes_off_without_a_picture(app,
                                           "preset": "ltx2.3-22b"}], wait=True)
     assert not r.is_error, r.content
     g = app.fake.graphs[-1]
-    assert "11" not in g and "on_false" not in g["13"]["inputs"], "no picture: its node goes"
-    assert g["13"]["inputs"]["switch"] is True
-    assert g["17"]["inputs"]["bypass"] is True and g["27"]["inputs"]["bypass"] is True
-    assert g["16"]["inputs"]["length"] == g["18"]["inputs"]["frames_number"] == 49, "8n + 1"
-    assert g["9"]["inputs"]["values.a"] == 1280 and g["10"]["inputs"]["values.a"] == 704
+    assert "12" not in g and "on_false" not in g["14"]["inputs"], "no picture: its node goes"
+    assert g["14"]["inputs"]["switch"] is True
+    assert g["18"]["inputs"]["bypass"] is True and g["29"]["inputs"]["bypass"] is True
+    assert g["17"]["inputs"]["length"] == g["19"]["inputs"]["frames_number"] == 49, "8n + 1"
+    assert g["10"]["inputs"]["values.a"] == 1280 and g["11"]["inputs"]["values.a"] == 704
 
     made_ctx, _ = await _call(store, cid, "i1")
     pic = ImageGenerator(app.cfg)
@@ -439,9 +439,9 @@ async def test_an_ltx_clip_switches_its_picture_nodes_off_without_a_picture(app,
                                            "source": src["id"][:8]}], wait=True)
     assert not r.is_error, r.content
     g = app.fake.graphs[-1]
-    assert g["11"]["inputs"]["image"] == "celine-src.png" and g["13"]["inputs"]["on_false"]
-    assert g["13"]["inputs"]["switch"] is False
-    assert g["17"]["inputs"]["bypass"] is False and g["27"]["inputs"]["bypass"] is False
+    assert g["12"]["inputs"]["image"] == "celine-src.png" and g["14"]["inputs"]["on_false"]
+    assert g["14"]["inputs"]["switch"] is False
+    assert g["18"]["inputs"]["bypass"] is False and g["29"]["inputs"]["bypass"] is False
     ltx = presets.of("video")["ltx2.3-22b"]
     assert "no_image" not in [x["name"] for x in presets.view(ltx)["parameters"]]
     assert not any(f["key"] == "default.no_image" for f in presets.fields(ltx))
