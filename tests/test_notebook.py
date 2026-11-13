@@ -14,7 +14,8 @@ from celine.conversations import store as conversations
 from celine.boot import load
 from celine.skills import ToolContext
 from celine.skills import notebook as notebook_mod
-from celine.skills.notebook import Notebook
+from celine.skills.anchors import line_hash
+from celine.skills.notebook import WRITE_ENDS, Notebook
 from celine.skills import notebook_index
 
 pytestmark = pytest.mark.anyio
@@ -392,7 +393,9 @@ async def test_a_write_says_where_it_saved_and_the_list_has_dates(store, cfg):
     cid = await conversations.create(store)
     ctx = ToolContext(cid, "t", "x", store, cfg, None)  # type: ignore[arg-type]
     out = await nb.write(ctx, "diary/x.md", "a day", "my day")
-    assert out.content == "Saved diary/x.md, a new note of 2 lines."
+    assert out.content.startswith("Saved diary/x.md, a new note of 2 lines. The note, with "
+                                  "its anchors:\n\nLast changed:"), out.content
+    assert out.content.endswith(f"\n2:{line_hash('a day')}| a day")
     await store.write(lambda c: c.execute(
         "UPDATE notebook_index SET touched_at='2026-10-16T05:00:00.000+00:00' "
         "WHERE path='diary/x.md'"))
@@ -408,11 +411,30 @@ async def test_a_write_over_a_note_says_its_lines_before_and_now(store, cfg):
     ctx = ToolContext(cid, "t", "x", store, cfg, None)  # type: ignore[arg-type]
     await nb.write(ctx, "diary/y.md", "one\ntwo\nthree\nfour", "a day")
     out = await nb.write(ctx, "diary/y.md", "one", "a day")
-    assert out.content == "Saved diary/y.md. 2 lines now, was 5."
+    assert out.content.startswith("Saved diary/y.md. 2 lines now, was 5. The note")
     out = await nb.write(ctx, "diary/y.md", "\nfive", "a day", mode="append")
-    assert out.content == "Saved diary/y.md. 3 lines now, was 2."
+    assert out.content.startswith("Saved diary/y.md. 3 lines now, was 2. The added part, "
+                                  "with its anchors:\n\n"), out.content
+    assert out.content.splitlines()[-2:] == [f"2:{line_hash('one')}| one",
+                                             f"3:{line_hash('five')}| five"]
     read = (await nb.read(ctx, "diary/y.md")).content.splitlines()
     assert len(read) == 3
+
+
+async def test_a_write_answers_with_its_anchors_so_an_edit_needs_no_read(store, cfg):
+    """Half the failed edits since 12 Nov were on a note the same conversation had just
+    written: the write's answer gave no anchors to edit with."""
+    nb = Notebook(cfg)
+    ctx = _ctx("c", store, cfg)
+    out = await nb.write(ctx, "plans/week.md", "# week\n- mon: gym\n- tue: rest", "my week")
+    anchor = next(x.split("|")[0] for x in out.content.splitlines() if x.endswith("| - tue: rest"))
+    done = await nb.edit(ctx, "plans/week.md",
+                         [{"op": "replace", "start": anchor, "text": "- tue: run"}])
+    assert not done.is_error, done.content
+    long = "\n".join(f"line {i}" for i in range(1, 200))
+    out = (await nb.write(ctx, "plans/long.md", long, "long")).content.splitlines()
+    assert out[3].startswith("2:") and out[-1].endswith("| line 199"), "its ends, whole"
+    assert f"lines {WRITE_ENDS + 1} to " in "\n".join(out) and len(out) < 2 * WRITE_ENDS + 6
 
 
 async def test_a_web_citation_the_agent_writes_down_is_stored_as_written(store, cfg):

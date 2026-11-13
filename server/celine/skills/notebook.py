@@ -256,7 +256,8 @@ class Notebook:
         {{username}}'s notes. Head lines right under the first line steer a note:
         `keys: ram, laptop` loads it when one comes up, `load: always`, `class:
         public, informal, nsfw or sensitive`. Returns: how many lines the note has now,
-        and how many it had before when it was there already."""
+        how many it had before when it was there already, and its lines with their
+        anchors for notebook__edit (an append: the added part)."""
         try:
             p, path = self._place(path, await folder_of(ctx))
         except ToolRefused as e:
@@ -274,10 +275,19 @@ class Notebook:
         keep_version(self.root, p, path)
         p.write_text(body)
         await notebook_index.upsert(ctx.store, path, summary, len(body), body)
-        n = _lines(p.read_text())                   # what the file holds now, read back
+        now = p.read_text()                         # what the file holds now, read back
+        n = _lines(now)
         said = (f"Saved {path}, a new note of {n}." if old is None
                 else f"Saved {path}. {n} now, was {len(lines_of(old)[0])}.")
-        return ToolResult(content=said,
+        # its anchors, so an edit right after needs no read: half the failed edits were on
+        # a note the same conversation had just written
+        lines = lines_of(now)[0]
+        if mode == "append" and old is not None:
+            shown = numbered(lines, max(2, len(lines_of(old)[0])), len(lines))
+            head = "The added part, with its anchors"
+        else:
+            shown, head = _anchored(lines, path), "The note, with its anchors"
+        return ToolResult(content=f"{said} {head}:\n\n" + "\n".join(shown),
                           display={"path": path, "bytes": len(body), "mode": mode})
 
     @tool()
@@ -849,6 +859,21 @@ def _texts_before(root: Path, rel: str) -> list[list[str]]:
     folder = root / ".versions" / rel
     files = sorted(folder.glob("*.md"), reverse=True)[:EARLIER] if folder.is_dir() else []
     return [lines_of(f.read_text(errors="replace", newline=""))[0] for f in files]
+
+
+WRITE_SHOWN = 120           # lines of a written note its answer shows whole
+WRITE_ENDS = 40             # of a longer one, the first and the last this many
+
+
+def _anchored(lines: list[str], path: str) -> list[str]:
+    """A written note's lines as notebook__read shows them: whole up to WRITE_SHOWN, else
+    its first and last WRITE_ENDS and the read that shows the rest."""
+    n = len(lines)
+    if n <= WRITE_SHOWN:
+        return numbered(lines, 1, n)
+    gap = (f"... lines {WRITE_ENDS + 1} to {n - WRITE_ENDS} are left out here: "
+           f"notebook__read(path=\"{path}\", from_line={WRITE_ENDS + 1}) shows them")
+    return numbered(lines, 1, WRITE_ENDS) + [gap] + numbered(lines, n - WRITE_ENDS + 1, n)
 
 
 def _lines(text: str) -> str:
