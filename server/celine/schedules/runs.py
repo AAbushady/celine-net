@@ -96,8 +96,18 @@ it. A run that waited for its model starts with a new clock. A run that was runn
 still at the next start: the scheduler continues its cut turn (`_resume`) and takes its
 answer once the conversation is quiet (a reviewer's talk that was cut ends there). `end`
 ends a waiting or running run with a reason: Stop on the run's page (`stopped`), its
-schedule deleted (`skipped`), its ceiling (`_fail`). A run keeps its schedule's
+schedule deleted (`skipped`), its ceiling (`_fail`). A run that is stopped, skipped or
+fails takes what its conversation and its sub-agents still had scheduled (its reminders,
+messages set for later; `_drop_timers`); a done one keeps them. A run keeps its schedule's
 label. Every change is `run.state {run}` on the global feed.
+
+A run's conversation after the run ended. A message can still wake it (a reminder it set,
+a sub-agent's report). That work, its turns and its sub-agents' at any depth, runs under
+the run's own limit, counted from the wake on a clock of its own (`_woken`, held while it
+waits for a model like a run's); past it, it is stopped as a run is at its ceiling, what it
+scheduled is cancelled and the app's line WOKEN_OVER lands in the conversation without
+waking it. Once nothing of it runs or waits to land, the clock goes, and a later wake gets
+a new one.
 """
 from __future__ import annotations
 
@@ -130,6 +140,10 @@ from ..core.event_types import RUN_STATE
 log = logging.getLogger("celine.schedules")
 
 TICK = 60.0                  # seconds between two looks without a wake
+ENDED = ("done", "failed", "stopped", "skipped")
+DROPS = ("failed", "stopped", "skipped")    # an end that takes the run's scheduled messages
+WOKEN_OVER = ("The work a message woke in this conversation of an ended run stopped at the "
+              "run's time limit of {n} minute{s}.")
 # a Retry routine's failed run runs again this long after it, the first, second and third time
 RUN_AGAIN = (timedelta(minutes=15), timedelta(hours=1), timedelta(hours=4))
 CATCH_UP_DAYS = 7
@@ -468,6 +482,23 @@ def binding(c: sqlite3.Connection, cid: str, cfg) -> dict | None:
             "run": run["id"]}
 
 
+def _woken_work(c: sqlite3.Connection, rid: str) -> tuple[str | None, bool]:
+    """(run `rid`'s conversation, whether work woken there still runs or waits to land:
+    a live turn in it or under it, or a message due for one of them now)."""
+    row = c.execute("SELECT conversation_id FROM runs WHERE id = ?", (rid,)).fetchone()
+    if row is None or not row[0]:
+        return None, False
+    fam = conversations.family(c, row[0])
+    marks = ",".join("?" * len(fam))
+    live = c.execute(
+        f"SELECT 1 FROM turns WHERE conversation_id IN ({marks}) AND state IN "
+        f"{LIVE_TURNS_SQL} LIMIT 1", fam).fetchone() or c.execute(
+        f"SELECT 1 FROM intercom_deliveries d JOIN intercom i ON i.id = d.intercom_id WHERE "
+        f"d.conversation_id IN ({marks}) AND d.state = 'pending' AND i.cancelled_at IS NULL "
+        f"AND (i.due_at IS NULL OR i.due_at <= ?) LIMIT 1", (*fam, now())).fetchone()
+    return row[0], live is not None
+
+
 def finished(c: sqlite3.Connection, cid: str) -> bool:
     """The agent's conversation is quiet, and so is every sub-agent of it, each reported.
     A message timed for later (one it sent itself for the next night) comes after the
@@ -532,6 +563,9 @@ class Scheduler:
         self._over = ""                       # the reason it fails with past the limit
         self._scope: anyio.CancelScope | None = None   # its work, for `end`
         self._turn_ended = anyio.Event()      # set and replaced at every turn or job end
+        # an ended run's id -> the clock of the work a message woke in its conversation, and
+        # its limit in minutes
+        self._woken: dict[str, tuple[RunClock, int]] = {}
         on_end = getattr(app.dispatcher, "on_end", None)
         if on_end is not None:               # a turn ended: a run may start or be over
             on_end(self._ended)
@@ -559,11 +593,28 @@ class Scheduler:
         tg.start_soon(self._loop)
 
     def _binding(self, c: sqlite3.Connection, cid: str) -> dict | None:
-        """`binding`, with the run's clock while that run runs."""
+        """`binding`, with the run's clock while that run runs, and after it ended the
+        clock of the work a message woke in its conversation (module docstring)."""
         b = binding(c, cid, self.app.cfg)
         if b is not None:
-            b["clock"] = self._clock if b["run"] == self.current else None
+            b["clock"] = self._clock if b["run"] == self.current else \
+                self._woken_clock(c, b["run"])
         return b
+
+    def _woken_clock(self, c: sqlite3.Connection, rid: str) -> RunClock | None:
+        """The clock of the work woken in ended run `rid`'s conversation, made at the wake;
+        None for a run that has not ended (it waits to go on) or has no limit."""
+        if rid in self._woken:
+            return self._woken[rid][0]
+        r = c.execute("SELECT schedule, state FROM runs WHERE id = ?", (rid,)).fetchone()
+        n = self._cap(self.schedules.get(r["schedule"])) if r and r["state"] in ENDED else 0
+        if not n:
+            return None
+        clock = RunClock(timedelta(minutes=n), self.now, lambda: None)
+        self._woken[rid] = (clock, n)
+        log.info("ended run woken", extra={"event": "schedules.woken", "run": rid,
+                                           "minutes": n})
+        return clock
 
     async def _ended(self, _cid: str, _turn: str | None) -> None:
         ended, self._turn_ended = self._turn_ended, anyio.Event()
@@ -717,15 +768,17 @@ class Scheduler:
         def fn(c: sqlite3.Connection):
             r = c.execute("SELECT * FROM runs WHERE id = ?", (rid,)).fetchone()
             if r is None or r["state"] not in from_states:
-                return None, None
+                return None, None, False
             out = _fail(c, store, cfg, rid, self.schedules.get(r["schedule"]), why, False,
                         self.now()) if state == "failed" else \
                 _set(c, store, cfg, rid, state=state, finished_at=now(), reason=why)
-            return out, r["conversation_id"] if r["state"] == "running" else None
-        out, cid = await store.write(fn)
+            return out, r["conversation_id"], r["state"] == "running"
+        out, cid, running = await store.write(fn)
         abort = getattr(self.app.dispatcher, "abort_conversation", None)
-        if cid and abort is not None:
+        if cid and running and abort is not None:
             await abort(cid)
+        if out is not None and state in DROPS:
+            await self._drop_timers(cid)
         log.info("run ended", extra={"event": "schedules.ended", "run": rid,
                                      "state": state, "why": why})
         self.wake()
@@ -744,6 +797,8 @@ class Scheduler:
     async def tick(self) -> None:
         if self.current:
             await self._watch()
+        if self._woken:
+            await self._watch_woken()
         await self.make_due()
         if not self.ready():
             return
@@ -789,13 +844,29 @@ class Scheduler:
         """Run `r` runs now, in the task group, with a new clock for its ceiling."""
         s, rid = self.schedules.get(r["schedule"]), r["id"]
         self.current = rid
-        cap = [m for m in (s and s.wall_minutes, self.app.cfg.r("routine_max_minutes")) if m]
-        self._clock = RunClock(timedelta(minutes=min(cap)) if cap else None, self.now,
+        n = self._cap(s)
+        self._clock = RunClock(timedelta(minutes=n) if n else None, self.now,
                                lambda: self._tell(rid))
-        n = min(cap) if cap else 0
         self._over = f"Stopped at its time limit of {n} minute{'' if n == 1 else 's'}." \
-            if cap else ""
+            if n else ""
         self._tg.start_soon(self._execute, rid)
+
+    def _cap(self, s) -> int:
+        """The minutes a run of schedule `s` may work: its own wall_minutes or the Routine
+        time limit, the smaller; 0 for no limit."""
+        cap = [m for m in (s and s.wall_minutes, self.app.cfg.r("routine_max_minutes")) if m]
+        return min(cap) if cap else 0
+
+    async def _drop_timers(self, cid: str | None) -> None:
+        """What conversation `cid` and its sub-agents, at any depth, still had scheduled
+        is cancelled: nothing a stopped, skipped or failed run set wakes its conversation
+        again (a reminder a stopped Reflection set ran it for four hours the next
+        morning)."""
+        intercom = getattr(self.app, "intercom", None)
+        if not cid or intercom is None:
+            return
+        for x in await self.app.store.read(lambda c: conversations.family(c, cid)):
+            await intercom.cancel_scheduled(x)
 
     def _tell(self, rid: str) -> None:
         """The running run's work started or stopped waiting for a model: its `run.state`
@@ -823,6 +894,28 @@ class Scheduler:
                 "SELECT conversation_id FROM runs WHERE id = ?", (rid,)).fetchone())
             why = approvals.lapsed(row[0]) if approvals is not None and row and row[0] else None
             await self.end(rid, "failed", why or self._over, ("running",))
+
+    async def _watch_woken(self) -> None:
+        """The work woken in an ended run's conversation (module docstring): past its
+        limit it is stopped, what it scheduled cancelled and WOKEN_OVER lands; once
+        nothing of it runs or waits to land, its clock goes."""
+        abort = getattr(self.app.dispatcher, "abort_conversation", None)
+        intercom = getattr(self.app, "intercom", None)
+        for rid, (clock, n) in list(self._woken.items()):
+            cid, live = await self.app.store.read(lambda c, rid=rid: _woken_work(c, rid))
+            left = clock.left()
+            if not live:
+                del self._woken[rid]
+            elif left is not None and left < timedelta(0):
+                del self._woken[rid]
+                if abort is not None:
+                    await abort(cid)
+                await self._drop_timers(cid)
+                if intercom is not None:
+                    await intercom.send("system:app", f"agent:{cid}", WOKEN_OVER.format(
+                        n=n, s="" if n == 1 else "s"), wake=False)
+                log.info("woken run stopped", extra={"event": "schedules.woken_over",
+                                                     "run": rid, "minutes": n})
 
     def _idle_skip(self, r: dict, s, unused: bool) -> str | None:
         """Why an `idle_only` run is skipped now, None when it may wait on: one that
@@ -930,8 +1023,9 @@ class Scheduler:
                     (cid, started, rid)).rowcount:
                 return None
             return _set(c, store, cfg, rid)
+        cid: str | None = r["conversation_id"]
         try:
-            cid = r["conversation_id"] or await conversations.for_trigger(
+            cid = cid or await conversations.for_trigger(
                 store, f"run:{rid}", f"{shown(s)}, {night_words(r['day'])}")
             if fresh:
                 from ..settings import roles
@@ -991,6 +1085,7 @@ class Scheduler:
                 again = not getattr(e, "stopped", False)
                 await store.write(lambda c: _fail(c, store, cfg, rid, s, error, again,
                                                   self.now()))
+                await self._drop_timers(cid)
             log.info("run failed", extra={"event": "schedules.failed", "run": rid,
                                           "waits": bool(why), "error": error})
             return
