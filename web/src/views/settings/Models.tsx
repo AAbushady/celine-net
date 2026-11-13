@@ -191,6 +191,7 @@ export function optionSchema(opts: OptionSchema[], others: ProviderView[]): Form
                          ...others.map(x => [x.id, x.provider.label] as [string, string])] }
     }
     if (o.type === 'bool') return { ...base, type: 'bool' }
+    if (o.type === 'list') return { ...base, type: 'list' }       // one a line
     if (o.choices) return { ...base, type: 'choice', choices: o.choices }
     return { ...base, type: o.type === 'int' || o.type === 'num' ? 'number' : 'text', unit: o.unit }
   })
