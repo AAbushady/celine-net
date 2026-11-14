@@ -52,7 +52,7 @@ async def test_a_notes_earlier_texts_list_newest_first_and_stay_after_a_delete(n
     app, nb, cfg = notebook
     ctx, root = _ctx("c", store, cfg), cfg.agent.notebook.resolve()
     for text in ("# sea\nwaves", "# sea\nwaves\ngulls", "# sea\ngulls"):
-        await nb.write(ctx, "lore/sea.md", text, "the sea")
+        await nb.write(ctx, "lore/sea.md", text, "the sea", mode="replace")
     rows = (await nb.list_versions(ctx, "lore/sea.md")).content.splitlines()
     assert rows[0] == ('The earlier texts of lore/sea.md, newest first. notebook__read_'
                        'version(path="lore/sea.md", version=<n>) reads one:')
@@ -189,9 +189,9 @@ async def test_the_texts_from_before_the_user_deleted_a_note_are_the_users(noteb
     app, nb, cfg = notebook
     ctx, user = _ctx("c", store, cfg), cfg.user
     for text in ("# sea\nwaves", "# sea\ngulls"):
-        await nb.write(ctx, "lore/sea.md", text, "the sea")
+        await nb.write(ctx, "lore/sea.md", text, "the sea", mode="replace")
     for text in ("# reef\nfish", "# reef\ncoral"):
-        await nb.write(ctx, "lore/reef.md", text, "the reef")
+        await nb.write(ctx, "lore/reef.md", text, "the reef", mode="replace")
     line = f"{user} deleted lore/sea.md on {WHEN}, so its texts from before then are {user}'s."
     async with client(app) as c:
         assert (await c.delete("/api/notebook/entries/lore/sea.md")).status_code == 200
@@ -202,7 +202,8 @@ async def test_the_texts_from_before_the_user_deleted_a_note_are_the_users(noteb
 
         # a new note at the path: only its own texts, under ids that never change
         for text in ("storm", "storm\nrain"):
-            await nb.write(ctx, "lore/sea.md", text, "the sea again")
+            await nb.write(ctx, "lore/sea.md", text, "the sea again",
+                           mode="replace")
         rows = (await nb.list_versions(ctx, "lore/sea.md")).content.splitlines()
         first = "Last changed: 2026-09-24 21:52\nstorm"
         assert rows[1:] == [f'version 2, from {WHEN}, {len(first)} characters: "storm"', line,
@@ -231,9 +232,9 @@ async def test_the_users_restore_gives_the_earlier_texts_back(notebook, store):
     app, nb, cfg = notebook
     ctx, root, user = _ctx("c", store, cfg), cfg.agent.notebook.resolve(), cfg.user
     for text in ("# sea\nwaves", "# sea\ngulls"):
-        await nb.write(ctx, "lore/sea.md", text, "the sea")
+        await nb.write(ctx, "lore/sea.md", text, "the sea", mode="replace")
     for text in ("# reef\nfish", "# reef\ncoral"):
-        await nb.write(ctx, "lore/reef.md", text, "the reef")
+        await nb.write(ctx, "lore/reef.md", text, "the reef", mode="replace")
     async with client(app) as c:
         await c.delete("/api/notebook/entries/lore/sea.md")
         assert (await nb.read_version(ctx, "lore/sea.md", 1)).is_error

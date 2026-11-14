@@ -87,7 +87,7 @@ async def test_the_agents_notes_move_and_the_users_and_tools_stay(store, cfg):
     await nb.seed(store)
     ctx = _ctx("c", store, cfg)
     await nb.write(ctx, "./scratch/cars.md", "red ones", "cars")
-    await nb.write(ctx, "scratch//cars.md", "blue ones", "cars again")
+    await nb.write(ctx, "scratch//cars.md", "blue ones", "cars again", mode="replace")
     assert [r["path"] for r in await notebook_index.list(store, None)
             if "cars" in r["path"]] == ["scratch/cars.md"]
     assert not (await nb.move(ctx, "scratch", "sorted/")).is_error
@@ -426,15 +426,35 @@ async def test_a_write_over_a_note_says_its_lines_before_and_now(store, cfg):
     cid = await conversations.create(store)
     ctx = ToolContext(cid, "t", "x", store, cfg, None)  # type: ignore[arg-type]
     await nb.write(ctx, "diary/y.md", "one\ntwo\nthree\nfour", "a day")
-    out = await nb.write(ctx, "diary/y.md", "one", "a day")
-    assert out.content.startswith("Saved diary/y.md. 2 lines now, was 5. The note")
+    out = await nb.write(ctx, "diary/y.md", "one", "a day", mode="replace")
+    assert out.content.startswith(
+        "Saved diary/y.md, all its text replaced. 2 lines now, was 5. The note"), out.content
     out = await nb.write(ctx, "diary/y.md", "\nfive", "a day", mode="append")
-    assert out.content.startswith("Saved diary/y.md. 3 lines now, was 2. The added part, "
-                                  "with its anchors:\n\n"), out.content
+    assert out.content.startswith("Saved diary/y.md, added to its end. 3 lines now, was 2. "
+                                  "The added part, with its anchors:\n\n"), out.content
     assert out.content.splitlines()[-2:] == [f"2:{line_hash('one')}| one",
                                              f"3:{line_hash('five')}| five"]
     read = (await nb.read(ctx, "diary/y.md")).content.splitlines()
     assert len(read) == 3
+
+
+async def test_a_write_without_a_mode_never_replaces_a_note_that_exists(store, cfg):
+    """A retry after a refused append left out mode and replaced a 122-line note with the
+    added part (bug 79): without a mode a write only makes a new note."""
+    nb = Notebook(cfg)
+    cid = await conversations.create(store)
+    ctx = ToolContext(cid, "t", "x", store, cfg, None)  # type: ignore[arg-type]
+    assert not (await nb.write(ctx, "opinions/re.md", "one\ntwo", "re")).is_error
+    before = (cfg.agent.notebook / "opinions/re.md").read_text()
+    out = await nb.write(ctx, "opinions/re.md", "\nthree", "re", felt="vindicated")
+    assert out.is_error and out.content == (
+        'opinions/re.md exists (3 lines). Nothing was saved: mode="append" adds content to '
+        'its end, mode="replace" replaces all its text.')
+    assert (cfg.agent.notebook / "opinions/re.md").read_text() == before
+    assert not (cfg.agent.notebook / ".versions/opinions/re.md").exists(), "no version kept"
+    out = await nb.write(ctx, "opinions/re.md", "\nthree", "re", mode="append")
+    assert not out.is_error and (cfg.agent.notebook / "opinions/re.md").read_text().endswith(
+        "one\ntwo\nthree")
 
 
 async def test_a_write_answers_with_its_anchors_so_an_edit_needs_no_read(store, cfg):

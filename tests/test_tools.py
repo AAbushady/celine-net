@@ -108,7 +108,7 @@ async def test_an_overwritten_or_deleted_note_is_kept_for_the_user(store, cfg):
     nb = Notebook(cfg)
     c = ctx(store, cfg)
     await nb.write(c, "plans/a.md", "first", "a")
-    await nb.write(c, "plans/a.md", "second", "a")
+    await nb.write(c, "plans/a.md", "second", "a", mode="replace")
     assert "plans/a.md" in await build_index_fragment(store, cfg), "its index has it"
     old = list((cfg.agent.notebook / ".versions/plans/a.md").iterdir())
     assert len(old) == 1 and "first" in old[0].read_text()

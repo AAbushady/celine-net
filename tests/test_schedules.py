@@ -945,7 +945,7 @@ class Writer(FakeBackend):
 
 def _write(note: str, content: str) -> list:
     return [ToolCallDelta(index=0, id="w", name="notebook__write", arguments=json.dumps(
-        {"path": note, "content": content, "summary": "The review."})),
+        {"path": note, "content": content, "summary": "The review.", "mode": "replace"})),
         Done(reason="tool_calls")]
 
 

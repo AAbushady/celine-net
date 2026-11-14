@@ -249,11 +249,13 @@ class Notebook:
         content: Annotated[str, "The text: the whole note (replace) or the text to add "
                                 "(append)."],
         summary: Annotated[str, "One line for your index."],
-        mode: Annotated[Literal["replace", "append"], "replace or append."] = "replace",
+        mode: Annotated[Literal["replace", "append"] | None,
+                        "replace or append. Left out, the note must be new."] = None,
         felt: Annotated[str, FELT] = "",
     ) -> ToolResult:
         """Write one note. `replace` creates the note or replaces all its text. `append`
-        adds text to its end. To change some lines, use notebook__edit. Write what
+        adds text to its end. Without a mode it only makes a new note, and a note that
+        exists is refused. To change some lines, use notebook__edit. Write what
         {{username}} asks you to remember, their preferences and corrections, your plans,
         your diary. Do not copy chat messages: keep references. Answer first, then write,
         and do not end your reply with only a line that you wrote it. You cannot write
@@ -274,8 +276,12 @@ class Notebook:
                 f"Write your own version somewhere else if you want one."), is_error=True)
         if why := note_feelings.checked(felt):
             return ToolResult(content=why, is_error=True)
-        p.parent.mkdir(parents=True, exist_ok=True)
         old = p.read_text() if p.is_file() else None
+        if old is not None and mode is None:
+            return ToolResult(content=(
+                f"{path} exists ({_lines(old)}). Nothing was saved: mode=\"append\" adds "
+                f"content to its end, mode=\"replace\" replaces all its text."), is_error=True)
+        p.parent.mkdir(parents=True, exist_ok=True)
         body = stamped(old + content if mode == "append" and old is not None
                        else content, self.cfg)
         keep_version(self.root, p, path)
@@ -283,8 +289,9 @@ class Notebook:
         await notebook_index.upsert(ctx.store, path, summary, len(body), body)
         now = p.read_text()                         # what the file holds now, read back
         n = _lines(now)
+        did = "added to its end" if mode == "append" else "all its text replaced"
         said = (f"Saved {path}, a new note of {n}." if old is None
-                else f"Saved {path}. {n} now, was {len(lines_of(old)[0])}.")
+                else f"Saved {path}, {did}. {n} now, was {len(lines_of(old)[0])}.")
         said += await self._felt(ctx, path, old, now, felt)
         # its anchors, so an edit right after needs no read: half the failed edits were on
         # a note the same conversation had just written
