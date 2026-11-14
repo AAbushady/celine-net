@@ -75,10 +75,10 @@ export type BatchItem = {
   model?: string | null
   loras?: string[] | null
   triggers?: string[] | null
-  source?: SourceImage | null
-  source2?: SourceImage | null
-  source3?: SourceImage | null
-  source4?: SourceImage | null
+  source?: SourceFile | null
+  source2?: SourceFile | null
+  source3?: SourceFile | null
+  source4?: SourceFile | null
   style?: string | null
   lyrics?: string | null
   title?: string | null
@@ -88,6 +88,8 @@ export type BatchItem = {
   length?: number | null
   fps?: number | null
   frames?: Still[] | null
+  /** the clip this one gives its sound */
+  sound_for?: SourceFile | null
 }
 
 export type BatchItemPatch = {
@@ -563,8 +565,8 @@ export type Segments = {
   has_after: boolean
 }
 
-/** An image an edit starts from: an attachment, or the agent's portrait (id portrait). */
-export type SourceImage = {
+/** A file an item starts from: the image an edit starts from (an attachment, or the agent's portrait, id portrait), or the clip a sound preset makes the audio for. */
+export type SourceFile = {
   id: string
   sha256: string
   filename: string

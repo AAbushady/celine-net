@@ -73,8 +73,9 @@ class Still(Answer):
     media_type: str
 
 
-class SourceImage(Answer):
-    """An image an edit starts from: an attachment, or the agent's portrait (id portrait)."""
+class SourceFile(Answer):
+    """A file an item starts from: the image an edit starts from (an attachment, or the
+    agent's portrait, id portrait), or the clip a sound preset makes the audio for."""
     id: str
     sha256: str
     filename: str
@@ -112,10 +113,10 @@ class BatchItem(Answer):
     model: str | None = None
     loras: list[str] | None = None
     triggers: list[str] | None = None
-    source: SourceImage | None = None
-    source2: SourceImage | None = None
-    source3: SourceImage | None = None
-    source4: SourceImage | None = None
+    source: SourceFile | None = None
+    source2: SourceFile | None = None
+    source3: SourceFile | None = None
+    source4: SourceFile | None = None
     # music
     style: str | None = None
     lyrics: str | None = None
@@ -126,6 +127,8 @@ class BatchItem(Answer):
     length: int | None = Field(default=None, description="a clip's frames")
     fps: float | None = None
     frames: list[Still] | None = None
+    sound_for: SourceFile | None = Field(default=None,
+                                         description="the clip this one gives its sound")
 
 
 class Batch(Answer):

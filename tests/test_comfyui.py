@@ -500,6 +500,8 @@ async def test_a_clip_gets_its_sound_as_a_new_clip_and_the_silent_one_stays(app,
     batches = await batches_mod.list_batches(store, "video", conversation=cid)
     sounded = batches[0]["items"][0]
     assert sounded["preset"] == "ltx2.3-22b-sound" and sounded["sound_for"]["id"] == sid
+    shown = comfy_api.Batch.model_validate(batches_mod.view(batches[0])).items[0].sound_for
+    assert shown is not None and shown.id == sid, "the page's answer holds it (Media failed on it)"
     assert sounded["attachment"]["id"] != sid
     assert sounded["attachment"]["sha256"] != silent["attachment"]["sha256"], \
         "the clip the workflow saved, not the one it was given"
