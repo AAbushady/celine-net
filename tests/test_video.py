@@ -1,6 +1,7 @@
 """The video skill against a fake watch helper: a watch starts and comes back as its first stretch, a stretch reads
-in order with where the next begins, the stills way brings its sheets as images, the helper's words come through,
-Plex links and searches, the probe, and the app's key for the helper."""
+in order with where the next begins, the stills way brings its sheets as images, captions come under their kind, a
+listen reads with what was measured, one of her tracks is sent to the helper by its sha256, the helper's words come
+through, Plex links and searches, the probe, and the app's key for the helper."""
 from __future__ import annotations
 
 import json
@@ -27,9 +28,11 @@ class Helper:
         self.seen: list[str] = []
         self.plex = {"linked": False, "user": None, "servers": []}
         self.stopped_at: float | None = None      # where a watch that stopped early ends, None: it is done
+        self.files: list[dict] = []                # what was sent to PUT /files/<sha256>
 
     def job(self, state="queued"):
-        return {"id": "abc123def456", "source": {"kind": "youtube", "url": "https://www.youtube.com/watch?v=x"},
+        return {"id": "abc123def456", "kind": "listen" if self.mode == "listen" else "watch",
+                "source": {"kind": "youtube", "url": "https://www.youtube.com/watch?v=x"},
                 "title": "A short film (Blender)", "duration": 600, "start": 0, "length": 0, "state": state,
                 "stage": "watching" if state == "watching" else None, "mode": self.mode, "why": None,
                 "done_to": 40 if state == "watching" else 600, "stretch": [0, 600], "error": None}
@@ -41,9 +44,14 @@ class Helper:
         if (method, path) == ("POST", "/jobs"):
             body = json.loads(request.content)
             self.posted.append(body)
-            if "youtu" not in body["source"] and not body["source"].startswith("plex:"):
+            if "youtu" not in body["source"] and not body["source"].startswith(("plex:", "file:")):
                 return httpx.Response(400, json={"error": "source is a YouTube link or a plex:... id."})
             return httpx.Response(201, json=self.job())
+        if method == "PUT" and path.startswith("/files/"):
+            data = request.read()
+            self.files.append({"sha": path.rsplit("/", 1)[1], "ext": request.url.params.get("ext"),
+                               "length": request.headers.get("content-length"), "data": data})
+            return httpx.Response(201, json={"sha256": path.rsplit("/", 1)[1], "bytes": len(data)})
         if (method, path) == ("POST", "/jobs/abc123def456/resume"):
             if self.stopped_at is None:
                 return httpx.Response(400, json={"error": "That watch is done. A new watch with start watches "
@@ -59,8 +67,15 @@ class Helper:
                    "from": at, "to": at + 180, "start": 0, "end": 600, "done_to": 600, "next": at + 180}
             if self.mode == "omni":
                 out["lines"] = [f"[{int(at) // 60}:00] A bird lands on a branch; soft strings play."]
+            elif self.mode == "listen":
+                out.update(end=278, next=None, duration=278, lines=[
+                    "[0:06] (the sound gets louder: -48 to -14 dBFS)",
+                    "[0:26-0:58] section (MOSS-Music): verse. Words it heard: you were born to suffer"],
+                    heard={"ear": "music", "tempo": 92.3, "meter": 4, "voice": 161, "words": False,
+                           "about": [{"from": 0, "to": 278, "by": "MOSS-Music", "text": "Metalcore, heavy."}]},
+                    captions={"kind": "uploader", "lines": ["[0:26] You were born to suffer"]})
             else:
-                out.update(lines=["[0:23] You're a jerk, Thom."], subtitles=True,
+                out.update(lines=[], captions={"kind": "film", "lines": ["[0:23] You're a jerk, Thom."]},
                            sheets=[{"n": 0, "from": 0, "to": 60}, {"n": 1, "from": 60, "to": 120}])
             return httpx.Response(200, json=out)
         if method == "GET" and path.startswith("/jobs/abc123def456/sheets/"):
@@ -103,8 +118,8 @@ async def test_a_watch_starts_and_its_first_stretch_comes_back_in_order(store, c
     v = _video(cfg, h)
     out = await v.watch(_ctx(store, cfg), "https://youtu.be/aqz-KE-bpKQ", start="1:30", minutes=2)
     assert not out.is_error and out.content.startswith("Started watch #abc123def456.")
-    assert h.posted[-1] == {"source": "https://youtu.be/aqz-KE-bpKQ", "start": 90, "length": 120,
-                            "conversation": "c1"}
+    assert h.posted[-1] == {"kind": "watch", "source": "https://youtu.be/aqz-KE-bpKQ", "start": 90,
+                            "length": 120, "conversation": "c1"}
     out = await v.watch(_ctx(store, cfg), "https://youtu.be/aqz-KE-bpKQ", background=True)
     lines = out.content.splitlines()
     assert lines[0] == "#abc123def456 A short film (Blender), 0:00 to 3:00 of 0:00-10:00"
@@ -157,10 +172,10 @@ def test_a_queued_watch_reads_by_its_source_and_a_background_one_names_it(cfg):
     assert said.startswith("Watching plex:x:1 in the background as job 406381a2;")
     said = reg.tools["video__wait"].detached.format_map(
         {"id": "86144e7180b8", "background": True, "job": "dbcbe63e"})
-    assert said.startswith("Waiting for watch 86144e7180b8 in the background as job dbcbe63e;")
+    assert said.startswith("Waiting for #86144e7180b8 in the background as job dbcbe63e;")
 
 
-async def test_the_stills_way_brings_subtitles_and_a_sheet_a_minute_as_images(store, cfg, monkeypatch):
+async def test_the_stills_way_brings_captions_and_a_sheet_a_minute_as_images(store, cfg, monkeypatch):
     saved: list[str] = []
 
     async def sees(_cfg, _ctx):
@@ -177,8 +192,47 @@ async def test_the_stills_way_brings_subtitles_and_a_sheet_a_minute_as_images(st
     v = _video(cfg, Helper(mode="stills"))
     out = await v.read(_ctx(store, cfg), "abc123def456")
     assert out.images == ["att1", "att2"] and saved == ["abc123def456-0000.jpg", "abc123def456-0001.jpg"]
-    assert "Subtitles:\n[0:23] You're a jerk, Thom." in out.content
+    assert "The film's subtitles:\n[0:23] You're a jerk, Thom.\nStills 0:00 to 1:00" in out.content
     assert "Stills 0:00 to 1:00, one every 5 seconds, each with its time:" in out.content
+
+
+async def test_a_listen_reads_with_what_was_measured_and_the_uploaders_captions(store, cfg):
+    h = Helper(mode="listen")
+    v = _video(cfg, h)
+    out = await v.listen(_ctx(store, cfg), "https://youtu.be/ilqeDbu4E8Y", background=True)
+    assert h.posted[-1]["kind"] == "listen"
+    assert out.content.splitlines() == [
+        "#abc123def456 A short film (Blender), 0:00 to 3:00 of 0:00-4:38",
+        "Heard as music, about 92 beats a minute, 4 beats to a bar.",
+        "A voice in 2:41 of it. Its words are the captions below, so they were not written down again.",
+        "What MOSS-Music says of 0:00 to 4:38: Metalcore, heavy.",
+        "What was heard:",
+        "[0:06] (the sound gets louder: -48 to -14 dBFS)",
+        "[0:26-0:58] section (MOSS-Music): verse. Words it heard: you were born to suffer",
+        "The uploader's captions:",
+        "[0:26] You were born to suffer",
+        "That is the end of what was heard."]
+    out = await v.listen(_ctx(store, cfg), "https://youtu.be/x", minutes=25)
+    assert out.is_error and out.content.startswith("A listen hears at most 20 minutes;")
+
+
+async def test_her_track_goes_to_the_helper_by_its_sha256_and_a_stranger_id_is_refused(store, cfg):
+    from celine import attachments as atts
+    await store.write(lambda c: c.execute(
+        "INSERT INTO media_batches(id, kind, state, items, created_at) VALUES('b1', 'music', 'done', '[]', 'x')"))
+    row = await atts.save_generated(cfg, store, b"ID3 a track", "tower-hum.mp3", "audio/mpeg", None,
+                                    in_message=False, batch_id="b1")
+    h = Helper(mode="listen")
+    v = _video(cfg, h)
+    out = await v.listen(_ctx(store, cfg), row["id"][:8].upper())
+    assert not out.is_error and out.content.startswith("Started listen #abc123def456.")
+    assert h.files == [{"sha": row["sha256"], "ext": "mp3", "length": "11", "data": b"ID3 a track"}]
+    assert h.posted[-1]["source"] == f"file:{row['sha256']}" and h.posted[-1]["title"] == "tower-hum.mp3"
+    out = await v.watch(_ctx(store, cfg), row["id"][:8])
+    assert out.is_error and out.content == "tower-hum.mp3 is not a video."
+    out = await v.listen(_ctx(store, cfg), "0123abcd")
+    assert out.is_error and out.content.startswith("There is no track, clip or file 0123abcd:")
+    assert len(h.files) == 1
 
 
 async def test_the_helpers_words_come_through_and_a_bad_time_is_refused(store, cfg):

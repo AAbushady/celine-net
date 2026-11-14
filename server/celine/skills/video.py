@@ -1,17 +1,23 @@
-"""Watching videos through the watch helper on the GPU machine (a small server outside this repo, the "video"
-service): video__watch hands it a YouTube link or a Plex item, it fetches the video and watches it with an
-audio-visual model, one frame and one second of sound at a time, into a timestamped log. While the GPU is in use
-it makes what she watched with before instead: a sheet of stills per minute and the subtitles, which her own model
-looks at. video__read gives either a stretch at a time, so she watches in order. Plex is her own account, linked
-through Plex's sign-in page in her browser (video__link_plex); its token stays with the helper.
+"""Watching and listening through the watch helper on the GPU machine (a small server outside this repo, the
+"video" service). video__watch hands it a YouTube link, a Plex item or one of her clips; it fetches the video and
+watches it with an audio-visual model, one frame and one second of sound at a time, into a timestamped log. While
+the GPU is in use it makes what she watched with before instead: a sheet of stills per minute, which her own model
+looks at. video__listen hands it a track, a video's sound or a film's: it measures the beat and where a voice is,
+writes down the words and has listening models say what is heard. The source's own captions (the uploader's,
+YouTube's automatic ones, a film's subtitles) come with every stretch, named as what they are. video__read gives a
+stretch at a time, so she watches and listens in order. One of her own tracks or clips (or a sound or video file on
+a message) is sent to the helper first, by its sha256. Plex is her own account, linked through Plex's sign-in page
+in her browser (video__link_plex); its token stays with the helper.
 
 The helper's address is a service (settings/services.py); the app's key for it is <data>/keys/video.key, whose
 sha256 (video.hash) the helper checks."""
 from __future__ import annotations
 
+import mimetypes
 import re
 from datetime import datetime, timezone
-from typing import Annotated
+from pathlib import PurePosixPath
+from typing import Annotated, Any
 from urllib.parse import urlsplit
 
 import anyio
@@ -19,6 +25,7 @@ import httpx
 
 from .. import attachments, vision
 from ..clock import zone
+from ..comfyui import life
 from ..core.ids import when
 from ..settings import services as services_mod
 from . import ToolContext, ToolResult, described, guide, tool
@@ -27,13 +34,22 @@ SERVICE = "video"
 POLL = 15.0                 # seconds between two looks at a running watch
 READ_SPAN = 180             # seconds of film one read gives
 WAIT_MARGIN = 120           # a wait in a job returns this long before the job's own limit
+LISTEN_MINUTES = 20         # the longest stretch one listen hears (the helper's LISTEN_MAX)
+UPLOAD_READ = 120.0         # seconds the helper may take to answer a file it was sent
+FILE_MAX = 1 << 30          # the largest file the helper takes (its FILE_MAX)
 DETACHED = ("Watching {source} in the background as job {job}; you get the log's first stretch when it is "
             "done. video__list shows how far it is, by its source until the helper has its title.")
-WAIT_DETACHED = ("Waiting for watch {id} in the background as job {job}; you get the log's first stretch "
-                 "when it is done.")
+LISTEN_DETACHED = ("Listening to {source} in the background as job {job}; you get the first stretch when it is "
+                   "done. video__list shows how far it is.")
+WAIT_DETACHED = ("Waiting for #{id} in the background as job {job}; you get the log's first stretch when it is "
+                 "done.")
 CONTINUE_DETACHED = ("Watch {id} goes on in the background as job {job}; you get the first stretch it adds "
                      "when it is done.")
 CLOCK = re.compile(r"^(?:(\d+):)?(\d{1,3}):(\d{2})$")
+SHORT_ID = re.compile(r"[0-9a-f]{4,32}")
+# what a stretch calls the source's own captions, by their kind (the helper's CAPTIONS)
+CAPTIONS = {"uploader": "The uploader's captions", "automatic": "YouTube's automatic captions",
+            "film": "The film's subtitles"}
 
 
 def address(cfg) -> str:
@@ -73,11 +89,12 @@ class Video:
     # ---- the helper ----------------------------------------------------------------------------------------------
 
     async def _call(self, method: str, path: str, *, json: dict | None = None, params: dict | None = None,
-                    read: float = 30.0) -> dict:
+                    read: float = 30.0, content: Any = None, headers: dict | None = None) -> dict:
         at = address(self.cfg)
         try:
             async with services_mod.client(self.cfg, SERVICE, read, transport=self.transport) as client:
-                r = await client.request(method, at + path, json=json, params=params)
+                r = await client.request(method, at + path, json=json, params=params, content=content,
+                                         headers=headers)
         except httpx.HTTPError as e:
             raise HelperError(f"The watch helper at {urlsplit(at).netloc} does not answer "
                               f"({type(e).__name__}). It runs on the GPU machine; {self.cfg.user} can start it.")
@@ -100,6 +117,81 @@ class Video:
                 async for chunk in r.aiter_bytes():
                     yield chunk
 
+    async def _her_file(self, ctx: ToolContext, ref: str, kinds: tuple[str, ...]) -> dict | str:
+        """One of her tracks or clips by its short id, or a file on her own message or one the user attached
+        to this conversation, whose kind is one of `kinds` (audio, video). -> its attachment row, or the sentence
+        why not."""
+        row = None
+        for made in ("music", "video"):
+            got = await life.find(ctx.store, made, ref)
+            if isinstance(got, dict):
+                row = await attachments.get(ctx.store, got["id"])
+                if row and row.get("life") == "cleared":
+                    return attachments.cleared_line(self.cfg, made, row["id"], row["life_at"], "")
+                break
+            if got.startswith("Several"):
+                return got
+        if row is None:
+            got = await attachments.agent_file(ctx.store, ref, ctx.conversation_id, self.cfg)
+            if isinstance(got, str):
+                return (f"There is no track, clip or file {ref}: a short id is one of your tracks or clips, a "
+                        f"file on your own message, or one {self.cfg.user} attached to this conversation.")
+            row = await attachments.get(ctx.store, got["id"])
+        if row is None or not attachments.blob_path(self.cfg, row["sha256"]).is_file():
+            return f"The file {ref} is no longer on disk."
+        if row["kind"] not in kinds:
+            return f"{row['filename']} is not {' or '.join('a sound' if k == 'audio' else 'a video' for k in kinds)}."
+        if row["bytes"] > FILE_MAX:
+            return (f"{row['filename']} is {attachments.size(row['bytes'])}; the helper takes files up to "
+                    f"{attachments.size(FILE_MAX)}.")
+        return row
+
+    async def _send(self, row: dict) -> str:
+        """Her file to the helper (PUT /files/<sha256>), a MiB at a time. -> the source a job takes,
+        file:<sha256>."""
+        path = attachments.blob_path(self.cfg, row["sha256"])
+        ext = (PurePosixPath(row["filename"]).suffix.lstrip(".").lower()
+               or (mimetypes.guess_extension(row["media_type"]) or ".bin").lstrip("."))[:5]
+
+        async def chunks():
+            async with await anyio.open_file(path, "rb") as f:
+                while chunk := await f.read(1 << 20):
+                    yield chunk
+        await self._call("PUT", f"/files/{row['sha256']}", params={"ext": ext}, content=chunks(),
+                         headers={"Content-Length": str(path.stat().st_size)}, read=UPLOAD_READ)
+        return f"file:{row['sha256']}"
+
+    async def _start(self, ctx: ToolContext, kind: str, source: str, start: str | None,
+                     minutes: float | None, background: bool, kinds: tuple[str, ...]) -> ToolResult:
+        """A watch or a listen (`kind`) of `source`: a link or a plex: id as it is, a short id (`_her_file`, one of
+        `kinds`) sent to the helper first. In the background it comes back as its first stretch."""
+        try:
+            begin = seconds(start) or 0
+        except ValueError:
+            return ToolResult(content='start is a time, like "12:30" or "1:05:00".', is_error=True)
+        if minutes is not None and minutes <= 0:
+            return ToolResult(content="minutes is how long, more than 0.", is_error=True)
+        if kind == "listen" and minutes is not None and minutes > LISTEN_MINUTES:
+            return ToolResult(content=f"A listen hears at most {LISTEN_MINUTES} minutes; listen again with start "
+                                      f"for the rest.", is_error=True)
+        body: dict = {"kind": kind, "source": source.strip(), "start": begin, "length": (minutes or 0) * 60,
+                      "conversation": ctx.conversation_id}
+        try:
+            if SHORT_ID.fullmatch(body["source"].lower()):
+                row = await self._her_file(ctx, body["source"].lower(), kinds)
+                if isinstance(row, str):
+                    return ToolResult(content=row, is_error=True)
+                body.update(source=await self._send(row), title=row["filename"])
+            j = await self._call("POST", "/jobs", json=body)
+        except HelperError as e:
+            return ToolResult(content=str(e), is_error=True)
+        if not background:
+            return ToolResult(content=f"Started {'listen' if kind == 'listen' else 'watch'} #{j['id']}. "
+                                      f"video__wait(id=\"{j['id']}\", background=true) brings it when it is done; "
+                                      f"video__list shows how far it is.",
+                              display={"watch": j["id"]})
+        return await self._until_done(ctx, j["id"], in_job=True)
+
     # ---- words ---------------------------------------------------------------------------------------------------
 
     @staticmethod
@@ -108,6 +200,8 @@ class Video:
         s = j.get("source") or {}
         if s.get("kind") == "plex":
             return f"plex:{s.get('server')}:{s.get('item')}"
+        if s.get("kind") == "file":
+            return s.get("title") or "a file"
         return s.get("url") or "?"
 
     @classmethod
@@ -124,7 +218,7 @@ class Video:
             state = f"{j.get('stage') or state}{done}"
         elif state == "failed":
             state = f"failed: {j.get('error')}"
-        way = {"omni": "seen and heard", "stills": "as stills and subtitles"}.get(j.get("mode") or "", "")
+        way = {"omni": "seen and heard", "stills": "as stills", "listen": "listened to"}.get(j.get("mode") or "", "")
         why = f" ({j['why']})" if j.get("mode") == "stills" and j.get("why") else ""
         return f"#{j['id']} {title}{span}: {state}" + (f", {way}{why}" if way and j["state"] == "done" else "")
 
@@ -145,43 +239,48 @@ class Video:
     async def watch(
         self,
         ctx: ToolContext,
-        source: Annotated[str, "A YouTube link (youtube.com/watch?v=..., youtu.be/..., /shorts/...) or a plex:... "
-                               "id from video__search_plex."],
+        source: Annotated[str, "A YouTube link (youtube.com/watch?v=..., youtu.be/..., /shorts/...), a plex:... "
+                               "id from video__search_plex, or the short id of one of your clips (like f5ef648c) "
+                               "or of a video file on a message."],
         start: Annotated[str | None, 'Where to begin, like "12:30" or "1:05:00". The beginning when left out.'] = None,
         minutes: Annotated[float | None, "How many minutes to watch. To the end when left out."] = None,
         background: Annotated[bool, "true: wait for it in the background; the log's first stretch comes to you "
                                     "when it is done. false: start it and come back with video__wait."] = False,
     ) -> ToolResult:
         """Watch a video: the helper fetches it and watches it with sight and sound, or, while the GPU is in use,
-        makes stills and subtitles for you to look at. Then video__read gives it a stretch at a time."""
-        try:
-            begin = seconds(start) or 0
-        except ValueError:
-            return ToolResult(content='start is a time in the video, like "12:30" or "1:05:00".', is_error=True)
-        if minutes is not None and minutes <= 0:
-            return ToolResult(content="minutes is how long to watch, more than 0.", is_error=True)
-        try:
-            j = await self._call("POST", "/jobs", json={
-                "source": source.strip(), "start": begin, "length": (minutes or 0) * 60,
-                "conversation": ctx.conversation_id})
-        except HelperError as e:
-            return ToolResult(content=str(e), is_error=True)
-        if not background:
-            return ToolResult(content=f"Started watch #{j['id']}. video__wait(id=\"{j['id']}\", background=true) "
-                                      f"brings it when it is done; video__list shows how far it is.",
-                              display={"watch": j["id"]})
-        return await self._until_done(ctx, j["id"], in_job=True)
+        makes stills for you to look at. Its captions come along. Then video__read gives it a stretch at a
+        time."""
+        return await self._start(ctx, "watch", source, start, minutes, background, ("video",))
+
+    @tool(mode="detach", read_only=False, destructive=False, open_world=True, background="background",
+          timeout=600, detached=LISTEN_DETACHED)
+    async def listen(
+        self,
+        ctx: ToolContext,
+        source: Annotated[str, "The short id of one of your tracks or clips (like f5ef648c) or of a sound or video "
+                               "file on a message, a YouTube link, or a plex:... id from video__search_plex."],
+        start: Annotated[str | None, 'Where to begin, like "1:30". The beginning when left out.'] = None,
+        minutes: Annotated[float | None, f"How many minutes to listen to, at most {LISTEN_MINUTES}. To the end "
+                                         f"when left out (at most {LISTEN_MINUTES} minutes)."] = None,
+        background: Annotated[bool, "true: wait for it in the background; the first stretch comes to you when it "
+                                    "is done. false: start it and come back with video__wait."] = False,
+    ) -> ToolResult:
+        """Listen to a track, a video's sound or a film's: the helper measures the beat and where a voice is,
+        writes down the words, and has a listening model say what the music is and what is heard, in order. Its
+        captions come along. It needs the GPU and waits for it. Then video__read gives it a stretch at a
+        time."""
+        return await self._start(ctx, "listen", source, start, minutes, background, ("audio", "video"))
 
     @tool(mode="detach", read_only=True, open_world=True, background="background", timeout=600,
           detached=WAIT_DETACHED)
     async def wait(
         self,
         ctx: ToolContext,
-        id: Annotated[str, "The watch's id, from video__watch or video__list."],  # noqa: A002
+        id: Annotated[str, "The id of a watch or a listen, from video__watch, video__listen or video__list."],  # noqa: A002
         background: Annotated[bool, "true: wait in the background and get its first stretch when it is done."]
         = False,
     ) -> ToolResult:
-        """Wait for a watch to finish, then get its first stretch (as video__read)."""
+        """Wait for a watch or a listen to finish, then get its first stretch (as video__read)."""
         return await self._until_done(ctx, id.strip().lstrip("#"), in_job=background)
 
     @tool(mode="detach", read_only=False, destructive=False, open_world=True, background="background",
@@ -244,12 +343,13 @@ class Video:
     async def read(
         self,
         ctx: ToolContext,
-        id: Annotated[str, "The watch's id."],  # noqa: A002
-        at: Annotated[str | None, 'Where to read from, like "12:30". The start of what was watched when left '
-                                  "out."] = None,
+        id: Annotated[str, "The id of a watch or a listen."],  # noqa: A002
+        at: Annotated[str | None, 'Where to read from, like "12:30". The start of what was watched or heard when '
+                                  "left out."] = None,
     ) -> ToolResult:
-        """A stretch of about three minutes of a watch, in order: what the watching model saw and heard, or the
-        subtitles with a sheet of stills per minute. The last line says where the next stretch begins."""
+        """A stretch of about three minutes of a watch or a listen, in order: what the watching model saw and
+        heard, a sheet of stills per minute, or what was heard; with the source's own captions. The last line
+        says where the next stretch begins."""
         try:
             where = seconds(at)
         except ValueError:
@@ -265,16 +365,24 @@ class Video:
         except HelperError as e:
             return ToolResult(content=str(e), is_error=True)
         head = f"#{jid} {s['title']}, {clock(s['from'])} to {clock(s['to'])} of {clock(s['start'])}-{clock(s['end'])}"
+        if s.get("duration") and s["end"] < s["duration"] - 5:
+            head += f" (it runs {clock(s['duration'])})"
         if s["state"] in ("fetching", "watching") and s.get("done_to") is not None and s["to"] > s["done_to"]:
-            head += f" (still watching: done up to {clock(s['done_to'])})"
+            head += f" (still going: done up to {clock(s['done_to'])})"
         lines = [head]
         images: list[str] = []
+        cap = s.get("captions")
+        said = [f"{CAPTIONS.get(cap['kind'], 'Captions')}:", *(cap["lines"] or ["(none in this stretch)"])] \
+            if cap else []
         if s["mode"] == "omni":
             lines.append("What the watching model saw and heard:")
             lines += s["lines"] or ["(nothing in this stretch)"]
+            lines += said
+        elif s["mode"] == "listen":
+            lines += self._heard(s, bool(cap))
+            lines += said
         elif s["mode"] == "stills":
-            lines.append("Subtitles:" if s.get("subtitles") else "No subtitles: the stills alone.")
-            lines += s["lines"] if s.get("subtitles") else []
+            lines += said or ["No captions: the stills alone."]
             sees = await attachments.turn_sees_images(self.cfg, ctx) if ctx.store is not None else False
             for sheet in s.get("sheets") or []:
                 name = f"{jid}-{sheet['n']:04d}.jpg"
@@ -301,13 +409,37 @@ class Video:
         if s.get("next") is not None:
             lines.append(f"next: video__read(id=\"{jid}\", at=\"{clock(s['next'])}\")")
         else:
-            lines.append("That is the end of what was watched.")
+            lines.append("That is the end of what was heard." if s["mode"] == "listen"
+                         else "That is the end of what was watched.")
         return ToolResult(content="\n".join(lines), display={"watch": jid, "from": s["from"], "to": s["to"]},
                           images=images or None)
 
+    @staticmethod
+    def _heard(s: dict, captions: bool) -> list[str]:
+        """A listen's stretch: on the first, what was measured (the beat, how much has a voice); what the
+        listening model says of the music that starts in it; then what was heard, in order."""
+        h = s.get("heard") or {}
+        out = []
+        if s["from"] <= s["start"]:
+            if h.get("ear") == "music":
+                beat = f", about {h['tempo']:.0f} beats a minute" if h.get("tempo") else ""
+                bar = f", {h['meter']} beats to a bar" if h.get("meter") else ""
+                out.append(f"Heard as music{beat}{bar}.")
+            else:
+                out.append("Heard as sounds: no steady beat.")
+            voice = f"A voice in {clock(h['voice'])} of it." if h.get("voice") else "No voice in it."
+            if h.get("voice") and not h.get("words") and captions:
+                voice += " Its words are the captions below, so they were not written down again."
+            out.append(voice)
+        for a in h.get("about") or []:
+            out.append(f"What {a['by']} says of {clock(a['from'])} to {clock(a['to'])}: {a['text']}")
+        out.append("What was heard:")
+        out += s["lines"] or ["(nothing in this stretch)"]
+        return out
+
     @tool()
     async def list(self, ctx: ToolContext) -> ToolResult:  # noqa: A003 - the tool's name
-        """Your recent watches, newest first, each with when you asked for it and where it stands."""
+        """Your recent watches and listens, newest first, each with when you asked for it and where it stands."""
         try:
             got = await self._call("GET", "/jobs")
         except HelperError as e:

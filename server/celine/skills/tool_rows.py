@@ -751,12 +751,14 @@ BUGREPORT: dict[str, Sentence] = {
 VIDEO: dict[str, Sentence] = {
     "watch": lambda a, d, r: "Watched a video" +
         (f": {_str(a.get('source'))}" if _str(a.get("source")) else ""),
-    "wait": lambda a, d, r: "Waited for a watch",
+    "listen": lambda a, d, r: "Listened" +
+        (f" to {_str(a.get('source'))}" if _str(a.get("source")) else ""),
+    "wait": lambda a, d, r: "Waited for a watch or a listen",
     "continue_watch": lambda a, d, r: "Continued a watch",
-    "read": lambda a, d, r: "Read what it watched" +
+    "read": lambda a, d, r: "Read what it watched or heard" +
         (f" from {_str(a.get('at'))}" if _str(a.get("at")) else ""),
-    "list": lambda a, d, r: "Listed its watches",
-    "stop": lambda a, d, r: "Stopped a watch",
+    "list": lambda a, d, r: "Listed its watches and listens",
+    "stop": lambda a, d, r: "Stopped a watch or a listen",
     "link_plex": lambda a, d, r: "Linked its Plex account",
     "search_plex": lambda a, d, r: "Searched Plex" +
         (f" for {_str(a.get('query'))}" if _str(a.get("query")) else ""),
