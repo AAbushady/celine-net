@@ -25,6 +25,12 @@ def test_the_sub_agent_answers_are_models_the_page_gets():
     assert "additionalProperties" in found["SubAgent"], "a field the model does not name is refused"
 
 
+def test_the_login_routes_are_written_too():
+    """Built with the login off they were missing, and the Security page kept a type of
+    its own."""
+    assert {"CredentialList", "CredentialRow"} <= set(page_types.schemas())
+
+
 def test_a_schema_is_written_as_typescript():
     got = page_types.typescript({
         "Row": {"type": "object", "description": "One row.", "required": ["id", "state", "tags"],

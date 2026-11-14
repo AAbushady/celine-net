@@ -6,9 +6,13 @@ allowed only while the server binds to loopback; the Docker image turns it on.
 With login on, a request without a valid session sees nothing: every path answers
 the same 404 as an unknown route, the WebSocket too (gate.py). The exceptions are the
 login screen at `/` and the endpoints it calls (routes.py, open_router). The relying party
-(RP ID and origin) is the app's stored address (settings/address.py). Until one is stored
-it is the origin of the login page's own request (its Origin naming its Host,
-api/origin.py), and the first login or setup stores that one (routes.py `_signed_in`).
+(RP ID and origin) is the browser's own origin when its request names it (its Origin naming
+its Host, settings/address.py `same_origin`), which the origin check (api/origin.py) lets
+through only for an address the app answers at: loopback, the app's stored address and
+[server] allowed_hosts. So a passkey made at localhost keeps working there after an address
+is stored. Else (a proxy that rewrites Host) it is the stored address, and with none stored
+this machine; the first login or setup stores the browser's (routes.py `_signed_in`). Each
+passkey keeps the RP ID it was made for (store.py).
 Passkeys need https or localhost (the browser's rule); a password or a PIN works on any
 address.
 
@@ -141,9 +145,9 @@ class Auth:
         return cls(store=AuthStore(data_dir / "auth.db"), stored=stored, **kw)
 
     def origin_for(self, headers) -> str:
-        """The app's address; while none is stored, the request's own origin (its Origin
-        naming its Host), else this machine."""
-        return (self.stored() or address.same_origin(headers)
+        """The browser's own origin when the request names it (its Origin naming its
+        Host), else the app's stored address, else this machine (module docstring)."""
+        return (address.same_origin(headers) or self.stored()
                 or f"http://localhost:{self.port}")
 
     def party(self, origin: str) -> Party:

@@ -25,14 +25,17 @@ NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def schemas() -> dict[str, dict]:
-    """The models every route names, by name: the app's OpenAPI components, built on a
-    scratch data folder (nothing is started, read or written but that empty folder)."""
+    """The models every route names, by name: the app's OpenAPI components, built with the
+    login on (so its routes are there too) on a scratch data folder (nothing is started,
+    read or written but that empty folder)."""
     from . import __main__ as main, boot
     with tempfile.TemporaryDirectory() as tmp:
         before = os.environ.get("CELINE_DATA_DIR")
         os.environ["CELINE_DATA_DIR"] = tmp
         try:
-            app = main.build_app(boot.load(), dev=False)
+            cfg = boot.load()
+            cfg.server["login"] = "on"
+            app = main.build_app(cfg, dev=False)
             found = app.openapi().get("components", {}).get("schemas", {})
         finally:
             if before is None:

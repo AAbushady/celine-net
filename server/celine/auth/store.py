@@ -111,26 +111,28 @@ class AuthStore:
         return [k for k in ("passkey", "password", "pin") if k in kinds]
 
     def passkeys(self) -> list[dict]:
-        rows = self._q("SELECT id, created_at, last_used_at FROM passkeys "
+        """Each with `rp_id`, where it works (None: from before, not used since)."""
+        rows = self._q("SELECT id, created_at, last_used_at, rp_id FROM passkeys "
                        "ORDER BY created_at, rowid")
-        return [{"id": cid, "created_at": c, "last_used_at": u} for cid, c, u in rows]
+        return [{"id": cid, "created_at": c, "last_used_at": u, "rp_id": r}
+                for cid, c, u, r in rows]
 
     def credential(self, cid: bytes) -> tuple[bytes, int] | None:
         rows = self._q("SELECT public_key, sign_count FROM passkeys WHERE id = ?", (cid,))
         return (rows[0][0], rows[0][1]) if rows else None
 
-    def add_passkey(self, cid: bytes, public_key: bytes, sign_count: int) -> None:
+    def add_passkey(self, cid: bytes, public_key: bytes, sign_count: int, rp_id: str) -> None:
         now = self.clock()
         with self._lock:
             self._db.execute(
                 "INSERT INTO passkeys (id, public_key, sign_count, created_at, "
-                "last_used_at) VALUES (?, ?, ?, ?, ?)",
-                (cid, public_key, sign_count, now, now))
+                "last_used_at, rp_id) VALUES (?, ?, ?, ?, ?, ?)",
+                (cid, public_key, sign_count, now, now, rp_id))
             self._db.execute("DELETE FROM setup_code")
 
-    def used_passkey(self, cid: bytes, sign_count: int) -> None:
-        self._x("UPDATE passkeys SET sign_count = ?, last_used_at = ? WHERE id = ?",
-                (sign_count, self.clock(), cid))
+    def used_passkey(self, cid: bytes, sign_count: int, rp_id: str) -> None:
+        self._x("UPDATE passkeys SET sign_count = ?, last_used_at = ?, rp_id = ? WHERE id = ?",
+                (sign_count, self.clock(), rp_id, cid))
 
     def remove_passkey(self, cid: bytes) -> bool:
         """Its sessions end with it (ON DELETE CASCADE)."""

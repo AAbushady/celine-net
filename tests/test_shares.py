@@ -139,7 +139,7 @@ def clock(monkeypatch):
 def owner(app) -> TestClient:
     """The owner's browser, logged in."""
     c = TestClient(app, base_url="http://localhost:8766")
-    app.state.auth.store.add_passkey(b"key", b"pub", 0)
+    app.state.auth.store.add_passkey(b"key", b"pub", 0, "localhost")
     c.cookies.set(COOKIE, app.state.auth.store.new_session(b"key"))
     return c
 

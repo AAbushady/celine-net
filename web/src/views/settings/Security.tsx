@@ -1,8 +1,9 @@
 /* Security: the login's credentials in one list (a passkey, a password, a PIN: its kind as
-   the icon, its label, when it was created, "This session" on the one this browser logged in
-   with), Add passkey (the browser's prompt), Add password and Add PIN (a dialog each, the
-   server's sentence on the field), Remove on each row (never the last one; when the server
-   says logged_out the page goes to /). Then the sessions (each browser logged in, "This
+   the icon, its label, when it was created and a passkey's host, "This session" on the one
+   this browser logged in with), Add passkey (the browser's prompt), Add password and Add PIN
+   (a dialog each, the server's sentence on the field), Remove on each row the server says is
+   removable (never the last one that works; when the server says logged_out the page goes
+   to /). Then the sessions (each browser logged in, "This
    session" on this one, Log out on each, Log out everywhere for every other), new recovery
    codes and the named tokens host scripts send on the intercom with (logging out is the
    door at the bottom of the rail). Adding a way to log in, new codes and a new token may
@@ -38,7 +39,6 @@ export function Security() {
   const [codes, setCodes] = useState<string[] | null>(null)
   const [copied, setCopied] = useState(false)
   const list = creds.data?.credentials ?? []
-  const last = list.length === 1
 
   return (
     <Page title="Security">
@@ -55,9 +55,9 @@ export function Security() {
           <div className="rows">
             {list.map(c => (
               <ListRow key={c.id} icon={KIND[c.kind].icon} title={c.label || KIND[c.kind].word}
-                       subtitle={`Created ${when(c.created_at)}`}
+                       subtitle={`Created ${when(c.created_at)}${c.works_at ? `, works at ${c.works_at}` : ''}`}
                        meta={c.this_session ? 'This session' : undefined} trailingAlways
-                       trailing={<IconButton icon={Trash2} label="Remove" disabled={last} title={last ? 'You cannot remove your last way to log in.' : 'Remove'}
+                       trailing={<IconButton icon={Trash2} label="Remove" disabled={!c.removable} title={c.removable ? 'Remove' : 'You cannot remove your last way to log in.'}
                                              onClick={() => setDeleting(c)} />} />
             ))}
           </div>

@@ -4,17 +4,10 @@
    for bytes). The login screen is a page of its own, served by the
    server (server/celine/auth/page.py), with the same conversions inline. */
 import { del, json, post, request } from './api'
+import type { CredentialList, CredentialRow } from './api.gen'
 
-export type CredentialKind = 'passkey' | 'password' | 'pin'
-export type Credential = {
-  id: string
-  kind: CredentialKind
-  label: string
-  created_at: number | string
-  last_used_at: number | string | null
-  /** the one this browser logged in with */
-  this_session: boolean
-}
+export type Credential = CredentialRow
+export type CredentialKind = CredentialRow['kind']
 
 type Json = Record<string, unknown>
 
@@ -77,6 +70,7 @@ function passkeyError(e: unknown): Error {
   if (e instanceof DOMException) {
     if (e.name === 'NotAllowedError') return new Error('You closed the passkey prompt, or it timed out.')
     if (e.name === 'InvalidStateError') return new Error('This passkey is already registered here.')
+    if (e.name === 'SecurityError') return new Error('The browser refused a passkey at this address.')
   }
   return e instanceof Error ? e : new Error(String(e))
 }
@@ -91,7 +85,7 @@ export interface LoginSession { id: number; label: string; created_at: number; l
 export const PROOF_NEEDED = 'proof_needed'
 
 export const securityApi = {
-  credentials: () => request<{ credentials: Credential[] }>('/auth/credentials'),
+  credentials: () => request<CredentialList>('/auth/credentials'),
   /** a password (at least 10 characters) or a PIN (8 digits); the server's sentence says what is wrong */
   addCredential: (kind: 'password' | 'pin', secret: string, label?: string) =>
     request<{ ok: boolean; id: string }>('/auth/credentials', json('POST', { kind, secret, ...(label ? { label } : {}) })),

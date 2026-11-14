@@ -472,8 +472,9 @@ setup code there. Log in with a password or a PIN: passkeys need https or localh
 
 **Recovery.** On the login screen, "Use a recovery code" takes a code and adds a new
 way to log in, any of the three. Each code works once. Settings, Security lists the
-passkeys, passwords and PINs, adds and removes them (never the last one; removing one
-ends its sessions), and makes new recovery codes (the old ones stop working). Adding a
+passkeys, passwords and PINs, each passkey with the host it works at, adds and removes
+them (never the last one that works at an address the app answers at; removing one ends
+its sessions), and makes new recovery codes (the old ones stop working). Adding a
 way to log in, new recovery codes and a new API token ask you to confirm it is you
 (a passkey, your password or your PIN) unless you did in the last 5 minutes; logging in
 counts. It also lists the browsers logged in, each with when it logged in and when it
@@ -484,7 +485,9 @@ was last seen, and logs out one or every other.
 ## Behind a reverse proxy (https)
 
 Open the app at `https://celine.example.net` and enter the setup code there: the app keeps
-that address (Settings, General, Network), and passkeys belong to it.
+that address (Settings, General, Network). A passkey belongs to the address its browser was
+on when you added it: one added there works there, one added at http://localhost:8766
+works at localhost.
 
 ```sh
 # .env
@@ -500,8 +503,8 @@ The app reads the client's address from `X-Forwarded-For` only when the request 
 from `CELINE_TRUSTED_PROXIES` (used for the login limit and the log). A request from
 any other address that carries `X-Forwarded-For`, `Forwarded` or `X-Real-IP` is logged
 once as a warning: every client behind that proxy counts as its one address. Behind two
-proxies in a row, list both. Changing the public address later means registering the
-passkeys again. `[server] allowed_hosts` in `config/celine.toml` adds more host names
+proxies in a row, list both. Changing the public address later means adding the passkeys
+made at the old one again. `[server] allowed_hosts` in `config/celine.toml` adds more host names
 for the `Host` check.
 
 The server accepts a request only if its `Origin` and `Host` headers name it. Chat files open in the browser only as pictures, video or audio, in a sandbox; the rest is a download. Your agent's artifact pages (`/api/artifacts/<id>/versions/<n>`) run their scripts in a sandbox with an origin of their own.

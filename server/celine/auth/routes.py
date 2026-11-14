@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from typing import Any, Literal
 
 import anyio
 import webauthn
@@ -37,6 +37,8 @@ from webauthn.helpers.structs import (
 )
 
 from ..api.deps import proven
+from ..api.origin import host_ok
+from ..core.dto import Answer
 from ..core.route_params import services_of
 from ..errors import CelineError
 from . import CEREMONY_SECONDS, Auth, Ceremony, credentials as cred
@@ -246,7 +248,8 @@ def _new_passkey(request: Request, kind: str, c: Ceremony, credential: dict):
             error=type(e).__name__)
     if c.code is not None and not _claim(auth, c.code):
         return _reject(request, kind, "code already used", _err(*_SETUP_FAILED))
-    auth.store.add_passkey(v.credential_id, v.credential_public_key, v.sign_count)
+    auth.store.add_passkey(v.credential_id, v.credential_public_key, v.sign_count,
+                           auth.party(c.origin).rp_id)
     log.info("passkey added", extra={"event": "auth.passkey_added",
                                      "with": c.code[0] if c.code else "session",
                                      "client": _client(request)})
@@ -286,7 +289,7 @@ def _assertion(request: Request, kind: str, body: Finish, session: bytes | None 
     except Exception as e:                          # py_webauthn raises several kinds
         return _reject(request, "passkey", "verification failed", fail, login=True,
                        error=type(e).__name__)
-    auth.store.used_passkey(raw_id, v.new_sign_count)
+    auth.store.used_passkey(raw_id, v.new_sign_count, auth.party(c.origin).rp_id)
     return raw_id
 
 
@@ -375,22 +378,47 @@ async def status(request: Request) -> dict:
     return {"login": True, "methods": store.methods(), "setup": not store.has_credentials()}
 
 
+class CredentialRow(Answer):
+    """One way to log in. `works_at`: a passkey's host, where it works (None for one from
+    before, until its next use). `removable`: another way to log in is left that works
+    at an address the app answers at."""
+    id: str                     # a passkey's id (base64url), a credential's row id
+    kind: Literal["passkey", "password", "pin"]
+    label: str
+    created_at: int
+    last_used_at: int | None
+    this_session: bool          # the one this session logged in with
+    works_at: str | None
+    removable: bool
+
+
+class CredentialList(Answer):
+    credentials: list[CredentialRow]
+
+
 @router.get("/credentials")
-async def credentials(request: Request) -> dict:
-    """Every way to log in, passkeys included (id base64url); this_session marks the
-    one this session came from."""
-    return {"credentials": _all_credentials(_auth(request), _session(request))}
+async def credentials(request: Request) -> CredentialList:
+    """Every way to log in, passkeys first."""
+    return CredentialList(credentials=_all_credentials(_auth(request), _session(request)))
 
 
-def _all_credentials(auth: Auth, s) -> list[dict]:
+def _works(row: dict) -> bool:
+    """A password or a PIN works everywhere; a passkey where the app answers (a passkey
+    from before is taken to work)."""
+    return row["kind"] != "passkey" or row["works_at"] is None or host_ok(row["works_at"])
+
+
+def _all_credentials(auth: Auth, s) -> list[CredentialRow]:
     out = [{"id": bytes_to_base64url(p["id"]), "kind": "passkey", "label": "",
             "created_at": p["created_at"], "last_used_at": p["last_used_at"],
-            "this_session": s is not None and p["id"] == s.passkey_id}
+            "this_session": s is not None and p["id"] == s.passkey_id,
+            "works_at": p["rp_id"]}
            for p in auth.store.passkeys()]
     out += [{**c, "id": str(c["id"]), "last_used_at": None,
-             "this_session": s is not None and c["id"] == s.credential_id}
+             "this_session": s is not None and c["id"] == s.credential_id, "works_at": None}
             for c in auth.store.credentials()]
-    return out
+    return [CredentialRow(**r, removable=any(_works(o) for o in out if o is not r))
+            for r in out]
 
 
 @router.post("/credentials", dependencies=[Depends(proven)])
@@ -407,23 +435,26 @@ async def add_credential(request: Request, body: CredentialIn):
 
 @router.delete("/credentials/{cid}")
 async def remove_credential(request: Request, cid: str):
-    """A passkey id (base64url) or a credential row id. Never the last one."""
+    """A passkey id (base64url) or a credential row id. Never the last one that works at
+    an address the app answers at."""
     auth = _auth(request)
     s = _session(request)
     mine = _all_credentials(auth, s)
-    this = next((c for c in mine if c["id"] == cid), None)
+    this = next((c for c in mine if c.id == cid), None)
     if this is None:
         return _err("not_found", "That login method is not set up.", 404)
-    if len(mine) == 1:
-        return _err("last_credential", "This is your last way to log in.", 409)
-    if this["kind"] == "passkey":
+    if not this.removable:
+        return _err("last_credential", "This is your last way to log in." if len(mine) == 1
+                    else "This is your last way to log in at an address the app answers "
+                         "at.", 409)
+    if this.kind == "passkey":
         auth.store.remove_passkey(base64url_to_bytes(cid))
     else:
         auth.store.remove_credential(int(cid))
     await _forget_devices(request)         # its sessions ended with it
     log.info("credential removed", extra={"event": "auth.credential_removed",
-                                          "kind": this["kind"], "left": len(mine) - 1})
-    return {"ok": True, "logged_out": this["this_session"]}
+                                          "kind": this.kind, "left": len(mine) - 1})
+    return {"ok": True, "logged_out": this.this_session}
 
 
 @router.post("/passkeys/start", dependencies=[Depends(proven)])

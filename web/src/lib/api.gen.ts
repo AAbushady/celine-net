@@ -147,6 +147,10 @@ export type CivitaiKeyIn = {
   key: string
 }
 
+export type CodeIn = {
+  code: string
+}
+
 export type ContinueBody = {
   wait?: boolean
 }
@@ -163,6 +167,28 @@ export type ConversationPatch = {
   title?: string | null
   pinned?: boolean | null
   notes_off?: string[] | null
+}
+
+export type CredentialIn = {
+  kind: string
+  secret: string
+  label?: string
+}
+
+export type CredentialList = {
+  credentials: CredentialRow[]
+}
+
+/** One way to log in. `works_at`: a passkey's host, where it works (None for one from before, until its next use). `removable`: another way to log in is left that works at an address the app answers at. */
+export type CredentialRow = {
+  id: string
+  kind: "passkey" | "password" | "pin"
+  label: string
+  created_at: number
+  last_used_at: number | null
+  this_session: boolean
+  works_at: string | null
+  removable: boolean
 }
 
 export type Crumb = {
@@ -204,6 +230,11 @@ export type FilterOption = {
   value: string
   label: string
   count: number
+}
+
+export type Finish = {
+  ceremony: string
+  credential: Record<string, unknown>
 }
 
 export type Folder = {
@@ -356,6 +387,11 @@ export type Life = {
 export type LinkBody = {
   refs: string[]
   name: string
+}
+
+export type LoginIn = {
+  method: string
+  secret: string
 }
 
 /** What an item made: its attachment. */
@@ -517,6 +553,13 @@ export type PickedFile = {
 
 export type ReadIn = {
   ids: number[]
+}
+
+export type RegisterCredentialIn = {
+  kind: string
+  secret: string
+  label?: string
+  code: string
 }
 
 export type ReindexBody = {

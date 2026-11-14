@@ -752,6 +752,52 @@ def test_an_allowed_host_with_a_session_from_before_still_logs_in_to_learn_it():
     assert site.post("/api/auth/logout").status_code == 200
 
 
+def test_a_passkey_works_where_it_was_made_after_the_address_changes(app):
+    """A passkey made at localhost failed there once the address was stored, since the
+    relying party was the stored address and the browser refused it: the party is the
+    browser's own origin, and each passkey keeps the host it works at."""
+    c = client(app)
+    pk = SoftPasskey()
+    setup_first_passkey(app, c, pk)
+    v = c.get("/api/address").json()
+    assert c.put("/api/address", json={"origin": SITE},
+                 headers={"if-match": v["version"]}).status_code == 200
+    assert c.post("/api/auth/login/start").json()["options"]["rpId"] == "localhost"
+    assert login(client(app), pk).status_code == 200
+    assert client(app, base=SITE).post(
+        "/api/auth/login/start").json()["options"]["rpId"] == "celine.example.net"
+    [row] = c.get("/api/auth/credentials").json()["credentials"]
+    assert row["works_at"] == "localhost" and row["removable"] is False
+
+
+def test_a_login_that_works_nowhere_the_app_answers_is_not_one_left(app):
+    """With a password and a passkey made at an address the app no longer answers at, the
+    password is the last way in that works and stays."""
+    c = client(app)
+    setup_password(app, c)
+    v = c.get("/api/address").json()
+    c.put("/api/address", json={"origin": SITE}, headers={"if-match": v["version"]})
+    site = client(app, base=SITE)
+    assert site.post("/api/auth/login", json={"method": "password",
+                                              "secret": PASSWORD}).status_code == 200
+    start = site.post("/api/auth/passkeys/start").json()
+    pk = SoftPasskey("celine.example.net", SITE)
+    assert site.post("/api/auth/passkeys/finish", json={
+        "ceremony": start["ceremony"], "credential": pk.create(start["options"])}
+    ).status_code == 200
+    rows = {r["kind"]: r for r in c.get("/api/auth/credentials").json()["credentials"]}
+    assert rows["passkey"]["works_at"] == "celine.example.net"
+    assert rows["password"]["removable"] and rows["passkey"]["removable"]
+    v = c.get("/api/address").json()
+    c.put("/api/address", json={"origin": "https://new.example.net"},
+          headers={"if-match": v["version"]})
+    rows = {r["kind"]: r for r in c.get("/api/auth/credentials").json()["credentials"]}
+    assert not rows["password"]["removable"] and rows["passkey"]["removable"]
+    r = c.delete(f"/api/auth/credentials/{rows['password']['id']}")
+    assert r.status_code == 409 and r.json()["error"]["message"] == (
+        "This is your last way to log in at an address the app answers at.")
+
+
 def test_a_foreign_origin_or_a_failed_login_never_stores_an_address(app):
     setup_password(app, client(app))
     forget_address(app)
