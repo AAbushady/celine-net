@@ -37,7 +37,8 @@ itself. The lines after it each say where they come from:
   do not read it as lyrics.
 - `section (MOSS-Music)` is the listening model's part of the song (verse, chorus) with the
   words it heard; `What MOSS-Music says` is its account of the music: style, mood, instruments,
-  voice. Its words are often wrong where the singing is harsh.
+  voice. Its words are often wrong where the singing is harsh, and the tempo and key it gives
+  are its own guess; the tempo on the first line is counted from the beats.
 - `heard (MOSS-Audio)` is a sound that is not music, in order.
 - `(a voice)` and `(the sound gets louder ...)` are the helper's own measurements.
 
