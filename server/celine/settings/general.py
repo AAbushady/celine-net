@@ -62,6 +62,13 @@ FIELDS: list[dict[str, Any]] = [
      "help": "Off: banned words, phrases and patterns it adds or removes apply at once, and "
              "only removing more than 10 in one change asks you. Persona and talk always ask.",
      "default": True},
+    # skills/mind_shadow.py: on, the turns the appraisal after a chat turn leaves out are
+    # appraised too, kept and never applied
+    {"key": "shadow_appraisal", "label": "Shadow appraisal", "type": "bool",
+     "help": "Its own time, routine runs, missions and the chat turns where it names its own "
+             "feeling are appraised too. What the appraiser reads is kept for it to compare "
+             "and moves neither its mood nor its needs.",
+     "default": False},
     # settings/agent_models.py picked_by_user: on, a role list makes no cloud model the user's pick
     {"key": "ask_listed_cloud", "label": "Ask before cloud models from your lists",
      "type": "bool",

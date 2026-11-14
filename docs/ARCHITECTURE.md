@@ -140,7 +140,8 @@ the search index every, 15 minutes) on Search index; `ask_before_setup` (Ask bef
 setting up services, on), `ask_listed_cloud` (Ask before cloud models from your lists,
 off) and `ask_banned_words` (Ask before banned word changes, on; off, `me__edit` changes the
 banned words, phrases and patterns at once, and removing more than 10 in one change still
-asks) in the agent page's Behaviour section; `guard` (Guard mode, Enforce) on Guard; and
+asks) and `shadow_appraisal` (Shadow appraisal, off) in the agent page's Behaviour
+section; `guard` (Guard mode, Enforce) on Guard; and
 `code_websearch` (Web search for the coding agent, off), which no page shows (general.toml
 or `settings__propose`).
 
@@ -758,7 +759,11 @@ through the same Router (below) but do not queue here.
 ### The work queue
 
 Background model jobs that nobody waits on are rows of `work` (`work.py`): `title`,
-`appraisal` (its mood after a chat turn, `skills/mind.py`), `documents.describe` and
+`appraisal` (its mood after a chat turn, `skills/mind.py`), `shadow_appraisal` (with
+general `shadow_appraisal` on, the turns that one leaves out, its own time, routine and
+trigger runs, missions and the chat turns where it named its feeling: read on the same
+role and kept in `shadow_feelings`, never applied, shown to it by `mind__list_appraisals`,
+`skills/mind_shadow.py`), `documents.describe` and
 `bastet.answer` (Bastet's reply on the Intercom, `guard/talk.py`, on the guard role).
 Image captions and the topic search index keep their own schedulers.
 

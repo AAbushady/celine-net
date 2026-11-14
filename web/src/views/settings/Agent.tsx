@@ -76,7 +76,7 @@ export function AgentPage() {
         : auto.error && <Section><InlineError compact message={auto.error} onRetry={auto.flush} /></Section>}
       <Who agent={agent} auto={auto} />
       <Persona agent={agent} />
-      <Section title="Behaviour"><GeneralFields only={['ask_before_setup', 'ask_listed_cloud', 'ask_banned_words', 'code_websearch']} /></Section>
+      <Section title="Behaviour"><GeneralFields only={['ask_before_setup', 'ask_listed_cloud', 'ask_banned_words', 'shadow_appraisal', 'code_websearch']} /></Section>
       <Banned agent={agent} auto={auto} />
     </Page>
   )

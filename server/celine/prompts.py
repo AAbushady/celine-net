@@ -72,6 +72,8 @@ APP: dict[str, tuple[str, str]] = {
                             "line is its last."),
     "skills.mind_appraisal": ("Mood", "Reads one exchange and names how it made {{name}} "
                                       "feel."),
+    "skills.mind_shadow": ("Mood in shadow", "Reads one stretch of {{name}}'s own work or "
+                                             "time and names how it made {{name}} feel."),
     "skills.mind_places": ("Places in the app", "The places of the app, as you see them."),
     "skills.writer": ("Writing", "Drafts a post or a message in {{name}}'s own voice."),
     "sub_agents.fragment": ("Sub-agent instructions", "Frames the instructions a sub-agent "

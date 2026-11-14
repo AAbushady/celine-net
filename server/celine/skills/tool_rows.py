@@ -723,6 +723,7 @@ MIND: dict[str, Sentence] = {
         (f" to {_str(a.get('emotion'))}" if _str(a.get("emotion")) else ""),
     "set_status": lambda a, d, r: "Set the status" +
         (f" to {_str(a.get('text'))}" if _str(a.get("text")) else ""),
+    "list_appraisals": lambda a, d, r: "Read the shadow appraisals",
 }
 
 def _model_name(a: Args, d: dict) -> str:

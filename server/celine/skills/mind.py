@@ -348,12 +348,17 @@ async def get_mood(store) -> dict | None:
 
 def start(app) -> None:
     """At startup: the appraisal after a chat turn (app.dispatcher.on_end), a work item
-    (work.py, `appraisal`)."""
+    (work.py, `appraisal`), and the shadow appraisal of the turns it leaves out
+    (skills/mind_shadow.py, `shadow_appraisal`)."""
+    from . import mind_shadow
     if "mind" in app.registry.skills:
         app.dispatcher.on_end(lambda cid, turn_id: _ended(app, cid, turn_id))
+        app.dispatcher.on_end(lambda cid, turn_id: mind_shadow.ended(app, cid, turn_id))
         app.dispatcher.on_end(lambda cid, _turn: clear_after(app.store, cid))
         app.dispatcher.on_end(lambda cid, turn_id: needs.after_turn(app, cid, turn_id))
         app.dispatcher.work.handle("appraisal", ("small",), lambda p: _appraise_item(app, p))
+        app.dispatcher.work.handle("shadow_appraisal", ("small",), lambda p: mind_shadow.appraise(
+            app, p["conversation_id"], p["turn_id"]))
 
 
 def _ago(seconds: float) -> str:
@@ -583,6 +588,21 @@ class Mind:
                           display={"emotion": emotion, "strength": strength})
 
 
+    @tool()
+    async def list_appraisals(self, ctx: ToolContext,
+                              days: Annotated[float, "How far back, in days."] = 1,
+                              ) -> ToolResult:
+        """What the appraiser read into your own turns in shadow (your own time, routine
+        runs, missions, and the chat turns where you named your feeling yourself), beside
+        what you named. Kept for you to compare; none of it moves your mood or your
+        needs. Returns: the count per kind, then one line per turn, newest first."""
+        from . import mind_shadow
+        if days <= 0:
+            return ToolResult(content="days is a number over 0.", is_error=True)
+        return ToolResult(content=await ctx.store.read(
+            lambda c: mind_shadow.view(c, self.cfg, days)))
+
+
 # ---- the appraisal after a chat turn ----------------------------------------------------------
 
 
@@ -645,28 +665,36 @@ def parse_appraisal(text: str | None) -> dict | None:
             "why": str(got.get("why") or ""), "needs": listed}
 
 
-async def appraise(app, cid: str, tid: str, backend=None) -> dict | None:
-    """One call on the `small` role (background, thinking off, 30 s) after a finished
-    chat turn of its own, as a work item (work.py, `appraisal`); the mood row it gives.
-    A model error is raised: no host up defers the item, another is a try.
-    `backend`: a fixed one (tests)."""
+def small_model(app, cid: str, backend=None):
+    """The `small` role bound for one appraisal in conversation `cid` (background,
+    thinking off); None without a small model. `backend`: a fixed one (tests)."""
     from ..backends.queue import Priority
     from ..settings.thinking import OFF
-    from ..turns.compact import complete
-    store, cfg = app.store, app.cfg
-    f = await store.read(lambda c: _turn_facts(c, cid, tid))
-    if f is None:
-        return None
     llm = app.llm
     d = getattr(app, "dispatcher", None)
     if backend is None and d is not None and d.backend_factory is not None:
         backend = d.backend_factory()       # a test: never a real model
     if llm is None or (backend is None and not llm.router.chain("small", cid)):
+        return None
+    return llm.bind(backend, role="small", priority=Priority.BACKGROUND,
+                    conversation_id=cid, lane=f"feeling-{cid}", thinking=OFF, voice=False)
+
+
+async def appraise(app, cid: str, tid: str, backend=None) -> dict | None:
+    """One call on the `small` role (background, thinking off, 30 s) after a finished
+    chat turn of its own, as a work item (work.py, `appraisal`); the mood row it gives.
+    A model error is raised: no host up defers the item, another is a try.
+    `backend`: a fixed one (tests)."""
+    from ..turns.compact import complete
+    store, cfg = app.store, app.cfg
+    f = await store.read(lambda c: _turn_facts(c, cid, tid))
+    if f is None:
+        return None
+    small = small_model(app, cid, backend)
+    if small is None:
         log.info("feeling skipped", extra={"event": "mind.appraisal_skipped",
                                            "conversation": cid, "why": "no small model"})
         return None
-    small = llm.bind(backend, role="small", priority=Priority.BACKGROUND,
-                     conversation_id=cid, lane=f"feeling-{cid}", thinking=OFF, voice=False)
     system, user = appraisal_prompt(cfg, f["said"], f["reply"])
     text = await complete(small, [{"role": "system", "content": system},
                                   {"role": "user", "content": user}], APPRAISE_SECONDS,
