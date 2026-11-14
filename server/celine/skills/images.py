@@ -355,6 +355,14 @@ async def model_request(app, ctx: ToolContext, preset: str, kind: str, file: str
     return ToolResult(content=text, is_error=bad, display=display)
 
 
+def _its_files(p) -> str:
+    """Where a preset's own models and LoRAs are listed, for one that takes them (bug 69: the
+    list of presets did not say which ones have files to ask about)."""
+    calls = [f'list_presets(kind="{kind}", preset="{p.id}")'
+             for kind, has in (("lora", p.loras), ("model", p.models)) if has]
+    return f" Its files: {' and '.join(calls)}." if calls else ""
+
+
 class Generator:
     """What the image and the music generator share: the presets of their `role` and
     whether one is set."""
@@ -501,7 +509,7 @@ class ImageGenerator(Generator):
         if kind == "preset":
             return ToolResult(content="\n".join(
                 f"- `{p.id}` {p.label} ({p.family}), "
-                f"{'edits' if p.task == 'edit' else 'new images'}: {p.good_at}"
+                f"{'edits' if p.task == 'edit' else 'new images'}: {p.good_at}{_its_files(p)}"
                 for p in found) or "No preset is set.", display={"count": len(found)})
         with_catalog = [p for p in found if p.models or p.loras]
         want = preset or ""

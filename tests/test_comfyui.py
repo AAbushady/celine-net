@@ -720,6 +720,12 @@ async def test_an_unknown_preset_errors_and_lists_the_presets(app):
     for name in ("nope", "KREA2-TURBO"):
         out = await gen.list_presets(ctx, kind="lora", preset=name)
         assert out.is_error and "krea2-turbo" in out.content, name
+    listed = (await gen.list_presets(ctx)).content.splitlines()
+    krea = next(line for line in listed if line.startswith("- `krea2-turbo`"))
+    assert krea.endswith('Its files: list_presets(kind="lora", preset="krea2-turbo") and '
+                         'list_presets(kind="model", preset="krea2-turbo").'), \
+        "the list says which presets have files to ask about (bug 69)"
+    assert not any("Its files" in line for line in listed if line.startswith("- `anima-turbo`"))
 
 
 async def test_the_agents_item_is_taken_as_given_and_what_does_not_fit_fails(app):
