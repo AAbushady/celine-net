@@ -10,6 +10,8 @@ id and one slot per track. The tracks are made one after the other, and each app
 this conversation when it is done, where {{username}} hears it; its line says how long
 it took. It is also saved in the music folder of the data folder. What you make is cleared
 after the number of days set in Settings unless `music_generator__keep` keeps it.
+`music_generator__list_tracks` lists your tracks from every conversation, each with its
+short id and title; `video__listen` takes either to hear one.
 
 The GPU is shared. While it is in use, a batch waits in line until it is free, as long
 as that takes, and its slots say "Waiting for the GPU" and why. A batch reports back

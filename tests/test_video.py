@@ -235,6 +235,40 @@ async def test_her_track_goes_to_the_helper_by_its_sha256_and_a_stranger_id_is_r
     assert len(h.files) == 1
 
 
+async def test_her_tracks_list_with_their_ids_and_a_listen_finds_one_by_its_title(store, cfg):
+    from celine import attachments as atts
+    from celine.skills.music import MusicGenerator
+    await store.write(lambda c: c.execute(
+        "INSERT INTO media_batches(id, kind, state, items, created_at) VALUES('b1', 'music', 'done', '[]', 'x')"))
+    one = await atts.save_generated(cfg, store, b"ID3 one", "tower_hum-58178951067900.mp3", "audio/mpeg", None,
+                                    in_message=False, batch_id="b1")
+    two = await atts.save_generated(cfg, store, b"ID3 two", "tower_hum_industrial-112874722676781.mp3",
+                                    "audio/mpeg", None, in_message=False, batch_id="b1")
+    items = [{"index": 0, "title": "Tower Hum", "style": "dream pop, soft synths", "instrumental": False,
+              "seconds": 103.3, "preset": "yue2", "attachment": {"id": one["id"]}},
+             {"index": 1, "title": "Tower Hum (industrial)", "style": "90s industrial metal", "instrumental": False,
+              "seconds": 48.6, "preset": "yue2", "attachment": {"id": two["id"]}}]
+    await store.write(lambda c: c.execute("UPDATE media_batches SET items = ? WHERE id = 'b1'", (json.dumps(items),)))
+    out = await MusicGenerator(cfg).list_tracks(_ctx(store, cfg))
+    blocks = out.content.split("\n\n")
+    assert blocks[0].startswith(two["id"][:8]) and blocks[1].startswith(one["id"][:8]), "newest first"
+    assert '"Tower Hum (industrial)", song, 49 s, yue2' in blocks[0] and "\n  style: 90s industrial metal" in blocks[0]
+    assert (await MusicGenerator(cfg).list_tracks(_ctx(store, cfg), scope="kept")).content == "You have kept no tracks."
+    h = Helper(mode="listen")
+    v = _video(cfg, h)
+    for name, want in (("tower hum", one), ("TOWER HUM (industrial)", two)):
+        out = await v.listen(_ctx(store, cfg), name)
+        assert not out.is_error and h.posted[-1]["source"] == f"file:{want['sha256']}", "an exact title wins"
+    out = await v.listen(_ctx(store, cfg), "tower")
+    assert out.is_error and out.content.startswith("Several tracks are called 'tower': ")
+    assert one["id"][:8] in out.content and two["id"][:8] in out.content
+    out = await v.listen(_ctx(store, cfg), "Lighthouse")
+    assert out.is_error and out.content.startswith("There is no track called 'Lighthouse':")
+    sent = len(h.files)
+    out = await v.watch(_ctx(store, cfg), "youtu.be/x")
+    assert not out.is_error and len(h.files) == sent, "a link without https:// is no title"
+
+
 async def test_the_helpers_words_come_through_and_a_bad_time_is_refused(store, cfg):
     v = _video(cfg, Helper())
     out = await v.watch(_ctx(store, cfg), "https://evil.example/x")

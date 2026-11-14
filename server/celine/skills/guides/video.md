@@ -26,8 +26,9 @@ How:
    under the same id. What a stopped watch had stays readable with `video__read` the whole time.
 
 Listening: `video__listen(source, background=true)` hears a track, a video's sound or a film's,
-at most 20 minutes at a time. The source is the short id of one of your tracks or clips, a
-sound file on a message, a YouTube link or a `plex:` id. It needs the GPU, so it waits while
+at most 20 minutes at a time. The source is the short id of one of your tracks or clips,
+a track's title (`music_generator__list_tracks` lists them), a sound file on a message, a
+YouTube link or a `plex:` id. It needs the GPU, so it waits while
 the GPU is in use (20 minutes at most). Then `video__read` gives it a stretch at a time, as a
 watch. The first stretch starts with what was measured: whether it is music with a steady
 beat, its tempo and beats to a bar, and how much of it has a voice, counted from the sound

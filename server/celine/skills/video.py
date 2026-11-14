@@ -118,11 +118,18 @@ class Video:
                     yield chunk
 
     async def _her_file(self, ctx: ToolContext, ref: str, kinds: tuple[str, ...]) -> dict | str:
-        """One of her tracks or clips by its short id, or a file on her own message or one the user attached
-        to this conversation, whose kind is one of `kinds` (audio, video). -> its attachment row, or the sentence
-        why not."""
+        """One of her tracks or clips by its short id, a file on her own message or one the user attached to
+        this conversation, or one of her tracks by its title (life.by_title), whose kind is one of `kinds`
+        (audio, video). -> its attachment row, or the sentence why not."""
         row = None
-        for made in ("music", "video"):
+        if not SHORT_ID.fullmatch(ref.lower()):
+            got = await life.by_title(ctx.store, ref)
+            if isinstance(got, str):
+                return got
+            row = await attachments.get(ctx.store, got["id"])
+            ref = got["id"][:8]
+        ref = ref.lower()
+        for made in ("music", "video") if row is None else ():
             got = await life.find(ctx.store, made, ref)
             if isinstance(got, dict):
                 row = await attachments.get(ctx.store, got["id"])
@@ -177,8 +184,10 @@ class Video:
         body: dict = {"kind": kind, "source": source.strip(), "start": begin, "length": (minutes or 0) * 60,
                       "conversation": ctx.conversation_id}
         try:
-            if SHORT_ID.fullmatch(body["source"].lower()):
-                row = await self._her_file(ctx, body["source"].lower(), kinds)
+            src = body["source"]
+            # a short id, or a track's title (no "/", which every link has); a link or a plex: id goes as it is
+            if SHORT_ID.fullmatch(src.lower()) or ("/" not in src and not src.lower().startswith("plex:")):
+                row = await self._her_file(ctx, src, kinds)
                 if isinstance(row, str):
                     return ToolResult(content=row, is_error=True)
                 body.update(source=await self._send(row), title=row["filename"])
@@ -258,7 +267,8 @@ class Video:
         self,
         ctx: ToolContext,
         source: Annotated[str, "The short id of one of your tracks or clips (like f5ef648c) or of a sound or video "
-                               "file on a message, a YouTube link, or a plex:... id from video__search_plex."],
+                               "file on a message, the title of one of your tracks (music_generator__list_tracks "
+                               "lists them), a YouTube link, or a plex:... id from video__search_plex."],
         start: Annotated[str | None, 'Where to begin, like "1:30". The beginning when left out.'] = None,
         minutes: Annotated[float | None, f"How many minutes to listen to, at most {LISTEN_MINUTES}. To the end "
                                          f"when left out (at most {LISTEN_MINUTES} minutes)."] = None,

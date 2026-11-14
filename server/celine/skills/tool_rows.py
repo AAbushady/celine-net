@@ -438,7 +438,12 @@ IMAGE_GENERATOR: dict[str, Sentence] = {
     **PRESETS,
 }
 
-MUSIC_GENERATOR: dict[str, Sentence] = {"keep": _keep("track"), **PRESETS}
+MUSIC_GENERATOR: dict[str, Sentence] = {
+    "keep": _keep("track"),
+    "list_tracks": lambda a, d, r: {"kept": "Listed the kept tracks",
+                                    "here": "Listed the tracks in this chat"}.get(
+        _str(a.get("scope")), "Listed its tracks"),
+    **PRESETS}
 
 
 def _look_clips(a: Args, d: dict, r: str) -> str:

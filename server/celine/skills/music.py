@@ -8,9 +8,11 @@ GPU_TRY seconds.
 """
 from __future__ import annotations
 
-from typing import Annotated, Required, TypedDict
+from typing import Annotated, Literal, Required, TypedDict
 
+from ..clock import zone
 from ..comfyui import batches as batches_mod, life, presets as presets_mod
+from ..core.ids import when
 from . import ToolContext, ToolResult, guide, tool, described
 from .images import (LABEL, NODE, NODE_SEARCH, PRESET_PART, PROPOSE_WHY, REPLACES, REPORTS,
                      VALUES, WAIT, WORKFLOW, Generator, batch_generate, batch_keep,
@@ -18,6 +20,7 @@ from .images import (LABEL, NODE, NODE_SEARCH, PRESET_PART, PROPOSE_WHY, REPLACE
                      settled_head)
 
 SHORT = batches_mod.SHORT
+TRACKS_LISTED = 40          # the newest tracks list_tracks shows
 
 
 class Item(TypedDict, total=False):
@@ -139,6 +142,45 @@ class MusicGenerator(Generator):
         """Keep tracks you made, so they are never cleared; what is not kept is cleared
         after the number of days set in Settings. Returns: one line per track."""
         return await batch_keep(self.cfg, ctx, "music", tracks, let_go)
+
+    @tool()
+    async def list_tracks(
+        self,
+        ctx: ToolContext,
+        scope: Annotated[Literal["all", "here", "kept"], "all: every track you made, in any "
+                         "conversation. here: the ones made in this conversation. kept: "
+                         "the ones you kept."] = "all",
+    ) -> ToolResult:
+        """Your tracks, newest first, each with its short id, its title, when it was made,
+        how long it is, its style, and whether it is kept or when it is cleared. The short id
+        is what music_generator__keep and video__listen take; video__listen also takes the
+        title. Returns: one block per track."""
+        rows = await life.tracks(ctx.store, ctx.conversation_id if scope == "here" else None,
+                                 kept=scope == "kept")
+        if not rows:
+            return ToolResult(content={"here": "No tracks were made in this conversation.",
+                                       "kept": "You have kept no tracks."}.get(
+                scope, "You have made no tracks."))
+        tz = zone(self.cfg)
+        blocks = []
+        for r in rows[:TRACKS_LISTED]:
+            made = r["made"]
+            head = [r["id"][:SHORT], when(r["created_at"], tz), f'"{life.title(r)}"',
+                    "instrumental" if made.get("instrumental", True) else "song"]
+            if made.get("seconds"):
+                head.append(f"{made['seconds']:.0f} s")
+            if made.get("preset"):
+                head.append(made["preset"])
+            said = life.words(self.cfg, {"state": r["life"], "at": r["life_at"] or r["created_at"]}
+                              if r["life"] else None)
+            lines = ["  ".join(head[:2]) + "  " + ", ".join(head[2:]) + (f". {said}" if said else "")]
+            if made.get("style"):
+                lines.append(f"  style: {made['style']}")
+            blocks.append("\n".join(lines))
+        text = "\n\n".join(blocks)
+        if len(rows) > TRACKS_LISTED:
+            text += f"\n\n{len(rows) - TRACKS_LISTED} older tracks are not listed."
+        return ToolResult(content=text, display={"count": len(rows)})
 
     # ---- presets of its own (comfyui/proposals.py) ---------------------------------------
 

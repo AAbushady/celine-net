@@ -343,6 +343,61 @@ async def find(store, kind: str, ref: str) -> dict | str:
     return rows[0]
 
 
+async def tracks(store, conversation_id: str | None = None, kept: bool = False) -> list[dict]:
+    """The tracks music batches made, newest first: those of one conversation, or with none
+    every one (`kept`: only those kept). Each {id, filename, created_at, life, life_at,
+    conversation_id, made: its batch item (title, style, preset, seed, seconds, ...)}."""
+    where, args = "mb.kind = 'music' AND a.kind = 'audio'", []
+    if conversation_id:
+        where, args = where + " AND mb.conversation_id = ?", [conversation_id]
+    if kept:
+        where, args = where + " AND a.life = ?", [*args, MadeLife.KEPT.value]
+
+    def fn(c: sqlite3.Connection) -> list[dict]:
+        out = []
+        for r in c.execute(
+                "SELECT a.id, a.filename, a.created_at, a.life, a.life_at, mb.conversation_id, "
+                "(SELECT je.value FROM json_each(mb.items) je "
+                " WHERE je.value ->> '$.attachment.id' = a.id) AS made "
+                "FROM attachments a JOIN media_batches mb ON mb.id = a.batch_id "
+                f"WHERE {where} ORDER BY a.created_at DESC", args):
+            d = dict(r)
+            d["made"] = json.loads(d["made"]) if d["made"] else {}
+            out.append(d)
+        return out
+
+    return await store.read(fn)
+
+
+def title(track: dict) -> str:
+    """A track's title: its batch item's, else its file name without the seed and the
+    extension ("tower_hum-58178951067900.mp3" is "tower_hum")."""
+    return (track["made"].get("title") or "").strip() or \
+        re.sub(r"(-\d+)?\.[0-9A-Za-z]+$", "", track["filename"])
+
+
+def _plain(s: str) -> str:
+    return " ".join(re.sub(r"[^0-9a-z]+", " ", s.lower()).split())
+
+
+async def by_title(store, name: str) -> dict | str:
+    """One of its tracks that is not cleared, by its title in any case and punctuation:
+    the one titled exactly `name`, else the only one whose title holds it. -> {id}, or
+    the sentence why not; for several, each with its short id."""
+    want = _plain(name)
+    rows = [r for r in await tracks(store) if r["life"] != MadeLife.CLEARED] if want else []
+    found = [r for r in rows if _plain(title(r)) == want] or \
+        [r for r in rows if want in _plain(title(r))]
+    if len(found) == 1:
+        return {"id": found[0]["id"]}
+    if not found:
+        return (f"There is no track called {name!r}: music_generator__list_tracks lists your "
+                f"tracks with their short ids.")
+    listed = ", ".join(f"{r['id'][:SHORT]} ({title(r)}, made {r['created_at'][:10]})"
+                       for r in found[:8])
+    return f"Several tracks are called {name!r}: {listed}. Use the short id of the one you mean."
+
+
 def _frames(c: sqlite3.Connection, batch_id: str, aid: str) -> list[str]:
     """The ids of the stills a clip's item holds (batches._clip), the clip `aid`."""
     r = c.execute("SELECT items FROM media_batches WHERE id = ?", (batch_id,)).fetchone()
