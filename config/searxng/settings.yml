@@ -45,6 +45,11 @@ outgoing:
   pool_maxsize: 20
   enable_http2: true
 
+# Engines limit one address after many searches ("too many requests", a CAPTCHA) and SearXNG
+# then rests them, so a busy day can leave every engine resting at once (bug 67). More engines
+# share the searches: bing, duckduckgo web (DuckDuckGo's other endpoint) and mwmbl (a small
+# independent index, weighted low) are off by default and on here. Qwant, Google, Mojeek and
+# Startpage refuse this address or need a proof-of-work CAPTCHA (2026-11-13).
 engines:
   - name: brave
     weight: 1.5
@@ -52,8 +57,16 @@ engines:
   - name: duckduckgo
     weight: 1.2
 
+  - name: duckduckgo web
+    disabled: false
+
+  - name: bing
+    disabled: false
+    weight: 1.2
+
   - name: wikipedia
     weight: 1.2
 
-  - name: qwant
-    weight: 0.8
+  - name: mwmbl
+    disabled: false
+    weight: 0.5
