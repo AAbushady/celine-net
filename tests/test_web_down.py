@@ -48,11 +48,14 @@ async def test_a_dead_search_fails_with_searxng_named_and_no_way_around():
 
 
 async def test_no_results_with_dead_engines_is_search_down():
-    empty = {"results": [], "unresponsive_engines": [["google", "timeout"], ["bing", "timeout"]]}
+    empty = {"results": [], "unresponsive_engines": [["brave", "too many requests"], ["duckduckgo", "CAPTCHA"],
+                                                     ["bing", ""]]}
     w = Web(CFG, transport=httpx.MockTransport(lambda req: httpx.Response(200, json=empty)))
     r = await w.search(_ctx(), "muon vs adamw")
     assert r.is_error
-    assert r.content == "SearXNG at searx.test reached none of its engines (google, bing)."
+    assert r.content == ("SearXNG at searx.test answered with no results, and these engines refused: "
+                         "brave (too many requests), duckduckgo (CAPTCHA), bing."), \
+        "it says SearXNG answered, and each engine's reason (bug 67)"
     assert w.search_down == r.content
     w = Web(CFG, transport=httpx.MockTransport(
         lambda req: httpx.Response(200, json={"results": []})))

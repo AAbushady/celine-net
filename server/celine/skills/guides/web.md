@@ -44,6 +44,14 @@ To hand {{username}} a file you found on the web (a picture, a PDF, a zip), use
 web__read_page(url="...", save=true): the file itself is attached to this conversation
 and {{username}} sees it under your call. It is not read as text.
 
+A failed search says why. "does not answer" or "returned" with an error code is SearXNG
+itself (down, or failing).
+"answered with no results, and these engines refused" names each engine with its reason:
+"too many requests" and "CAPTCHA" mean that engine is limiting this address after many
+searches, and SearXNG rests it for a few minutes (an hour after a CAPTCHA), so searching
+again at once fails the same way; "timeout" is a slow engine, and a search a minute later
+often works.
+
 web__read_page fetches any URL itself and does not need web__search: it works while
 search is down. Your browser searches with its own engine. When search is down or flaky,
 search somewhere else: open Google or DuckDuckGo in your browser, or read

@@ -613,12 +613,15 @@ class Web:
                 lines.append(f"infobox {box.get('infobox') or ''}: "
                              f"{one_line(box['content'], 300)}")
         if not rows:
-            dead = [e[0] if isinstance(e, list) else str(e)
-                    for e in data.get("unresponsive_engines") or []]
-            if dead:
+            # each engine that failed, with SearXNG's own reason ("too many requests", "CAPTCHA",
+            # "timeout"): an engine limiting this address, or one that is slow
+            refused = [f"{e[0]} ({e[1]})" if isinstance(e, list) and len(e) > 1 and e[1]
+                       else str(e[0] if isinstance(e, list) and e else e)
+                       for e in data.get("unresponsive_engines") or []]
+            if refused:
                 host = urlsplit(self.endpoint).netloc or self.endpoint
-                self._note(f"SearXNG at {host} reached none of its engines "
-                           f"({', '.join(dead[:6])}).")
+                self._note(f"SearXNG at {host} answered with no results, and these engines refused: "
+                           f"{', '.join(refused[:6])}.")
                 return ToolResult(content=self._down(self.search_down), is_error=True)
             lines.append("no results. Try other words, fewer words, or no time_range.")
             return ToolResult(content="\n".join(lines), display={"query": q, "results": []})
