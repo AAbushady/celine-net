@@ -6,10 +6,11 @@ agent's own turns (turns/dispatcher.py binds them with `fields`), the names its 
 lists (PROBES as it came; the server refuses a name it does not have). With Feeling steering
 on too (`affect_steer`), the request also carries `"steer": [{name, scale}]`, the pushes of
 its mood and needs then (skills/mind.py `pushes`, which its [your mind] block names on that
-turn). The reply's top-level `affect` ({probe: {name: {mean, last}}, tokens, layers, poles})
-comes back in Done.raw, and `keep` stores the readings of the probes asked with what was
-steered, one row per reply message (affect_readings). Nothing reads them back into the agent:
-no probe is validated as a feeling, they are raw values."""
+turn). The reply's top-level `affect` ({probe: {name: {mean, last, text}}, tokens,
+text_tokens, layers, poles}) comes back in Done.raw, and `keep` stores the readings of the
+probes asked, each with every summary its server sent, with what was steered, one row per
+reply message (affect_readings). Nothing reads them back into the agent: they are raw
+values."""
 from __future__ import annotations
 
 import json
@@ -46,23 +47,32 @@ def _number(v: Any) -> float | None:
     return float(v)
 
 
+def _count(v: Any) -> int | None:
+    return v if isinstance(v, int) and not isinstance(v, bool) else None
+
+
+def _summaries(r: Any) -> dict[str, float | None] | None:
+    """One probe's readings as its server sent them: every summary (mean, last, text, ...)
+    that is a number or null, a value that is no finite number null. None when not one of
+    them is a number."""
+    if not isinstance(r, dict):
+        return None
+    got = {str(k): _number(v) for k, v in r.items()
+           if v is None or (isinstance(v, (int, float)) and not isinstance(v, bool))}
+    return got if any(v is not None for v in got.values()) else None
+
+
 def readings(raw: dict | None, asked: list[str] | tuple[str, ...] = PROBES
-             ) -> tuple[dict[str, Any], int] | None:
-    """The readings of a reply's raw answer for the probes `asked`, and the tokens they
-    cover, None when it has none. A probe the server could not compute is null; one not
-    asked is not kept."""
+             ) -> tuple[dict[str, Any], int, int | None] | None:
+    """The readings of a reply's raw answer for the probes `asked`, the tokens they cover,
+    and the tokens of its visible text (None when the server does not say); None when it
+    has none. A probe the server could not compute is null; one not asked is not kept."""
     a = (raw or {}).get("affect")
     if not isinstance(a, dict) or not isinstance(a.get("probe"), dict):
         return None
     probe = a["probe"]
-    out: dict[str, Any] = {}
-    for name in asked:
-        r = probe.get(name)
-        mean = _number(r.get("mean")) if isinstance(r, dict) else None
-        last = _number(r.get("last")) if isinstance(r, dict) else None
-        out[name] = None if mean is None and last is None else {"mean": mean, "last": last}
-    tokens = a.get("tokens")
-    return out, tokens if isinstance(tokens, int) and not isinstance(tokens, bool) else 0
+    out = {name: _summaries(probe.get(name)) for name in asked}
+    return out, _count(a.get("tokens")) or 0, _count(a.get("text_tokens"))
 
 
 async def keep(store, cid: str, turn_id: str | None, mid: str, raw: dict | None,
@@ -72,10 +82,11 @@ async def keep(store, cid: str, turn_id: str | None, mid: str, raw: dict | None,
     got = readings(raw, (sent or {}).get("probe") or PROBES)
     if got is None:
         return
-    values, tokens = got
+    values, tokens, text_tokens = got
     model = str((raw or {}).get("model") or "")
     pushes = (sent or {}).get("steer") or []
     await store.write(lambda c: c.execute(
         "INSERT OR REPLACE INTO affect_readings(message_id, conversation_id, turn_id, at, "
-        "model, tokens, readings, steer) VALUES(?,?,?,?,?,?,?,?)",
-        (mid, cid, turn_id, now(), model, tokens, json.dumps(values), json.dumps(pushes))))
+        "model, tokens, text_tokens, readings, steer) VALUES(?,?,?,?,?,?,?,?,?)",
+        (mid, cid, turn_id, now(), model, tokens, text_tokens, json.dumps(values),
+         json.dumps(pushes))))

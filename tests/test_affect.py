@@ -132,18 +132,31 @@ def test_a_probe_the_server_could_not_compute_is_null():
                                 "arousal": {"mean": True, "last": "x"},
                                 "longing": {"mean": 0.9, "last": 0.9}},
                       "tokens": 37}}
-    values, tokens = affect.readings(raw)
+    values, tokens, text_tokens = affect.readings(raw)
     assert values["valence"] == {"mean": 0.4, "last": -0.1} and tokens == 37
+    assert text_tokens is None, "a server that does not say"
     assert values["tired"] is values["lonely"] is values["arousal"] is None
     assert values["dominance"] is None, "a probe it did not send"
     assert "longing" not in affect.PROBES and "longing" not in values, "never asked, never kept"
     assert affect.readings({"model": "big"}) is None and affect.readings(None) is None
 
 
+def test_a_probe_keeps_every_summary_its_server_sent():
+    raw = {"affect": {"probe": {"arousal": {"mean": 0.4, "last": 0.1, "text": 0.3,
+                                            "layer": "9", "flag": True},
+                                "valence": {"mean": 0.2, "last": 0.0, "text": None}},
+                      "tokens": 120, "text_tokens": 14}}
+    values, tokens, text_tokens = affect.readings(raw, ["arousal", "valence"])
+    assert values["arousal"] == {"mean": 0.4, "last": 0.1, "text": 0.3}, "numbers only"
+    assert values["valence"] == {"mean": 0.2, "last": 0.0, "text": None}, "no visible text"
+    assert (tokens, text_tokens) == (120, 14)
+
+
 async def test_a_reply_keeps_its_readings_and_a_purge_takes_them(store):
     cfg = boot.load()
-    raw = {"model": "big", "affect": {"probe": {"valence": {"mean": 0.5, "last": 0.2}},
-                                      "tokens": 2}}
+    raw = {"model": "big", "affect": {"probe": {"valence": {"mean": 0.5, "last": 0.2,
+                                                            "text": 0.4}},
+                                      "tokens": 2, "text_tokens": 1}}
     b = Script([[TextDelta("hi"), Done(reason="stop", raw=raw)],
                 [TextDelta("again"), Done(reason="stop", raw={"model": "big"})]])
     b.affect_sent = {"probe": list(affect.PROBES), "steer": PUSH}   # what the request carried
@@ -156,8 +169,9 @@ async def test_a_reply_keeps_its_readings_and_a_purge_takes_them(store):
     def rows(c):
         return [dict(r) for r in c.execute("SELECT * FROM affect_readings")]
     [row] = await store.read(rows)
-    assert (row["conversation_id"], row["model"], row["tokens"]) == (cid, "big", 2)
-    assert json.loads(row["readings"])["valence"] == {"mean": 0.5, "last": 0.2}
+    assert (row["conversation_id"], row["model"], row["tokens"], row["text_tokens"]) == \
+        (cid, "big", 2, 1)
+    assert json.loads(row["readings"])["valence"] == {"mean": 0.5, "last": 0.2, "text": 0.4}
     assert json.loads(row["steer"]) == PUSH, "the pushes it was read under"
     await conversations.delete(store, cid)
     assert await conversations.purge(store, cfg, cid) == [cid]
