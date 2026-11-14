@@ -1,6 +1,6 @@
 """The agent's terminals: real ones, in its shellbox (shellbox/shellboxd.py).
 
-Ten tools. shell__run runs a command in a terminal's shell and waits for its end (the
+Eleven tools. shell__run runs a command in a terminal's shell and waits for its end (the
 shellbox's run function writes its exit status, duration and log), at most WAIT_MAX
 seconds; asked into the background, the wait becomes a job whose result comes back as a
 message. shell__wait waits the same way for the run already going in a terminal. A
@@ -9,6 +9,8 @@ shell__type
 types into a program like at a keyboard and shows the screen. shell__stop presses
 Ctrl-C. shell__read pages a run's log, shows the screen, or lists the terminals.
 shell__look shows its images of its home. shell__send attaches files of its home to the conversation (box_files.py streams it).
+shell__get_file copies its own files (an image, track or clip it made, a file on a message)
+into its home.
 shell__share shows the user a server of its own or files of its home through the app
 (shares.py); shell__unshare ends one, shell__list_shares lists them.
 
@@ -717,6 +719,50 @@ class Shell:
                          f"short id {row['id'][:attachments.SHORT]}.")
         return ToolResult(content="\n".join(lines), is_error=not sent,
                           display={"paths": paths, "attachments": sent})
+
+    @tool(read_only=False, destructive=False)
+    async def get_file(
+        self,
+        ctx: ToolContext,
+        file: Annotated[str | list[str], "A short id like f5ef648c (an image, track or clip "
+                                         "you made, a file on your own message, or one "
+                                         "{{username}} attached here) or a track's title; or "
+                                         "a list of up to 5."],
+    ) -> ToolResult:
+        """Copy your own files from the app into your shellbox, to work on them there (look
+        at a track's spectrogram with ffmpeg, cut a clip): each lands at
+        ~/uploads/<id>/<name>, and the same bytes land on the same file. Returns: where each
+        landed."""
+        from .. import attachments, box_files
+        from ..comfyui import life
+        refs = [str(f).strip() for f in (file if isinstance(file, list) else [file]) if str(f or "").strip()]
+        if not refs:
+            return ToolResult(content="file is a short id like f5ef648c, or a track's title.",
+                              is_error=True)
+        if len(refs) > SEND_MAX:
+            return ToolResult(content=f"That is {len(refs)} files; get at most {SEND_MAX} at once.",
+                              is_error=True)
+        lines, got = [], []
+        for ref in refs:
+            row = await life.own(self.cfg, ctx.store, ref, ctx.conversation_id)
+            if isinstance(row, str):
+                lines.append(row)
+                continue
+            src = attachments.blob_path(self.cfg, row["sha256"])
+            if not src.is_file():
+                lines.append(f"{row['filename']} is no longer on disk.")
+                continue
+            try:
+                where = await box_files.copy_in(self.cfg, src, row["filename"], origin=row["origin"],
+                                                transport=self.transport)
+            except httpx.HTTPError as e:
+                return self._unreachable(None, e)
+            except (RuntimeError, OSError) as e:
+                lines.append(f"{row['filename']} did not reach your box: {e}")
+                continue
+            got.append(where)
+            lines.append(f"{row['filename']} ({attachments.size(row['bytes'])}) is in your box at {where}.")
+        return ToolResult(content="\n".join(lines), is_error=not got, display={"paths": got})
 
     @tool(read_only=True, open_world=True)
     async def look(

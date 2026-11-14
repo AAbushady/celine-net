@@ -360,7 +360,7 @@ async def tracks(store, conversation_id: str | None = None, kept: bool = False) 
                 "(SELECT je.value FROM json_each(mb.items) je "
                 " WHERE je.value ->> '$.attachment.id' = a.id) AS made "
                 "FROM attachments a JOIN media_batches mb ON mb.id = a.batch_id "
-                f"WHERE {where} ORDER BY a.created_at DESC", args):
+                f"WHERE {where} ORDER BY a.created_at DESC, a.rowid DESC", args):
             d = dict(r)
             d["made"] = json.loads(d["made"]) if d["made"] else {}
             out.append(d)
@@ -396,6 +396,43 @@ async def by_title(store, name: str) -> dict | str:
     listed = ", ".join(f"{r['id'][:SHORT]} ({title(r)}, made {r['created_at'][:10]})"
                        for r in found[:8])
     return f"Several tracks are called {name!r}: {listed}. Use the short id of the one you mean."
+
+
+async def own(cfg, store, ref: str, conversation_id: str | None) -> dict | str:
+    """A file the agent may use by `ref`: the short id of what a batch made (an image, a
+    track, a clip), of a file on its own message, or of one the user attached to
+    `conversation_id` (attachments.agent_file); anything else is a track's title
+    (`by_title`). -> its row (attachments.get) with `origin`: "" for its own, the upload's
+    tag for the user's (box_files.put); or the sentence why not."""
+    from ..attachments import agent_file, cleared_line, get
+    ref = (ref or "").strip()
+    if not re.fullmatch(r"[0-9a-fA-F]{4,32}", ref):
+        got = await by_title(store, ref)
+        if isinstance(got, str):
+            return got
+        row = await get(store, got["id"])
+        return {**row, "origin": ""} if row else f"The track {ref!r} is gone."
+    ref = ref.lower()
+    for kind in KINDS:
+        got = await find(store, kind, ref)
+        if isinstance(got, dict):
+            row = await get(store, got["id"])
+            if row is None:
+                break
+            if row.get("life") == MadeLife.CLEARED:
+                return cleared_line(cfg, kind, row["id"], row["life_at"], "")
+            return {**row, "origin": ""}
+        if got.startswith("Several"):
+            return got
+    sent = await agent_file(store, ref, conversation_id or "", cfg)
+    if isinstance(sent, str):
+        return (f"There is no file {ref} of yours: a short id is one of your images, tracks "
+                f"or clips, a file on your own message, or one {cfg.user} attached to this "
+                f"conversation.")
+    row = await get(store, sent["id"])
+    if row is None:
+        return f"The file {ref} is gone."
+    return {**row, "origin": "" if sent["role"] == "assistant" else f"upload:{row['filename']}"}
 
 
 def _frames(c: sqlite3.Connection, batch_id: str, aid: str) -> list[str]:

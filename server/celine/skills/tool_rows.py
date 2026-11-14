@@ -522,6 +522,9 @@ SHELL: dict[str, Sentence] = {
     "wait": _shell_wait,
     "share": _share_words,
     "send": lambda a, d, r: f"Sent you {_files(a)}",
+    "get_file": lambda a, d, r: "Copied " + (
+        refs[0] if len(refs := _list(a.get("file")) or [_str(a.get("file")) or ""]) == 1 and refs[0]
+        else f"{len(refs)} files") + " into its box",
     "look": lambda a, d, r: f"Looked at {_files(a)}",
 }
 
@@ -851,7 +854,7 @@ VERBS = {
     "Pasted": ("Pasting", "paste"), "Dropped": ("Dropping", "drop"),
     "Selected": ("Selecting", "select"), "Switched": ("Switching", "switch"),
     "Hovered": ("Hovering", "hover"), "Created": ("Creating", "create"),
-    "Restored": ("Restoring", "restore"), "Kept": ("Keeping", "keep"),
+    "Restored": ("Restoring", "restore"), "Kept": ("Keeping", "keep"), "Copied": ("Copying", "copy"),
     "Let": ("Letting", "let"),
 }
 

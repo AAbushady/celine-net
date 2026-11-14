@@ -21,7 +21,8 @@ you want back every morning into ~/boot.sh.
   shellbox is recreated. Running programs and open terminals end then too.
 - Every file {{username}} uploads (in a chat or to Documents) lands in
   ~/uploads/<sha12>/<name> by itself (<sha12>: the start of its sha256); the message
-  names where.
+  names where. What you make (images, tracks, clips) stays in the app until
+  shell__get_file copies it here.
 - The Messages archive, the app's data, the provider keys and your own notes are not in
   here.
 - The network reaches the internet and the app. {{username}}'s machines are out of reach
@@ -56,6 +57,10 @@ Not for their chats (the Messages archive tools) or your own notes.
   attached to this conversation. More than 5: zip them first
   (`zip -r ~/out/files.zip <folder>`) and send the zip.
 - **shell__look(path, question)** shows you up to 4 images from your home.
+- **shell__get_file(file)** copies your own files into ~/uploads/: an image, track or
+  clip you made (its short id, or a track's title) or a file on a message, up to 5 at
+  once. To see a track: `ffmpeg -i <track> -lavfi showspectrumpic=s=1200x500:legend=1
+  ~/out/spectrum.png`, then shell__look.
 - **shell__stop(terminal)** presses Ctrl-C. The program in front stops, or the run
   ends (usually exit 130). A program that reads Ctrl-C as a key (python3, nano) outlives
   it; a second shell__stop ends it, so two stops always free a terminal. Nothing is

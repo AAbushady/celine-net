@@ -7,7 +7,8 @@ of its bytes' sha256, so the same bytes uploaded again land on the same file) ri
 after it is stored: in the background, so the upload never
 waits for the box nor fails with it. A box that is down or full only costs a line in the
 app log. A chat attachment keeps where its copy landed (attachments.box_path), and its
-context names it. Files it makes or fetches are not copied.
+context names it. Files it makes or fetches are not copied by themselves: shell__get_file
+copies one of its own into ~/uploads/ the same way (copy_in).
 """
 from __future__ import annotations
 
@@ -76,24 +77,30 @@ async def stream(cfg, rel: str, *, transport: httpx.AsyncBaseTransport | None = 
             yield chunk
 
 
+async def copy_in(cfg, src: Path, filename: str, *, origin: str = "",
+                  transport: httpx.AsyncBaseTransport | None = None) -> str:
+    """A file into its home at ~/uploads/<sha12>/<name>, tagged with `origin` (put); bytes
+    already there are not sent again, so that file stays as it is, its edits too. -> where
+    it is ("~/uploads/..."). httpx.HTTPError, RuntimeError (the box's sentence), OSError."""
+    sha = await anyio.to_thread.run_sync(_sha, src)
+    rel = f"{UPLOADS}/{sha[:12]}/{safe_name(filename)}"
+    if not await _there(cfg, rel, transport):
+        await put(cfg, src, rel, origin=origin, transport=transport)
+    return f"~/{rel}"
+
+
 async def copy_upload(cfg, src: Path, filename: str, store=None, aid: str | None = None,
                       transport: httpx.AsyncBaseTransport | None = None) -> str | None:
-    """The user's upload into ~/uploads/; with aid, the attachment keeps where it landed.
-    Where it is in its home (~/uploads/<sha12>/<name>), or None when it did not get there
-    (said in the log). Bytes already there are not sent again."""
+    """The user's upload into ~/uploads/ (copy_in); with aid, the attachment keeps where it
+    landed. Where it is in its home, or None when it did not get there (said in the log)."""
     if not shellbox.url(cfg):
         return None
     try:
-        sha = await anyio.to_thread.run_sync(_sha, src)
-        rel = f"{UPLOADS}/{sha[:12]}/{safe_name(filename)}"
-        # the same bytes landed before: that file stays as it is, its edits too
-        if not await _there(cfg, rel, transport):
-            await put(cfg, src, rel, origin=f"upload:{filename}", transport=transport)
+        path = await copy_in(cfg, src, filename, origin=f"upload:{filename}", transport=transport)
     except (httpx.HTTPError, RuntimeError, OSError) as e:
         log.warning("%s did not reach the box: %s", filename,
                     e if isinstance(e, RuntimeError) else "the shellbox is not reachable.")
         return None
-    path = f"~/{rel}"
     if store is not None and aid is not None:
         from .attachments import set_box_path
         await set_box_path(store, aid, path)

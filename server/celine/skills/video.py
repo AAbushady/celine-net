@@ -108,44 +108,48 @@ class Video:
             raise HelperError(data.get("error") or f"The watch helper answered with error {r.status_code}.")
         return data
 
-    async def _sheet(self, jid: str, n: int):
+    async def _image(self, jid: str, path: str):
+        """A picture of a job (sheets/<n>, pictures/<name>), as chunks."""
         at = address(self.cfg)
         async with services_mod.client(self.cfg, SERVICE, 60.0, transport=self.transport) as client:
-            async with client.stream("GET", f"{at}/jobs/{jid}/sheets/{n}") as r:
+            async with client.stream("GET", f"{at}/jobs/{jid}/{path}") as r:
                 if r.status_code != 200:
-                    raise HelperError(f"Sheet {n} of watch {jid} is not there.")
+                    raise HelperError(f"{path} of #{jid} is not there.")
                 async for chunk in r.aiter_bytes():
                     yield chunk
 
+    async def _show(self, ctx: ToolContext, jid: str, pictures: list[tuple[str, str, str]], lines: list[str],
+                    images: list[str]) -> None:
+        """Pictures of a job, each (its path at the helper, its file name, its label), kept with this call: as
+        images of the result when the turn's model sees them, else each described in its line."""
+        sees = await attachments.turn_sees_images(self.cfg, ctx) if ctx.store is not None else False
+        for path, name, label in pictures:
+            try:
+                row = await attachments.save_stream(
+                    self.cfg, ctx.store, self._image(jid, path), name,
+                    "image/png" if name.endswith(".png") else "image/jpeg",
+                    tool_call_id=ctx.tool_call_id, in_message=False,
+                    limit=int(self.cfg.r("max_attachment_bytes")))
+            except (HelperError, httpx.HTTPError) as e:
+                lines.append(f"{label} not available ({e}).")
+                continue
+            if sees:
+                images.append(row["id"])
+                lines.append(label)
+            else:
+                data = attachments.blob_path(self.cfg, row["sha256"]).read_bytes()
+                llm = getattr(getattr(self, "app", None), "llm", None)
+                said = await vision.describe(llm, data, ctx.conversation_id, ctx.turn_id, None)
+                lines.append(f"{label} {said}")
+
     async def _her_file(self, ctx: ToolContext, ref: str, kinds: tuple[str, ...]) -> dict | str:
-        """One of her tracks or clips by its short id, a file on her own message or one the user attached to
-        this conversation, or one of her tracks by its title (life.by_title), whose kind is one of `kinds`
-        (audio, video). -> its attachment row, or the sentence why not."""
-        row = None
-        if not SHORT_ID.fullmatch(ref.lower()):
-            got = await life.by_title(ctx.store, ref)
-            if isinstance(got, str):
-                return got
-            row = await attachments.get(ctx.store, got["id"])
-            ref = got["id"][:8]
-        ref = ref.lower()
-        for made in ("music", "video") if row is None else ():
-            got = await life.find(ctx.store, made, ref)
-            if isinstance(got, dict):
-                row = await attachments.get(ctx.store, got["id"])
-                if row and row.get("life") == "cleared":
-                    return attachments.cleared_line(self.cfg, made, row["id"], row["life_at"], "")
-                break
-            if got.startswith("Several"):
-                return got
-        if row is None:
-            got = await attachments.agent_file(ctx.store, ref, ctx.conversation_id, self.cfg)
-            if isinstance(got, str):
-                return (f"There is no track, clip or file {ref}: a short id is one of your tracks or clips, a "
-                        f"file on your own message, or one {self.cfg.user} attached to this conversation.")
-            row = await attachments.get(ctx.store, got["id"])
-        if row is None or not attachments.blob_path(self.cfg, row["sha256"]).is_file():
-            return f"The file {ref} is no longer on disk."
+        """One of her files (life.own: a short id, or a track's title) whose kind is one of `kinds` (audio,
+        video). -> its attachment row, or the sentence why not."""
+        row = await life.own(self.cfg, ctx.store, ref, ctx.conversation_id)
+        if isinstance(row, str):
+            return row
+        if not attachments.blob_path(self.cfg, row["sha256"]).is_file():
+            return f"{row['filename']} is no longer on disk."
         if row["kind"] not in kinds:
             return f"{row['filename']} is not {' or '.join('a sound' if k == 'audio' else 'a video' for k in kinds)}."
         if row["bytes"] > FILE_MAX:
@@ -391,29 +395,19 @@ class Video:
         elif s["mode"] == "listen":
             lines += self._heard(s, bool(cap))
             lines += said
+            span = f"{clock(s['start'])} to {clock(s['end'])}"
+            labels = {"spectrum.png": f"The sound of {span} drawn as a spectrogram: time across, its seconds "
+                                      f"counted from {clock(s['start'])}; frequency up, on a log scale from 20 Hz; "
+                                      f"loudness as colour, in dBFS:",
+                      "waveform.png": f"The waveform of {span}, loudness over time:"}
+            await self._show(ctx, jid, [(f"pictures/{p}", f"{jid}-{p}", labels[p])
+                                        for p in s.get("pictures") or [] if p in labels], lines, images)
         elif s["mode"] == "stills":
             lines += said or ["No captions: the stills alone."]
-            sees = await attachments.turn_sees_images(self.cfg, ctx) if ctx.store is not None else False
-            for sheet in s.get("sheets") or []:
-                name = f"{jid}-{sheet['n']:04d}.jpg"
-                label = (f"Stills {clock(sheet['from'])} to {clock(sheet['to'])}, one every 5 seconds, each with its "
-                         f"time:")
-                try:
-                    row = await attachments.save_stream(
-                        self.cfg, ctx.store, self._sheet(jid, sheet["n"]), name, "image/jpeg",
-                        tool_call_id=ctx.tool_call_id, in_message=False,
-                        limit=int(self.cfg.r("max_attachment_bytes")))
-                except (HelperError, httpx.HTTPError) as e:
-                    lines.append(f"{label} not available ({e}).")
-                    continue
-                if sees:
-                    images.append(row["id"])
-                    lines.append(label)
-                else:
-                    data = attachments.blob_path(self.cfg, row["sha256"]).read_bytes()
-                    llm = getattr(getattr(self, "app", None), "llm", None)
-                    said = await vision.describe(llm, data, ctx.conversation_id, ctx.turn_id, None)
-                    lines.append(f"{label} {said}")
+            await self._show(ctx, jid, [
+                (f"sheets/{sheet['n']}", f"{jid}-{sheet['n']:04d}.jpg",
+                 f"Stills {clock(sheet['from'])} to {clock(sheet['to'])}, one every 5 seconds, each with its time:")
+                for sheet in s.get("sheets") or []], lines, images)
         else:
             lines.append(f"Nothing to read yet: it is {s['state']}.")
         if s.get("next") is not None:

@@ -177,6 +177,28 @@ async def test_send_keeps_to_the_attachment_limit(home, cfg, store, monkeypatch)
         "SELECT count(*) FROM attachments").fetchone()[0]) == 0
 
 
+async def test_get_file_copies_its_own_track_into_its_home_by_id_or_title(home, cfg, store):
+    data = b"ID3" + os.urandom(2 * 1024 * 1024 - 3)
+    await store.write(lambda c: c.execute(
+        "INSERT INTO media_batches(id, kind, state, items, created_at) VALUES('b1', 'music', 'done', '[]', 'x')"))
+    row = await attachments.save_generated(cfg, store, data, "tower_hum-58178951067900.mp3", "audio/mpeg",
+                                           None, in_message=False, batch_id="b1")
+    items = [{"index": 0, "title": "Tower Hum", "attachment": {"id": row["id"]}}]
+    await store.write(lambda c: c.execute("UPDATE media_batches SET items = ? WHERE id = 'b1'",
+                                          (json.dumps(items),)))
+    cid = await conversations.create(store)
+    ctx = ToolContext(conversation_id=cid, turn_id="t1", tool_call_id="c1", store=store, config=cfg, emit=None)
+    where = f"~/uploads/{hashlib.sha256(data).hexdigest()[:12]}/tower_hum-58178951067900.mp3"
+    out = await Shell(cfg).get_file(ctx, file=row["id"][:8])
+    assert not out.is_error and out.content == f"tower_hum-58178951067900.mp3 (2.0 MB) is in your box at {where}."
+    assert (home / where[2:]).read_bytes() == data
+    (home / where[2:]).write_bytes(b"its own edit")
+    out = await Shell(cfg).get_file(ctx, file=["Tower Hum", "0123abcd"])
+    assert out.is_error is False and out.content.splitlines()[0].endswith(where + ".")
+    assert (home / where[2:]).read_bytes() == b"its own edit", "the same bytes are not sent again"
+    assert out.content.splitlines()[1].startswith("There is no file 0123abcd of yours:")
+
+
 PNG = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
                     "0000000d4944415478da63f8ffff3f0005fe02fea7d6a4b50000000049454e44ae426082")
 

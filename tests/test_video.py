@@ -29,6 +29,7 @@ class Helper:
         self.plex = {"linked": False, "user": None, "servers": []}
         self.stopped_at: float | None = None      # where a watch that stopped early ends, None: it is done
         self.files: list[dict] = []                # what was sent to PUT /files/<sha256>
+        self.pictures: list[str] = []              # what a listen's first stretch names (listen.py PICTURES)
 
     def job(self, state="queued"):
         return {"id": "abc123def456", "kind": "listen" if self.mode == "listen" else "watch",
@@ -73,13 +74,16 @@ class Helper:
                     "[0:26-0:58] section (MOSS-Music): verse. Words it heard: you were born to suffer"],
                     heard={"ear": "music", "tempo": 92.3, "meter": 4, "voice": 161, "words": False,
                            "about": [{"from": 0, "to": 278, "by": "MOSS-Music", "text": "Metalcore, heavy."}]},
-                    captions={"kind": "uploader", "lines": ["[0:26] You were born to suffer"]})
+                    captions={"kind": "uploader", "lines": ["[0:26] You were born to suffer"]},
+                    pictures=self.pictures if at == 0 else [])
             else:
                 out.update(lines=[], captions={"kind": "film", "lines": ["[0:23] You're a jerk, Thom."]},
                            sheets=[{"n": 0, "from": 0, "to": 60}, {"n": 1, "from": 60, "to": 120}])
             return httpx.Response(200, json=out)
         if method == "GET" and path.startswith("/jobs/abc123def456/sheets/"):
             return httpx.Response(200, content=b"\xff\xd8jpeg", headers={"content-type": "image/jpeg"})
+        if method == "GET" and path.startswith("/jobs/abc123def456/pictures/"):
+            return httpx.Response(200, content=b"\x89PNG picture", headers={"content-type": "image/png"})
         if (method, path) == ("GET", "/jobs"):
             return httpx.Response(200, json={"jobs": [self.job("done")]})
         if (method, path) == ("GET", "/plex"):
@@ -216,6 +220,31 @@ async def test_a_listen_reads_with_what_was_measured_and_the_uploaders_captions(
     assert out.is_error and out.content.startswith("A listen hears at most 20 minutes;")
 
 
+async def test_a_listens_first_stretch_brings_the_sound_drawn_as_pictures_she_sees(store, cfg, monkeypatch):
+    saved: list[tuple[str, str]] = []
+
+    async def sees(_cfg, _ctx):
+        return True
+
+    async def keep(_cfg, _store, chunks, name, media, **kw):
+        data = b"".join([c async for c in chunks])
+        assert data.startswith(b"\x89PNG") and kw["in_message"] is False
+        saved.append((name, media))
+        return {"id": f"att{len(saved)}", "sha256": "s"}
+
+    monkeypatch.setattr(attachments, "turn_sees_images", sees)
+    monkeypatch.setattr(attachments, "save_stream", keep)
+    h = Helper(mode="listen")
+    h.pictures = ["spectrum.png", "waveform.png"]
+    out = await _video(cfg, h).read(_ctx(store, cfg), "abc123def456")
+    assert out.images == ["att1", "att2"]
+    assert saved == [("abc123def456-spectrum.png", "image/png"), ("abc123def456-waveform.png", "image/png")]
+    assert ("The sound of 0:00 to 4:38 drawn as a spectrogram: time across, its seconds counted from 0:00; "
+            "frequency up, on a log scale from 20 Hz; loudness as colour, in dBFS:") in out.content
+    assert "The waveform of 0:00 to 4:38, loudness over time:" in out.content
+    assert "GET /jobs/abc123def456/pictures/spectrum.png?" in h.seen
+
+
 async def test_her_track_goes_to_the_helper_by_its_sha256_and_a_stranger_id_is_refused(store, cfg):
     from celine import attachments as atts
     await store.write(lambda c: c.execute(
@@ -231,7 +260,7 @@ async def test_her_track_goes_to_the_helper_by_its_sha256_and_a_stranger_id_is_r
     out = await v.watch(_ctx(store, cfg), row["id"][:8])
     assert out.is_error and out.content == "tower-hum.mp3 is not a video."
     out = await v.listen(_ctx(store, cfg), "0123abcd")
-    assert out.is_error and out.content.startswith("There is no track, clip or file 0123abcd:")
+    assert out.is_error and out.content.startswith("There is no file 0123abcd of yours:")
     assert len(h.files) == 1
 
 
