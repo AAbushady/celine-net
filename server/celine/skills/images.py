@@ -202,6 +202,8 @@ def role_presets(cfg, role: str) -> list[presets_mod.Preset]:
 # while the media runner is down (both switches off, or between its stop and start)
 OFF = {"images": "Images are off.", "music": "Music is off.", "video": "Video is off."}
 
+LIST_MAX = 100      # models or LoRAs list_presets shows in one answer
+
 
 async def batch_generate(app, ctx: ToolContext, role: str, items, count: int, wait: bool,
                          text: Callable[..., str], **kw) -> ToolResult:
@@ -537,14 +539,14 @@ class ImageGenerator(Generator):
         if not rows:
             return ToolResult(content=f"No {kind} of {p.label} matches.")
         lines, last = [], None
-        for r in rows[:40]:
+        for r in rows[:LIST_MAX]:
             if r.category != last:
                 last = r.category
                 lines.append(f"\n{last}:")
             lines.append(f"- {r.line()}")
         text = f"{kind}s of {p.label} (`{p.id}`):" + "\n".join(lines)
-        if len(rows) > 40:
-            text += f"\n\n{len(rows) - 40} more. Narrow with category or search."
+        if len(rows) > LIST_MAX:
+            text += f"\n\n{len(rows) - LIST_MAX} more. Narrow with category or search."
         return ToolResult(content=text.strip(), display={"count": len(rows)})
 
     @tool()
