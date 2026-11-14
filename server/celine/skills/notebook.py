@@ -17,7 +17,7 @@ from typing import Annotated, Literal
 from ..config import CONFIG_DIR
 from ..turns.compact import one_line
 from . import ToolContext, ToolResult, guide, knob, tool, described
-from . import notebook_index
+from . import note_feelings, notebook_index
 from .anchors import Edit, EditRefused, apply, is_stamp, lines_of, numbered, plan
 from ..clock import zone
 from ..core.ids import when
@@ -52,6 +52,9 @@ PLACEHOLDERS = {
 NOTES_HEAD = "[your notes]"   # notes_block's first line (turns/legend.py)
 UNNAMED = ("", "User")      # the user's name before the first run sets it
 WAITING = "placeholders were created, the ones named after the user wait for a name\n"
+FELT = ("Optional: what you feel as you write this, in your own words, a word or a few. It "
+        "stays with the sections this save makes or changes, and shows beside them when they "
+        "come back. Leave it out when you have nothing to say there.")
 
 
 class Notebook:
@@ -247,6 +250,7 @@ class Notebook:
                                 "(append)."],
         summary: Annotated[str, "One line for your index."],
         mode: Annotated[Literal["replace", "append"], "replace or append."] = "replace",
+        felt: Annotated[str, FELT] = "",
     ) -> ToolResult:
         """Write one note. `replace` creates the note or replaces all its text. `append`
         adds text to its end. To change some lines, use notebook__edit. Write what
@@ -268,6 +272,8 @@ class Notebook:
             return ToolResult(content=self.cfg.substitute(
                 f"{path} is {{{{username}}}}'s, not yours to change. You can read it. "
                 f"Write your own version somewhere else if you want one."), is_error=True)
+        if why := note_feelings.checked(felt):
+            return ToolResult(content=why, is_error=True)
         p.parent.mkdir(parents=True, exist_ok=True)
         old = p.read_text() if p.is_file() else None
         body = stamped(old + content if mode == "append" and old is not None
@@ -279,6 +285,7 @@ class Notebook:
         n = _lines(now)
         said = (f"Saved {path}, a new note of {n}." if old is None
                 else f"Saved {path}. {n} now, was {len(lines_of(old)[0])}.")
+        said += await self._felt(ctx, path, old, now, felt)
         # its anchors, so an edit right after needs no read: half the failed edits were on
         # a note the same conversation had just written
         lines = lines_of(now)[0]
@@ -323,6 +330,7 @@ class Notebook:
                                        f"not change it.)\n\n")
         elif _is_placeholder(text):
             head = f"({path} is yours and still a placeholder. Fill it in whenever you want.)\n\n"
+        head += note_feelings.line(await note_feelings.of_note(ctx.store, text))
         lines = lines_of(text)[0]
         first = max(1, from_line)
         if lines and first > len(lines):
@@ -356,6 +364,7 @@ class Notebook:
                                      "anchors, or append at the bottom."],
         summary: Annotated[str, "A new index line. Leave it empty to keep the old "
                                 "one."] = "",
+        felt: Annotated[str, FELT] = "",
     ) -> ToolResult:
         """Change lines of one note by their anchors from notebook__read. Read the note
         first. All edits in one call refer to the note as you read it. If an anchor does
@@ -375,6 +384,8 @@ class Notebook:
         if not p.exists():
             return ToolResult(content=f"{path} does not exist. notebook__write makes a new "
                                       f"note.", is_error=True)
+        if why := note_feelings.checked(felt):
+            return ToolResult(content=why, is_error=True)
         text = p.read_text(newline="")
         lines, newline, trailing = lines_of(text)
         has_stamp = bool(lines) and is_stamp(lines[0])
@@ -407,10 +418,24 @@ class Notebook:
                                 for a, b in regions)
         followed = (f" Anchors read before an earlier save were followed to their lines: "
                     f"{', '.join(moved)}." if moved else "")
+        followed += await self._felt(ctx, path, text, body, felt)
         return ToolResult(content=f"Saved {path}. {n} {'change' if n == 1 else 'changes'}, "
                                   f"{len(new)} lines now.{followed} The changed part, with "
                                   f"its new anchors:\n\n{shown}",
                           display={"path": path, "bytes": len(body), "changes": n})
+
+    async def _felt(self, ctx: ToolContext, path: str, old: str | None, new: str,
+                    felt: str) -> str:
+        """`felt` kept with the sections of `new` this save made or changed
+        (note_feelings.keep); what the answer says of it, "" without one."""
+        if not felt.strip():
+            return ""
+        if await folder_of(ctx):
+            return " A sub-agent's feeling is not kept."
+        n = await note_feelings.keep(ctx.store, path, old, new, felt, ctx.conversation_id)
+        if not n:
+            return " No section changed, so the feeling was not kept."
+        return f" What you felt is kept with {n} {'section' if n == 1 else 'sections'}."
 
     @tool()
     async def search(

@@ -517,7 +517,11 @@ back, the best first, at most `memory_sections` in `memory_tokens` tokens
 (`var/settings/context.toml`); each entry is `### path#heading (similarity, last
 changed)`, and a note this conversation's own call changed last adds `, you changed it in
 this chat, <when>` there (`recall.own_changes`: a call of the notebook or the mind that
-ended well names its note in `display.path`; the file is no newer than the call). Not for a note it carries in full or with `load: off`, nor a section shown on
+ended well names its note in `display.path`; the file is no newer than the call). A
+section the agent kept a feeling with ends its line with `, you felt "<its words>"`
+(`skills/note_feelings.py`: `felt` on notebook__write and notebook__edit, kept by the hash
+of the section's text, so a section that changes no longer shows it; the order never uses
+it). Not for a note it carries in full or with `load: off`, nor a section shown on
 this branch since the last compaction unless it changed. An embedding model that does not
 answer gives `[your memory] no notes came with this message: <why>` and nothing else. The report
 (`report.notebook`) keeps the query and every candidate with its score and state.

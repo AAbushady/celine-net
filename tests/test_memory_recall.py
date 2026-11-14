@@ -265,3 +265,19 @@ async def test_a_note_this_chats_own_call_changed_last_says_so(store, tmp_path):
     await store.write(lambda c: c.execute("UPDATE tool_calls SET name='mind__think'"))
     assert await store.read(lambda c: recall.own_changes(c, cid)) == {
         "people/noor.md": "2099-01-01T10:00:00.000+00:00"}
+
+
+async def test_a_section_says_the_feeling_kept_with_its_text(store, tmp_path):
+    """[your memory] names what it felt as it wrote a section (skills/note_feelings.py), the
+    feeling of that very text only; the order stays the similarity's."""
+    from celine.skills import note_feelings
+    cfg = _cfg(tmp_path)
+    await write_notes(store, cfg, {"people/noor.md": NOOR})
+    await note_feelings.keep(store, "people/noor.md", None, NOOR, "glad", "c0")
+    old = NOOR.replace("every weekend", "on Sundays")
+    await note_feelings.keep(store, "people/noor.md", NOOR, old, "worried", "c0")
+    cid = await conversations.create(store)
+    text, _ = await _say(store, cfg, cid, "is noor climbing today?")
+    assert '### people/noor.md#Climbing (1.00, ' in text
+    assert text.count(', you felt "glad")\n') == 2 and "worried" not in text, text
+    assert text.index("#Climbing") < text.index("### people/noor.md ("), "similarity first"

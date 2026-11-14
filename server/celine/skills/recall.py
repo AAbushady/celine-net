@@ -19,7 +19,8 @@ note on a loaded skill), a note with `load: off`, one left out here or outside a
 sub-agent's folder, nor a section shown on this branch since the last compaction, unless
 it changed since. A note this conversation's own calls changed last says so in its
 section's line, with when (OWN): what it says about this conversation is its own account.
-When the embedding model does not answer, the block says so and
+A section it kept a feeling with (skills/note_feelings.py) says that feeling in its line;
+the order never uses it. When the embedding model does not answer, the block says so and
 nothing comes back: there is no word-only substitute.
 
 The block is added to the end of the message once (turns/message_context.py: stored, sent
@@ -186,6 +187,7 @@ async def block(cfg, store, cid: str, tid: str, message: dict
     from ..turns import loads
     from ..backends import tokens
     from ..turns.message_context import history_limit
+    from . import note_feelings
     s = loads.shares(cfg)
     f = await store.read(lambda c: _facts(c, cid, tid, message["id"], history_limit(cfg)))
     if f is None or not offered("mind", f["place"]) or not f["auto"]:
@@ -208,15 +210,20 @@ async def block(cfg, store, cid: str, tid: str, message: dict
         except OSError:
             continue
         date = f"{datetime.fromtimestamp(mtime):%-d %b %Y}" + _own(f["own"].get(rel), mtime, cfg)
-        for i, (heading, part) in enumerate(sections(cfg.substitute(text))[:NOTE_SECTIONS]):
+        shown = sections(cfg.substitute(text))
+        raw = note_feelings.hashes(text)       # a feeling is kept by the text as written
+        for i, (heading, part) in enumerate(shown[:NOTE_SECTIONS]):
             sid = f"{rel}#{heading}" if heading else rel
             found.append({"id": sid, "key": key, "date": date, "nth": i,
-                          "text": _cut(part, rel), "hash": _hash(part)})
+                          "text": _cut(part, rel), "hash": _hash(part),
+                          "felt": raw[i][1] if len(raw) == len(shown) else None})
     if not found:
         return None
     # each note's first section, then each one's second, and so on: the cut takes from
     # every note alike (a stable sort keeps the notes' order within one rank)
     found = sorted(found, key=lambda x: x["nth"])[:CANDIDATES]
+    felt = await store.read(lambda c: note_feelings.felt_of(
+        c, [x["felt"] for x in found if x["felt"]]))
     report: dict = {"query": talk, "floor": s["memory_floor"],
                     "candidates": [], "shown": []}
     work = asyncio.ensure_future(asyncio.to_thread(
@@ -238,7 +245,8 @@ async def block(cfg, store, cid: str, tid: str, message: dict
     counter = tokens.counter(None)
     lines, used = [], 0
     for x in sorted(found, key=lambda x: -x["score"]):
-        entry = f"### {x['id']} ({x['score']:.2f}, {x['date']})\n{x['text']}"
+        said = f', you felt "{felt[x["felt"]]}"' if x["felt"] in felt else ""
+        entry = f"### {x['id']} ({x['score']:.2f}, {x['date']}{said})\n{x['text']}"
         cost = counter.estimate(entry)
         if x["score"] < s["memory_floor"]:
             x["state"] = BELOW

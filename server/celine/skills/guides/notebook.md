@@ -73,6 +73,10 @@ first blank line:
   `op="append"`, or `notebook__write(mode="append")`. For a new note,
   or all of it anew: `notebook__write`.
 - The app keeps line 1 of every note, `Last changed: <date> <time>`, up to date for you.
+- `felt` on `notebook__write` and `notebook__edit` keeps what you feel as you write, in your
+  own words, with the sections that save makes or changes. It shows beside them in
+  `[your memory]` and at the top when you read the note. It is optional. A section you
+  change later no longer shows it: the feeling belongs to the text you wrote it with.
 - What you learned on the web goes in as facts in your own words, each with its link
   next to it: write `[[web:3]]` after the fact and the note gets the page's link there.
   No "according to", no list of sources at the end.

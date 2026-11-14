@@ -485,3 +485,40 @@ async def test_index_paths_match_exactly(store):
     assert await notebook_index.delete_prefix(store, "a%b") == 1
     left = [r["path"] for r in await notebook_index.list(store)]
     assert left == ["A_B/x.md", "aXb/x.md", "azb/x.md", "moved/x.md"]
+
+
+async def test_a_feeling_stays_with_the_text_it_was_written_with(store, cfg):
+    """felt (skills/note_feelings.py): the agent's own words, kept with the sections a save
+    made or changed, shown when it reads the note; a section changed later loses it, a
+    change to the head lines does not count, and a sub-agent's feeling is not kept."""
+    nb = Notebook(cfg)
+    ctx = _ctx("c", store, cfg)
+    note = "keys: food\n\n" + NOTE
+    out = await nb.write(ctx, "opinions/food.md", note, "food", felt="  proud,  a bit\nshy ")
+    assert "What you felt is kept with 2 sections." in out.content, out.content
+    read = (await nb.read(ctx, "opinions/food.md")).content
+    assert read.startswith('(What you felt as you wrote its sections: the top felt "proud, '
+                           'a bit shy"; "## drinks" felt "proud, a bit shy".)\n\n'), read
+    a = _anchors(read)
+    out = await nb.edit(ctx, "opinions/food.md", [{"op": "replace", "start": a[9],
+                                                   "text": "- coffee: always"}])
+    assert not out.is_error and "felt" not in out.content
+    assert '"## drinks"' not in (await nb.read(ctx, "opinions/food.md")).content, \
+        "the changed section no longer shows the feeling of the text it replaced"
+    a = _anchors((await nb.read(ctx, "opinions/food.md")).content)
+    out = await nb.edit(ctx, "opinions/food.md", [
+        {"op": "replace", "start": a[2], "text": "keys: food, drinks"},
+        {"op": "append", "text": "- tea: no"}], felt="tired")
+    assert "What you felt is kept with 1 section." in out.content, out.content
+    assert "the top felt \"proud, a bit shy\"; \"## drinks\" felt \"tired\"" in \
+        (await nb.read(ctx, "opinions/food.md")).content, "a head line is not the text"
+    before = (cfg.agent.notebook / "opinions/food.md").read_text()
+    out = await nb.write(ctx, "opinions/food.md", "x", "food", mode="append", felt="w" * 81)
+    assert out.is_error and out.content.startswith("felt is a word or a few, at most 80")
+    assert (cfg.agent.notebook / "opinions/food.md").read_text() == before
+    parent = await conversations.create(store)
+    sub = await conversations.create(store, agent_of=parent, agent_name="scout one",
+                                     notebook_folder="agents/scout")
+    out = await nb.write(_ctx(sub, store, cfg), "agents/scout/n.md", "found", "f", felt="glad")
+    assert "A sub-agent's feeling is not kept." in out.content
+    assert "felt" not in (await nb.read(_ctx(sub, store, cfg), "agents/scout/n.md")).content
