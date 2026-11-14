@@ -42,8 +42,9 @@ LINES = (
     "- [earlier result, shortened to save room] and [cut: ...]: the app shortened a tool "
     "result. Call the tool again for the whole of it.",
     "- [N lines, about T tokens, shortened; the call is kept: ...] in an earlier call's "
-    "argument: the app sent its first line only. The call ran with the whole of it. A "
-    "call that carries this mark is refused; read the call back to send the text again.",
+    "argument: the app sent its first line only. The call ran with the whole of it. The "
+    "app never shortens a call you make: write every argument out in full. A call that "
+    "carries this mark is refused; read the earlier call back to send its text again.",
     "- [the image from ...] and [the images from ...]: the pictures a tool result says "
     "follow it ([the image follows]), in the order the result names them: a screen your "
     "tool took, or images you looked at.",

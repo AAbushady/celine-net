@@ -52,12 +52,13 @@ def _sent(built, call_id) -> str:
 async def test_an_aged_heredoc_call_goes_short_and_valid(store):
     cfg = load()
     cid = await conversations.create(store)
-    call_id, mid = await _heredoc_call(store, cid)
+    call_id, _ = await _heredoc_call(store, cid)
+    newest_id, mid = await _heredoc_call(store, cid)
     fresh = await context.build(store, cfg, FakeBackend(), cid, system="S", tools=[],
                                 mode="dry")
     assert json.loads(_sent(fresh, call_id))["command"] == SCRIPT, "verbatim until aged"
 
-    await compactions.set_aged_through(store, cid, mid, {"results": 1})
+    await compactions.set_aged_through(store, cid, mid, {"results": 2})
     bare = await context.build(store, cfg, FakeBackend(), cid, system="S", tools=[],
                                mode="dry")
     assert json.loads(_sent(bare, call_id))["command"] == SCRIPT, \
@@ -77,6 +78,32 @@ async def test_an_aged_heredoc_call_goes_short_and_valid(store):
     stored = await store.read(lambda c: c.execute(
         "SELECT arguments FROM tool_calls WHERE id=?", (call_id,)).fetchone()[0])
     assert json.loads(stored)["command"] == SCRIPT, "the row never changes"
+    assert json.loads(_sent(aged, newest_id))["command"] == SCRIPT, \
+        "the newest aged call of a tool goes whole, so one whole call stays to copy (bug 76)"
+
+
+async def test_the_whole_call_of_a_tool_moves_only_with_the_mark(store):
+    cfg = load()
+    cid = await conversations.create(store)
+    first, _ = await _heredoc_call(store, cid)
+    second, mid = await _heredoc_call(store, cid)
+    await compactions.set_aged_through(store, cid, mid, {"results": 2})
+
+    def build():
+        return context.build(store, cfg, FakeBackend(), cid, system="S", tools=READBACK,
+                             mode="dry")
+    before = await build()
+    third, later = await _heredoc_call(store, cid)
+    after = await build()
+    for call in (first, second):
+        assert _sent(after, call) == _sent(before, call), "a new call changes no earlier bytes"
+    assert json.loads(_sent(after, second))["command"] == SCRIPT
+    assert json.loads(_sent(after, third))["command"] == SCRIPT, "not aged"
+
+    await compactions.set_aged_through(store, cid, later, {"results": 1})
+    moved = await build()
+    assert "shortened; the call is kept" in _sent(moved, second), "older than the newest now"
+    assert json.loads(_sent(moved, third))["command"] == SCRIPT, "the newest aged call"
 
 
 def test_the_mark_names_the_argument_and_call_it_shortened():

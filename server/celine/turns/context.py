@@ -277,8 +277,9 @@ class _Item:
         self.thinking = m.get("thinking") if self.role == "assistant" else None
         self.attachments = m.get("attachments") or []
         self.calls = calls or None
-        self._wire: dict[bool, list[dict]] = {}
-        self._cost: dict[bool, int] = {}
+        # by (aged, its calls whose arguments go whole though aged): _Plan.wire
+        self._wire: dict[tuple[bool, frozenset[str]], list[dict]] = {}
+        self._cost: dict[tuple[bool, frozenset[str]], int] = {}
 
     def as_dict(self) -> dict:
         return {"id": self.id, "role": self.role, "content": self.content,
@@ -325,6 +326,7 @@ class _Plan:
         self.start = self.pos[self.compaction["through_message_id"]] + 1 \
             if self.compaction else 0
         self.mark = self.pos.get(view["aged"] or "", -1)
+        self._whole: tuple[int, frozenset[str]] | None = None
         self.limit = limit
         self.opening = ""           # what goes before its first message (history)
         # the refs it cited in its replies: an aged result keeps those lines whole
@@ -355,17 +357,41 @@ class _Plan:
     def aged(self, it: _Item) -> bool:
         return bool(it.calls) and it.idx <= self.mark
 
+    def whole(self) -> frozenset[str]:
+        """The aged calls whose arguments still go whole: the newest call of each tool at
+        or before the mark. A model whose every earlier call of a tool shows shortened
+        copies that form, mark and all, so one whole call of each tool stays. The set
+        changes only when the mark moves, so the request's prefix stays the same bytes
+        between agings."""
+        if self._whole is None or self._whole[0] != self.mark:
+            newest: dict[str, str] = {}
+            for it in self.all_items:
+                if it.idx > self.mark:
+                    break
+                for c in it.calls or ():
+                    newest[c["name"]] = c["id"]
+            self._whole = (self.mark, frozenset(newest.values()))
+        return self._whole[1]
+
+    def _key(self, it: _Item, aged: bool) -> tuple[bool, frozenset[str]]:
+        if not aged or not it.calls:
+            return aged, frozenset()
+        whole = self.whole()
+        return aged, frozenset(c["id"] for c in it.calls if c["id"] in whole)
+
     def wire(self, it: _Item, aged: bool) -> list[dict]:
-        if aged not in it._wire:
-            it._wire[aged] = calls_wire(self.cfg, it, self.guarded, self if aged else None) \
+        key = self._key(it, aged)
+        if key not in it._wire:
+            it._wire[key] = calls_wire(self.cfg, it, self.guarded, self if aged else None) \
                 if it.calls else wire_message(self.cfg, it)
-        return it._wire[aged]
+        return it._wire[key]
 
     def cost(self, it: _Item, aged: bool | None = None) -> int:
         a = self.aged(it) if aged is None else aged
-        if a not in it._cost:
-            it._cost[a] = sum(self.counter.message(w) for w in self.wire(it, a))
-        return it._cost[a]
+        key = self._key(it, a)
+        if key not in it._cost:
+            it._cost[key] = sum(self.counter.message(w) for w in self.wire(it, a))
+        return it._cost[key]
 
     def history(self) -> list[dict]:
         out: list[dict] = []
@@ -446,12 +472,15 @@ def calls_wire(cfg, it: _Item, guarded: bool, plan: _Plan | None = None) -> list
     aged = plan is not None
     # an aged call's long string arguments go shortened (compact.short_arguments),
     # whatever the size of its result, where the request offers the tool that reads
-    # the call back; never_age keeps a notebook call whole
+    # the call back; never_age keeps a notebook call whole, and the newest aged call of
+    # each tool goes whole (plan.whole)
+    whole = plan.whole() if plan is not None else frozenset()
     out = [{"role": "assistant", "content": it.content, **_thought(it), "tool_calls": [
         {"id": c["id"], "type": "function",
          "function": {"name": c["name"], "arguments":
                       compact.short_arguments(c["arguments"], c["id"])
                       if aged and plan.readback and not _kept(c, plan.policy)
+                      and c["id"] not in whole
                       else c["arguments"]}}
         for c in it.calls], ORIGIN: origin(it.cid, turn=it.turn, message=it.id)}]
     screens = []

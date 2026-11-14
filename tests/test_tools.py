@@ -181,8 +181,9 @@ async def test_a_call_that_sends_the_apps_shortening_mark_back_is_refused(store,
     assert [e["data"]["state"] for e in events] == ["error"]
     snap = await view.snapshot(store, cid)
     result = next(m for m in snap["messages"] if m["role"] == "tool")["content"]
-    assert result.startswith("invalid arguments: content ends in the app's mark for the "
-                             "shortened content of call t9:0:0")
+    assert result.startswith("invalid arguments: content ends in the mark the app puts on an "
+                             "earlier call's long argument in your context (call t9:0:0), and "
+                             "the app never shortens a call you send")
     assert not (cfg.agent.notebook / "copied.md").exists(), "nothing was written"
 
 
