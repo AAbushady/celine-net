@@ -344,6 +344,21 @@ def test_a_list_or_object_in_a_json_string_is_read_as_one_and_the_guard_sees_it(
     assert _lenient({"where": "[1]"}, schema) == {"where": "[1]"}
 
 
+def test_a_list_sent_as_broken_json_is_refused_not_run_as_one_string():
+    from celine.turns.tools import _broken_json
+    schema = {"properties": {"items": {"type": "array"}, "where": {"type": "object"},
+                             "name": {"type": "string"}}}
+    # bug 72: a broken list of items ran as one item, its whole text the prompt
+    said = _broken_json({"items": '[{"prompt": "a cat", "width": 1376'}, schema)
+    assert said is not None and said.startswith("items is a list, and the string sent for "
+                                                "it is not valid JSON: ")
+    assert _broken_json({"where": "{not json"}, schema).startswith("where is an object")
+    assert "nests too deep" in _broken_json({"items": "[" * 100_000}, schema)
+    for fine in ({"items": "a cat, a dog"}, {"name": "[not json"}, {"items": '[{"prompt": "a"}]'},
+                 {"items": [{"prompt": "a"}]}):
+        assert _broken_json(fine, schema) is None, fine
+
+
 def test_a_plain_value_in_a_string_is_read_as_its_type_and_a_wrong_name_gets_a_hint():
     from celine.turns.tools import _lenient, _meant
     schema = {"properties": {"unread": {"type": "boolean"}, "limit": {"type": "integer"},

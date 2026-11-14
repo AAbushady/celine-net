@@ -44,8 +44,10 @@ def _args(arguments: str | None, limit: int = 300) -> str:
 
 ARG_TOKENS = 300          # a string argument of an aged call over this is shortened
 # the end short_arguments gives a shortened value; a call that sends it back is refused
-# (turns/tools.py _invalid): the app's mark is never a value a tool may receive
-MARK = re.compile(r"\[[\d,]+ lines, about [\d,]+ tokens, shortened; the call is kept: "
+# (turns/tools.py _invalid): the app's mark is never a value a tool may receive. Models copy
+# it with its counts reworded ("[285 chars, about 776 tokens, shortened; ..."), so only its
+# fixed words are matched.
+MARK = re.compile(r"\[[^\[\]\n]{0,120}?shortened; the call is kept: "
                   r"([^\s;\]]+); read it back with past_conversations__read_tool_call"
                   r"\(id=\"[^\"]*\"\)\]\s*\Z")
 

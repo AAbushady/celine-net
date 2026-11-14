@@ -350,7 +350,7 @@ def _invalid(args: dict | None, arguments: str | None, spec, cfg) -> str | None:
             them = ", ".join(names[:-1]) + " and " + names[-1] if len(names) > 1 else names[0]
             parts.append(f"{them} {'go' if len(names) > 1 else 'goes'} inside {where}")
         return "; ".join(parts)
-    return mistyped(args, spec.schema) or _marked(args)
+    return mistyped(args, spec.schema) or _marked(args) or _broken_json(args, spec.schema)
 
 
 def _homes(props: dict) -> dict[str, str]:
@@ -380,6 +380,25 @@ def _marked(args: dict) -> str | None:
     key, cid = hit
     return (f"{key} ends in the app's mark for the shortened {key} of call {cid}; "
             f"past_conversations__read_tool_call(id=\"{cid}\") reads that call back")
+
+
+def _broken_json(args: dict, schema: dict) -> str | None:
+    """A list or object sent as a string that opens like JSON and is not JSON (_lenient
+    reads the ones that are): a tool would take it as one plain string, so a broken list of
+    items would run as one item with the whole text as its prompt."""
+    props = schema.get("properties", {})
+    for key, v in args.items():
+        kind = _kind(props.get(key) or {})
+        if kind not in _JSON or not isinstance(v, str) or v.strip()[:1] not in ("[", "{"):
+            continue
+        what = "a list" if kind == "array" else "an object"
+        try:
+            json.loads(v)
+        except ValueError as e:
+            return f"{key} is {what}, and the string sent for it is not valid JSON: {e}"
+        except RecursionError:
+            return f"{key} is {what}, and the string sent for it nests too deep to read"
+    return None
 
 
 def _meant(name: str, missing: list[str], props: list[str]) -> str | None:

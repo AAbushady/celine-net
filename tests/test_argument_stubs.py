@@ -88,3 +88,14 @@ def test_the_mark_names_the_argument_and_call_it_shortened():
     quoted = f"the app wrote {short['command']} into my file, then I fixed it"
     assert compact.marked({"content": quoted}) is None, "a text that quotes it runs"
     assert compact.marked({"command": SCRIPT}) is None
+
+
+def test_the_mark_copied_with_its_counts_reworded_is_still_the_mark():
+    from celine.turns import compact
+    # bug 72: items sent as the text of an aged call, its mark copied as "chars"
+    items = ('[{"preset": "krea2-turbo", "width": 1376, "height": 1152, "loras": '
+             '["krea_2/a:0.8", "krea_2/Bondage_A… [285 chars, about 776 tokens, shortened; '
+             'the call is kept: t3:8:0; read it back with '
+             'past_conversations__read_tool_call(id="t3:8:0")]')
+    assert compact.marked({"items": items, "count": "1"}) == ("items", "t3:8:0")
+    assert compact.marked({"items": [{"prompt": f"a cat {items}"}]}) == ("items", "t3:8:0")
