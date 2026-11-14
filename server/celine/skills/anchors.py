@@ -1,5 +1,5 @@
 """Hashline anchors: each line of a text as `<n>:<hash>| <text>`, and anchored edits
-(replace, insert, delete) checked against the text as it is now. The notebook's notes
+(replace, insert, delete) checked against the text as it is now, and append at the bottom. The notebook's notes
 (notebook__edit) uses them."""
 from __future__ import annotations
 
@@ -21,16 +21,17 @@ def is_stamp(line: str) -> bool:
 
 class Edit(TypedDict, total=False):
     """One change of notebook__edit, anchored on `n:hash` from notebook__read."""
-    op: Required[Annotated[Literal["replace", "insert", "delete"],
+    op: Required[Annotated[Literal["replace", "insert", "delete", "append"],
                            "replace: lines start to end become `text`. insert: `text` goes "
-                           "below `after`. delete: lines start to end go."]]
+                           "below `after`. delete: lines start to end go. append: `text` "
+                           "goes at the bottom of the note, with no anchor."]]
     start: Annotated[str, "replace, delete: the anchor of the first line, such as "
                           "\"12:ab\"."]
     end: Annotated[str, "replace, delete: the anchor of the last line. Leave it out for "
                         "one line."]
     after: Annotated[str, "insert: the anchor of the line to insert below, \"start\" for "
                           "the top of the note or \"end\" for its bottom."]
-    text: Annotated[str, "replace, insert: the new lines, plain, without anchors."]
+    text: Annotated[str, "replace, insert, append: the new lines, plain, without anchors."]
 
 
 # Hashline anchors: `<n>:<hash>`, the hash two base32 characters of the line's text.
@@ -126,8 +127,9 @@ def _number(ref) -> int | None:
 # the fields each op takes (Edit), the ones it cannot do without, and what a missing one
 # holds when its name alone does not say
 TAKES = {"replace": ("start", "end", "text"), "insert": ("after", "text"),
-         "delete": ("start", "end")}
-NEEDS = {"replace": ("start", "text"), "insert": ("after", "text"), "delete": ("start",)}
+         "delete": ("start", "end"), "append": ("text",)}
+NEEDS = {"replace": ("start", "text"), "insert": ("after", "text"), "delete": ("start",),
+         "append": ("text",)}
 HOLDS = {"after": "the anchor of the line the text goes under, \"start\" for the top or "
                   "\"end\" for the bottom"}
 
@@ -149,8 +151,8 @@ def _op(i: int, e) -> str:
     if not isinstance(op, str) or op not in TAKES:
         said = "has no `op`" if op is None else f"has the `op` {json.dumps(op, default=str)}"
         raise EditRefused(
-            f"edit {i} {said}: `op` is \"replace\", \"insert\" or \"delete\". To add at "
-            f"the end, insert with `after` set to the last line's anchor.")
+            f"edit {i} {said}: `op` is \"replace\", \"insert\", \"delete\" or \"append\" "
+            f"(at the bottom of the note, with no anchor).")
     missing = [k for k in NEEDS[op]
                if (not isinstance(e.get(k), str) if k == "text" else e.get(k) is None)]
     if missing:
@@ -184,8 +186,8 @@ def plan(edits, lines: list[str], has_stamp: bool, earlier=(),
         new = text.replace("\r\n", "\n").split("\n") if text else []
         if new and new[-1] == "" and len(new) > 1:
             new.pop()
-        if op == "insert":
-            after = e["after"]
+        if op in ("insert", "append"):
+            after = e["after"] if op == "insert" else "end"
             if str(after) in ("start", "0") or (has_stamp and _number(after) == 1):
                 a = 1 if has_stamp else 0
             elif str(after) == "end":

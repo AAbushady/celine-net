@@ -69,7 +69,8 @@ first blank line:
   starting a second one.
 - To change part of a note: read it with `notebook__read`, then call `notebook__edit`
   with the anchors (`12:ab`) of the lines you change. Only the new lines go in `text`,
-  never the anchors. To add at the end: `notebook__write(mode="append")`. For a new note,
+  never the anchors. To add at the end, no read and no anchor: an edit with
+  `op="append"`, or `notebook__write(mode="append")`. For a new note,
   or all of it anew: `notebook__write`.
 - The app keeps line 1 of every note, `Last changed: <date> <time>`, up to date for you.
 - What you learned on the web goes in as facts in your own words, each with its link
@@ -124,7 +125,8 @@ first blank line:
 - `notebook__list(folder)`: what is there, with summaries.
 - `notebook__read(path, from_line, to_line)`: one note or a stretch of its lines, each line with its anchor `n:hash`.
 - `notebook__edit(path, edits, summary)`: replace, insert or delete lines by their
-  anchors. All edits in one call refer to the note as you read it. A refused edit shows
+  anchors, or append lines at the bottom with no anchor. All edits in one call refer to
+  the note as you read it. A refused edit shows
   the current lines: try again with those anchors.
 - `notebook__write(path, content, summary, mode)`: a new note or all of it anew
   (`replace`, default), or more text at its end (`append`).

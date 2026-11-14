@@ -370,10 +370,26 @@ async def test_an_edit_of_the_wrong_shape_is_told_the_right_one(store, cfg):
         "edit 1 is text, and an edit is an object with `op` and its fields.")
     out = await nb.edit(ctx, "opinions/food.md", [{"after": a[2], "text": "x"}])
     assert out.is_error and "edit 1 has no `op`" in out.content
-    out = await nb.edit(ctx, "opinions/food.md", [{"op": "append", "text": "x"}])
-    assert out.is_error and 'edit 1 has the `op` "append"' in out.content
-    assert "insert with `after` set to the last line's anchor" in out.content
+    out = await nb.edit(ctx, "opinions/food.md", [{"op": "add", "text": "x"}])
+    assert out.is_error and out.content == nothing + (
+        'edit 1 has the `op` "add": `op` is "replace", "insert", "delete" or "append" '
+        "(at the bottom of the note, with no anchor).")
     assert (cfg.agent.notebook / "opinions/food.md").read_text() == before
+
+
+async def test_append_adds_at_the_bottom_with_no_anchor(store, cfg):
+    """Bug 77: op "append" was refused, and the refusal sent the agent to read the note
+    for its last line's anchor."""
+    nb = Notebook(cfg)
+    ctx = _ctx("c", store, cfg)
+    a = await _note(nb, ctx)
+    out = await nb.edit(ctx, "opinions/food.md", [
+        {"op": "replace", "start": a[3], "text": "- pizza: fine"},
+        {"op": "append", "text": "- tea: no\n- water: yes"}])
+    assert not out.is_error, out.content
+    assert (cfg.agent.notebook / "opinions/food.md").read_text() == (
+        f"{STAMP}\n# food\n- pizza: fine\n- olives: gross\n\n## drinks\n"
+        "- coffee: yes\n- tea: no\n- water: yes\n")
 
 
 async def test_a_read_stops_after_to_line(store, cfg):

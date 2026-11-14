@@ -353,7 +353,7 @@ class Notebook:
         ctx: ToolContext,
         path: Annotated[str, "The path of an existing note."],
         edits: Annotated[list[Edit], "The changes: replace, insert or delete, each with "
-                                     "anchors."],
+                                     "anchors, or append at the bottom."],
         summary: Annotated[str, "A new index line. Leave it empty to keep the old "
                                 "one."] = "",
     ) -> ToolResult:
