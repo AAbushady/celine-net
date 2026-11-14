@@ -57,6 +57,11 @@ FIELDS: list[dict[str, Any]] = [
     {"key": "ask_before_setup", "label": "Ask before setting up services", "type": "bool",
      "help": "A server, a model or a service is set up only after the plan is explained "
              "and you say OK.", "default": True},
+    # skills/me.py: off, a change of the banned words applies at once (a large removal asks)
+    {"key": "ask_banned_words", "label": "Ask before banned word changes", "type": "bool",
+     "help": "Off: banned words, phrases and patterns it adds or removes apply at once, and "
+             "only removing more than 10 in one change asks you. Persona and talk always ask.",
+     "default": True},
     # settings/agent_models.py picked_by_user: on, a role list makes no cloud model the user's pick
     {"key": "ask_listed_cloud", "label": "Ask before cloud models from your lists",
      "type": "bool",

@@ -137,8 +137,10 @@ FIELDS also holds the settings shown on other pages: `user_name` (Your name, def
 and the onboarding; `lock_archived` (Lock archived chats, on) and `image_captions_auto`
 (Describe new photos in Messages, off) on General; `smart_search_refresh_minutes` (Update
 the search index every, 15 minutes) on Search index; `ask_before_setup` (Ask before
-setting up services, on) and `ask_listed_cloud` (Ask before cloud models from your lists,
-off) in the agent page's Behaviour section; `guard` (Guard mode, Enforce) on Guard; and
+setting up services, on), `ask_listed_cloud` (Ask before cloud models from your lists,
+off) and `ask_banned_words` (Ask before banned word changes, on; off, `me__edit` changes the
+banned words, phrases and patterns at once, and removing more than 10 in one change still
+asks) in the agent page's Behaviour section; `guard` (Guard mode, Enforce) on Guard; and
 `code_websearch` (Web search for the coding agent, off), which no page shows (general.toml
 or `settings__propose`).
 

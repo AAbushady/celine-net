@@ -1,8 +1,10 @@
 """The agent's self: `me__read` shows its persona, its
 talk and its slop list (its row, celine/agent.py); `me__edit` changes its persona, its
 talk and its slop list (banned words, phrases, patterns). They are in every chat, so
-every change waits for the user's approval first (celine/approvals.py, kind `agent`),
-whatever the guard is. Every change goes through
+a change waits for the user's approval first (celine/approvals.py, kind `agent`),
+whatever the guard is: always for its persona and talk; for its slop list unless
+general `ask_banned_words` is off, and then still for a change that removes more than
+FREE_REMOVALS entries. Every change goes through
 agent.write_sync as written by it, so it is in the text's History (agent:persona, agent:talk,
 agent:voice; Settings, the agent's page) and in Events (the `agent` source, events.py).
 `me__whoami` says where it is, every line read when it is called (whoami_lines)."""
@@ -23,6 +25,7 @@ NAMES = {"persona": "Persona", "talk": "Example lines", "banned": "Banned words"
          "phrases": "Banned words", "patterns": "Banned words"}
 ASK = "change the {name}"
 NOBODY = "Nothing was changed: nobody is here to approve it."
+FREE_REMOVALS = 10      # with ask_banned_words off, a change removing more still asks
 
 
 def _numbered(items: list[str]) -> str:
@@ -242,8 +245,10 @@ class Me:
         remove: Annotated[list[str], "banned, phrases, patterns: entries to "
                                      "remove."] = [],  # noqa: B006
     ) -> ToolResult:
-        """Change your persona, your talk or your slop list. Every change waits until
-        {{username}} approves it; denied or unanswered, nothing changes. Every change is
+        """Change your persona, your talk or your slop list. A change of your persona or
+        talk waits until {{username}} approves it, and so does one of your slop list
+        unless {{username}} let those apply at once (then only removing more than 10
+        entries in one change asks); denied or unanswered, nothing changes. Every change is
         kept in its History, and {{username}} sees it in Settings and in Events; when you
         change your persona, tell {{username}} in one line. Example:
         me__edit(what="phrases", add=["you were right"]), or me__edit(what="talk",
@@ -255,8 +260,10 @@ class Me:
             return ToolResult(content=got, is_error=True)
         body, said = got
         store, cfg = ctx.store, self.cfg
-        if no := await self._approved(ctx, what, old, new, list(add or []),
-                                      list(remove or [])):
+        asks = what not in LISTS or bool(cfg.r("ask_banned_words")) or \
+            len(remove or []) > FREE_REMOVALS
+        if asks and (no := await self._approved(ctx, what, old, new, list(add or []),
+                                                list(remove or []))):
             return ToolResult(content=no, is_error=True)
         before = _kept(cfg, what)
 

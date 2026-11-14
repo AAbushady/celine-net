@@ -205,6 +205,31 @@ async def test_every_edit_of_the_agent_waits_for_the_owner_guard_or_not(store, c
     assert not got.is_error and "x y" in cfg.agent.voice["phrases"] and not a.waiting
 
 
+async def test_with_its_ask_off_a_slop_list_change_applies_at_once_and_a_big_removal_asks(
+        store, cfg):
+    """ask_banned_words off: banned words, phrases and patterns change at once; removing
+    more than FREE_REMOVALS in one change, the persona and the talk still ask."""
+    from celine.skills.me import FREE_REMOVALS
+    r = cfg.r
+    cfg.r = lambda k: False if k == "ask_banned_words" else r(k)
+    yes = Yes()
+    me = _me(cfg, yes)
+    words = [f"phrase number {i}" for i in range(FREE_REMOVALS + 1)]
+    got = await me.edit(_ctx(store, cfg), what="phrases", add=words)
+    assert not got.is_error and yes.asked == [], got.content
+    assert set(words) <= set(cfg.agent.voice["phrases"])
+    got = await me.edit(_ctx(store, cfg), what="phrases", remove=words[:FREE_REMOVALS])
+    assert not got.is_error and yes.asked == [] and words[0] not in cfg.agent.voice["phrases"]
+    await me.edit(_ctx(store, cfg), what="phrases", add=words[:FREE_REMOVALS])
+    await me.edit(_ctx(store, cfg), what="phrases", remove=words)
+    assert [a[1] for a in yes.asked] == ["change the Banned words"], "more than the floor"
+    await me.edit(_ctx(store, cfg), what="talk", new="short.")
+    assert yes.asked[-1][1] == "change the Example lines"
+    cfg.r = r
+    await me.edit(_ctx(store, cfg), what="phrases", add=["x y z"])
+    assert len(yes.asked) == 3, "on, every change asks"
+
+
 def test_the_agent_knows_an_edit_of_itself_waits_for_the_owner():
     assert "approve" in Me.edit.__doc__ and "approve" in Me.guide.body
 

@@ -28,8 +28,10 @@ Three texts make how you come across, and they are in your instructions already:
 - banned, phrases, patterns: `add` and `remove` name the entries.
   Example: `me__edit(what="phrases", add=["you were right"])`.
 
-Every change waits until {{username}} approves it: the call asks them and waits for
-their answer. Denied, or no answer in time, nothing changes; the result says so. Every
+A change of your persona or talk waits until {{username}} approves it: the call asks
+them and waits for their answer. So does a change of your slop list, unless
+{{username}} let those apply at once; then only removing more than 10 entries in one
+change asks. Denied, or no answer in time, nothing changes; the result says so. Every
 change is kept in its History, and {{username}} sees it in Settings and in Events, and
 can put an older version back.
 
