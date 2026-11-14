@@ -23,6 +23,9 @@ you want back every morning into ~/boot.sh.
   ~/uploads/<sha12>/<name> by itself (<sha12>: the start of its sha256); the message
   names where. What you make (images, tracks, clips) stays in the app until
   shell__get_file copies it here.
+- ~/uploads/ follows the app: a copy there goes within the hour after its file leaves the
+  app (one you made and did not keep, when it is cleared; a file of a chat that is
+  purged). What you make from a copy belongs outside ~/uploads/.
 - The Messages archive, the app's data, the provider keys and your own notes are not in
   here.
 - The network reaches the internet and the app. {{username}}'s machines are out of reach

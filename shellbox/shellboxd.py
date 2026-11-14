@@ -2044,6 +2044,41 @@ def put_file(rel: str, body, length: int, origin: str = "") -> dict:
     return {"path": str(p), "bytes": length}
 
 
+# ~/uploads/<sha12>/: where the app copies files in (server/celine/box_files.py copy_in)
+UPLOAD_FOLDER = re.compile(r"[0-9a-f]{12}")
+
+
+def _uploads() -> Path:
+    """~/uploads, refused when it is a link: a removal under it must stay in the home."""
+    base = HOME / "uploads"
+    if base.is_symlink():
+        raise Problem("uploads is a link, not a folder of the home.", 409)
+    return base
+
+
+def upload_folders() -> list[dict]:
+    """The app's folders in ~/uploads (<sha12>, not links), each with when it last changed."""
+    try:
+        entries = list(os.scandir(_uploads()))
+    except FileNotFoundError:
+        return []
+    return [{"name": e.name, "mtime": e.stat(follow_symlinks=False).st_mtime}
+            for e in entries
+            if UPLOAD_FOLDER.fullmatch(e.name) and e.is_dir(follow_symlinks=False)]
+
+
+def remove_upload(name: str) -> bool:
+    """~/uploads/<name> with everything in it, when it is one of the app's folders and not a
+    link. -> whether it was there."""
+    if not UPLOAD_FOLDER.fullmatch(name or ""):
+        raise Problem("An uploads folder is named by 12 hex characters.")
+    p = _uploads() / name
+    if p.is_symlink() or not p.is_dir():
+        return False
+    shutil.rmtree(p)           # never follows a link inside (shutil.rmtree.avoids_symlink_attacks)
+    return True
+
+
 def byte_range(header: str, size: int) -> tuple[int, int] | None:
     """The one range of `Range: bytes=a-b`, `a-` or `-n` as (first, last); None for no
     range, or several (the whole file then). ValueError when it starts past the end."""
@@ -2107,6 +2142,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.log(parse_qs(url.query))
         if url.path == "/file":
             return self.get_file(parse_qs(url.query).get("path", [""])[0])
+        if url.path == "/uploads":
+            try:
+                return self.send_json({"folders": upload_folders()})
+            except Problem as e:
+                return self.send_json({"error": str(e)}, e.status)
         if url.path == "/forward":
             return self.forward(parse_qs(url.query).get("port", [""])[0])
         if url.path.startswith("/code/"):
@@ -2182,6 +2222,20 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"error": f"The file could not be written: {e.strerror}."},
                                   500)
         self.send_json(res)
+
+    def do_DELETE(self):
+        if not self.authorized():
+            return
+        parts = urlparse(self.path).path.strip("/").split("/")
+        if len(parts) != 2 or parts[0] != "uploads":
+            return self.send_json({"error": "No such endpoint."}, 404)
+        try:
+            return self.send_json({"removed": remove_upload(parts[1])})
+        except Problem as e:
+            return self.send_json({"error": str(e)}, e.status)
+        except OSError as e:
+            return self.send_json({"error": f"The folder could not be removed: {e.strerror}."},
+                                  500)
 
     def code(self, path: str, body: dict | None) -> None:
         """/code/*: the coding agent's sessions (CODE, shellbox/agents/). GET with body

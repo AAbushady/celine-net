@@ -299,3 +299,78 @@ async def test_look_describes_it_for_a_model_that_does_not(home, cfg, store, mon
                                 question="what colour?")
     assert out.images is None and out.content == "shot.png: Description by eyes: a red dot"
     assert asked == [(PNG, "what colour?")]
+
+
+class _Docs:
+    def __init__(self, *shas: str):
+        self.held = set(shas)
+
+    async def shas(self) -> set[str]:
+        return self.held
+
+
+async def test_uploads_follow_the_app_and_a_copy_goes_when_its_bytes_leave(
+        home, cfg, store, tmp_path, monkeypatch):
+    import time
+
+    from chat_fixtures import upload
+    from celine.settings import features
+    monkeypatch.setattr(features, "on", lambda cfg, f: True)
+
+    async def copied(data: bytes, life: str | None = None) -> str:
+        row = await upload(cfg, store, data, f"{data.decode()}.png", "image/png")
+        if life:
+            await store.write(lambda c: c.execute(
+                "UPDATE attachments SET life=?, life_at='2026-11-01T00:00:00+00:00' WHERE id=?",
+                (life, row["id"])))
+        src = tmp_path / data.decode()
+        src.write_bytes(data)
+        return (await box_files.copy_in(cfg, src, "x.png")).split("/")[2]
+
+    message, temporary, kept, cleared = (await copied(b"message"), await copied(b"made", "temporary"),
+                                         await copied(b"kept", "kept"), await copied(b"gone", "cleared"))
+    src = tmp_path / "doc"
+    src.write_bytes(b"a document")
+    doc = (await box_files.copy_in(cfg, src, "doc.pdf")).split("/")[2]
+    src.write_bytes(b"a chat that was purged")
+    purged = (await box_files.copy_in(cfg, src, "old.png")).split("/")[2]
+    (home / "uploads" / "notes").mkdir()
+    docs = _Docs(hashlib.sha256(b"a document").hexdigest())
+
+    later = time.time() + 2 * box_files.MIRROR_MARGIN
+    assert await box_files.mirror(cfg, store, docs, now=time.time()) == 0, \
+        "a folder that changed within the hour stays: a copy may be on its way"
+    assert await box_files.mirror(cfg, store, docs, now=later) == 2
+    left = sorted(p.name for p in (home / "uploads").iterdir())
+    assert left == sorted([message, temporary, kept, doc, "notes"]), \
+        "what the app holds stays; a cleared file and one no row holds go"
+    assert cleared not in left and purged not in left
+    assert await box_files.mirror(cfg, store, docs, now=later) == 0
+
+
+def test_the_box_removes_only_its_upload_folders(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    spec = importlib.util.spec_from_file_location("shellboxd_uploads",
+                                                  ROOT / "shellbox" / "shellboxd.py")
+    d = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(d)
+    d.HOME = tmp_path
+    up = tmp_path / "uploads"
+    (up / "0123456789ab").mkdir(parents=True)
+    (up / "0123456789ab" / "a.png").write_bytes(b"x")
+    outside = tmp_path / "work"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("hers")
+    (up / "abcdefabcdef").symlink_to(outside)
+    (up / "notes").mkdir()
+    assert [f["name"] for f in d.upload_folders()] == ["0123456789ab"]
+    assert d.remove_upload("0123456789ab") is True and not (up / "0123456789ab").exists()
+    assert d.remove_upload("abcdefabcdef") is False and (outside / "keep.txt").exists(), \
+        "a link is never followed"
+    for bad in ("../work", "notes", ""):
+        with pytest.raises(d.Problem):
+            d.remove_upload(bad)
+    up.rename(tmp_path / "real")
+    up.symlink_to(outside)
+    with pytest.raises(d.Problem):
+        d.upload_folders()

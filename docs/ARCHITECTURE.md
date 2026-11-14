@@ -1186,7 +1186,11 @@ leaving its home is refused). `box_files.py` is the app's side. Every file you u
 copied in the background to `~/uploads/<sha12>/<name>` while the shellbox is on
 (`<sha12>`: the start of its sha256; bytes already there are not sent again, so its edits
 to that copy stay); a chat attachment keeps where its copy
-landed (`attachments.box_path`) and its context names it. Every shell and browser call
+landed (`attachments.box_path`) and its context names it. `~/uploads/` follows the app:
+every hour (`box_files.mirror`, after the cleanup look of `comfyui/life.py`) a
+`<sha12>` folder whose bytes no attachment that is not cleared, the agent's portrait or a
+Documents file holds is removed through the daemon's `DELETE /uploads/<sha12>`, after
+`GET /uploads` lists the folders; a folder that changed in the last hour stays. Every shell and browser call
 names its terminal or tab; the conversation's own (`terminals/store.default_terminal`) is
 named in the skills' prompt fragments. Your own terminals it reads always and runs, types or
 stops in only while `may_type` is on. The skill upserts the terminal row from the result's

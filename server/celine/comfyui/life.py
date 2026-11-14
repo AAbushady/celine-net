@@ -23,7 +23,7 @@ no links.
 
 The cleanup look, at each start and every CLEAR_EVERY seconds (`keep_clearing`), on the
 app's clock: attachments.gc, then `clear`, then `sweep`, which removes the files no row
-holds any more. A row goes without a word to this module: a conversation purged or a message
+holds any more; every hour also the box's copies of what went (box_files.mirror). A row goes without a word to this module: a conversation purged or a message
 deleted takes its attachments with it (conversations/store.py `_drop`, and the database's
 ON DELETE CASCADE), so the sweep looks at the files, not at the deletes. It removes:
 - the dated entry a cleared row still names, and a blob whose every attachment is cleared
@@ -168,14 +168,17 @@ async def clear(cfg, store, at: datetime | None = None) -> int:
     return cleared
 
 
-async def keep_clearing(cfg, store, every: float = CLEAR_EVERY) -> None:
+async def keep_clearing(cfg, store, kbs=None, every: float = CLEAR_EVERY) -> None:
     """The app's loop: the cleanup look every `every` seconds (the startup looks once
-    before): attachments.gc, then `clear`."""
+    before): attachments.gc, then `clear`, then the box's copies of what went
+    (box_files.mirror, with the Documents files of `kbs` held)."""
+    from .. import box_files
     while True:
         await anyio.sleep(every)
         try:
             await gc(cfg, store)
             await clear(cfg, store)
+            await box_files.mirror(cfg, store, kbs.documents() if kbs is not None else None)
         except Exception:
             log.exception("cleanup failed", extra={"event": "comfyui.clear_failed"})
 

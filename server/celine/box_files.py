@@ -9,6 +9,10 @@ waits for the box nor fails with it. A box that is down or full only costs a lin
 app log. A chat attachment keeps where its copy landed (attachments.box_path), and its
 context names it. Files it makes or fetches are not copied by themselves: shell__get_file
 copies one of its own into ~/uploads/ the same way (copy_in).
+
+~/uploads/ follows the app (`mirror`, every hour with the app's cleanup look): a copy goes
+when the app no longer holds its bytes, so a file the agent made and did not keep leaves the
+box when it is cleared, and a chat's files when the chat is purged.
 """
 from __future__ import annotations
 
@@ -16,13 +20,14 @@ import asyncio
 import hashlib
 import logging
 import re
+import time
 from pathlib import Path
 
 import anyio
 import httpx
 
 from . import shellbox
-from .errors import said
+from .errors import ToolRefused, said
 from .settings import features
 
 log = logging.getLogger("celine.box_files")
@@ -30,6 +35,7 @@ log = logging.getLogger("celine.box_files")
 UPLOADS = "uploads"
 CHUNK = 1 << 20
 TRANSFER = 600          # seconds one chunk of a file may take
+MIRROR_MARGIN = 3600.0  # seconds a folder is left alone after it changed: a copy on its way
 _tasks: set[asyncio.Task] = set()      # running copies, kept from the garbage collector
 
 
@@ -122,6 +128,47 @@ async def _there(cfg, rel: str, transport: httpx.AsyncBaseTransport | None) -> b
 def _sha(src: Path) -> str:
     with src.open("rb") as f:
         return hashlib.file_digest(f, "sha256").hexdigest()
+
+
+def _held(c) -> set[str]:
+    """The folders of ~/uploads/ whose bytes the app still holds: an attachment that is not
+    cleared (a kept or temporary file it made, a file on a message), the agent's portrait."""
+    return {r[0][:12] for r in c.execute(
+        "SELECT sha256 FROM attachments WHERE life IS NULL OR life != 'cleared' "
+        "UNION SELECT portrait FROM agent WHERE portrait IS NOT NULL")}
+
+
+async def mirror(cfg, store, documents=None, *, now: float | None = None,
+                 transport: httpx.AsyncBaseTransport | None = None) -> int:
+    """Every folder ~/uploads/<sha12>/ whose bytes the app no longer holds (`_held`, and a
+    Documents file of `documents`), removed with what is in it, once MIRROR_MARGIN after it
+    last changed. Only while the shellbox is on; a box that does not answer or refuses is
+    asked again at the next look. -> how many folders went."""
+    if not features.on(cfg, "shellbox") or not shellbox.url(cfg):
+        return 0
+    held = await store.read(_held)
+    if documents is not None:
+        held |= {s[:12] for s in await documents.shas()}
+    t = time.time() if now is None else now
+    try:
+        status, listed = await shellbox.call(cfg, "GET", "/uploads", transport=transport)
+        if status != 200:
+            return 0                     # a box without the listing
+        gone = 0
+        for f in listed.get("folders") or []:
+            name = str(f.get("name") or "")
+            if name in held or t - float(f.get("mtime") or t) < MIRROR_MARGIN:
+                continue
+            status, res = await shellbox.call(cfg, "DELETE", f"/{UPLOADS}/{name}",
+                                              transport=transport)
+            gone += int(status == 200 and res.get("removed") is True)
+    except (httpx.HTTPError, ToolRefused) as e:
+        log.info("the box's uploads were not tidied: %s", e if isinstance(e, ToolRefused)
+                 else "the shellbox is not reachable.")
+        return 0
+    if gone:
+        log.info("box copies removed", extra={"event": "box_files.mirrored", "count": gone})
+    return gone
 
 
 def copy_later(cfg, src: Path, filename: str, store=None, aid: str | None = None) -> None:

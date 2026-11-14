@@ -284,6 +284,11 @@ class DocumentsKB:
             "SELECT id FROM items WHERE path = ?", (rel,)).fetchone())
         return self.item(iid[0]) if iid else None
 
+    async def shas(self) -> set[str]:
+        """The sha256 of every file it holds (box_files.mirror keeps their box copies)."""
+        return await self.file.read(lambda c: {r[0] for r in c.execute(
+            "SELECT sha256 FROM items")})
+
     def backlinks(self, iid: int) -> list[dict[str, Any]]:
         """Markdown items that link to this one ([[its name]] or [[its path]])."""
         it = self.item(iid)

@@ -731,8 +731,9 @@ class Shell:
     ) -> ToolResult:
         """Copy your own files from the app into your shellbox, to work on them there (look
         at a track's spectrogram with ffmpeg, cut a clip): each lands at
-        ~/uploads/<id>/<name>, and the same bytes land on the same file. Returns: where each
-        landed."""
+        ~/uploads/<id>/<name>, and the same bytes land on the same file. A copy goes when
+        its file leaves the app: one you made and did not keep, when it is cleared. Save
+        what you make from it outside ~/uploads/. Returns: where each landed."""
         from .. import attachments, box_files
         from ..comfyui import life
         refs = [str(f).strip() for f in (file if isinstance(file, list) else [file]) if str(f or "").strip()]
