@@ -257,6 +257,20 @@ async def test_the_agents_own_feeling_wins_over_the_appraisal(store):
     assert answer.calls == []
 
 
+async def test_a_sub_agents_turn_in_a_chat_is_not_appraised(store):
+    """A sub-agent of a chat works in the chat's place, and its turns are a tool's work,
+    not the agent's own moments."""
+    from celine.backends.llm import LLM
+    cfg = load()
+    parent = await conversations.create(store)
+    sub = await conversations.create(store, agent_of=parent, kind="agent")
+    await _chat_turn(store, sub)
+    answer = FakeBackend([TextDelta('{"emotion": "happy", "strength": 1}'), Done(reason="stop")])
+    app = SimpleNamespace(store=store, cfg=cfg, llm=LLM(cfg))
+    assert await mind.appraise(app, sub, "t1", backend=answer) is None
+    assert answer.calls == []
+
+
 async def test_a_build_batch_takes_a_background_ticket(monkeypatch):
     import asyncio
 

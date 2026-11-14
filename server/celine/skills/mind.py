@@ -586,14 +586,20 @@ class Mind:
 # ---- the appraisal after a chat turn ----------------------------------------------------------
 
 
+def _sub_agent(c: sqlite3.Connection, cid: str) -> bool:
+    """A sub-agent's conversation: its turns are a tool's work, not the agent's own moments."""
+    row = c.execute("SELECT kind FROM conversations WHERE id=?", (cid,)).fetchone()
+    return row is not None and row[0] == "agent"
+
+
 def _turn_facts(c: sqlite3.Connection, cid: str, tid: str) -> dict | None:
     """The exchange of a finished chat turn of its own, or None when it is not one to
-    appraise (another place, not done, or it said how it feels)."""
+    appraise (another place, a sub-agent's, not done, or it said how it feels)."""
     from .places import place_of
     t = c.execute("SELECT state, root_message_id FROM turns WHERE id=?", (tid,)).fetchone()
     if t is None or t[0] != "done":
         return None
-    if place_of(c, cid, tid) != "chat":
+    if place_of(c, cid, tid) != "chat" or _sub_agent(c, cid):
         return None
     if c.execute("SELECT 1 FROM tool_calls tc JOIN messages m ON m.id = tc.message_id "
                  "WHERE m.turn_id=? AND tc.name='mind__feel'", (tid,)).fetchone():
