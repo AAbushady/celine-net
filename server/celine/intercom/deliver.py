@@ -185,6 +185,15 @@ async def take(store, cid: str, turn_id: str, parent: str | None) -> list[dict]:
     return await store.write(fn)
 
 
+async def wakes(store, cid: str) -> bool:
+    """Whether something due waits for `cid` that starts its next turn when this one ends
+    (rule 1)."""
+    return await store.read(lambda c: c.execute(
+        "SELECT 1 FROM intercom_deliveries d JOIN intercom i ON i.id = d.intercom_id "
+        "WHERE d.conversation_id=? AND d.state='pending' AND i.cancelled_at IS NULL AND i.wake "
+        "AND (i.due_at IS NULL OR i.due_at <= ?) LIMIT 1", (cid, now())).fetchone() is not None)
+
+
 async def user_waits(store, cid: str) -> bool:
     """Whether a message from the user waits for `cid` now (one that came after `take`)."""
     return await store.read(lambda c: c.execute(

@@ -44,7 +44,19 @@ async def test_search_skips_the_current_thread_and_hidden_branches(store):
                           config=None, emit=None)
         return (await PastConversations(load()).search(ctx, "pelican")).content
     assert "sandwich" in await search(b)
-    assert "sandwich" not in await search(a)
+    assert "harbour" not in await search(b), "its own hidden branch stays out"
+    # the current conversation is no earlier one: its own match comes with the number that
+    # reads it (bug 68: "No earlier conversation contains it" read as "it was never said")
+    own = (await search(a)).splitlines()
+    assert own[0] == "No earlier conversation contains 'pelican'. For their chats, use the " \
+                     "Messages archive."
+    assert own[1] == "This conversation holds it:"
+    assert own[2].startswith("#1 ") and "sandwich" in own[2] and \
+        own[2].endswith(f"(past_conversations__read(conversation=\"{a[:8]}\", start=1))")
+    gull = await PastConversations(load()).search(
+        ToolContext(conversation_id=b, turn_id="t", tool_call_id="x", store=store, config=None,
+                    emit=None), "albatross")
+    assert gull.content.endswith("Nor does this conversation.")
 
 
 async def test_a_day_is_an_index_a_read_is_a_slice_and_a_tool_call_reads_raw(store):

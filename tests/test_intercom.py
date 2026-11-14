@@ -116,6 +116,45 @@ async def test_a_steer_step_lands_the_message_and_the_turn_goes_on(store, cfg):
     assert await _turns(store, cid) == [("user", "done")], "one turn"
 
 
+class LastWord(FakeBackend):
+    """Answers in one step; with `store` set, the user writes while that last step streams."""
+    store = cid = None
+
+    async def stream(self, messages, tools):
+        self.calls.append(messages)
+        yield TextDelta("on it")
+        if self.store is not None:
+            await user_says(self.store, self.cid, "and the green one")
+        yield Done(reason="stop")
+
+
+async def test_a_message_during_the_last_step_is_not_held_behind_the_background_summary(
+        store, cfg, monkeypatch):
+    """Bug 68: the turn's end made the next prompt ready (a summary, four minutes) before
+    the message that came during its last step landed, so the user sent it again."""
+    from celine.turns import context
+    summarised: list[str] = []
+
+    async def after_turn(store_, cfg_, backend, cid, **kw):
+        summarised.append(cid)
+    monkeypatch.setattr(context, "after_turn", after_turn)
+    cid = await conversations.create(store)
+    await user_says(store, cid, "find the red car")
+    turn = await turns.claim(store, "w")
+    backend = LastWord()
+    backend.store, backend.cid = store, cid
+    await run_turn(turn, store, cfg, backend, EventBus(), Token(turn["id"]), Registry())
+    assert summarised == [], "the waiting message starts the next turn, whose build compacts"
+    assert await store.read(lambda c: c.execute(
+        "SELECT state FROM intercom_deliveries ORDER BY intercom_id DESC LIMIT 1").fetchone()[0]) \
+        == "pending", "it lands at the turn's end (rule 1), not in this turn"
+    quiet = await conversations.create(store)
+    await user_says(store, quiet, "and nothing more")
+    turn = await turns.claim(store, "w")
+    await run_turn(turn, store, cfg, LastWord(), EventBus(), Token(turn["id"]), Registry())
+    assert summarised == [quiet], "with nothing waiting, the next prompt is made ready"
+
+
 async def _family(store):
     parent = await conversations.create(store)
     subs = [await conversations.create(store, title=n, agent_of=parent, agent_name=n,

@@ -148,6 +148,8 @@ async def test_the_tool_says_who_wrote_it_first(store):
     typed = (await skill.find_sent(ctx, text="I'm a failed run")).content
     assert typed.startswith(f"The app sent you \"I'm a failed run\". It first reached you in "
                             f"the message {cfg.user} wrote at ")
+    assert f"It is message #1 of the conversation: past_conversations__read(conversation=" \
+           f"\"{cid[:8]}\", start=1) reads it." in typed, "where to read it (bug 68)"
     recalled = (await skill.find_sent(ctx, text="oolong from the hill shop")).content
     assert "in the [your memory] block the app put under the message of " in recalled
     assert recalled.splitlines()[0].endswith("from your note tea/list.md#oolong.")

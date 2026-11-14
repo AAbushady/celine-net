@@ -328,9 +328,11 @@ async def _run_turn(turn: dict, store: Store, cfg, backend, bus,
                 (f"reached its limit of {wrap[1]}", wrap[0]) if wrap else (None, None)
             await turns.transition(store, tid, cid, "done", cut=cut, reason=reason,
                                    reason_code=code, honor_abort=False)
-            if not token.cancelled:
-                # while the model is loaded and it reads: get the next turn's prompt
-                # ready if the conversation is near the limit
+            # while the model is loaded and it reads: get the next turn's prompt ready if
+            # the conversation is near the limit. Not when a message came during this last
+            # step: it starts the next turn now, whose own build ages and compacts (a
+            # summary here held the user's message back for minutes, bug 68)
+            if not token.cancelled and not await deliver.wakes(store, cid):
                 await context.after_turn(store, cfg, backend, cid, system=system,
                                          tools=wire_tools)
             return

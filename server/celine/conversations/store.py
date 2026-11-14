@@ -767,12 +767,15 @@ def titled(c: sqlite3.Connection, query: str, limit: int, archived: bool = False
 
 
 async def search(store, query: str, exclude: str | None = None, limit: int = 20,
-                 snippet_tokens: int = 48, kinds: tuple[str, ...] | None = None) -> list[dict]:
+                 snippet_tokens: int = 48, kinds: tuple[str, ...] | None = None,
+                 within: str | None = None) -> list[dict]:
     """FTS over user and assistant messages on each conversation's active path; `kinds`:
-    only conversations of those kinds. The query as written, then its bare words, as the
-    Messages archive does."""
+    only conversations of those kinds; `within`: that conversation alone. The query as
+    written, then its bare words, as the Messages archive does."""
     def fn(c: sqlite3.Connection) -> list[dict]:
         of = f"AND c.kind IN ({', '.join('?' * len(kinds))}) " if kinds else ""
+        if within:
+            of += "AND m.conversation_id = ? "
         for match in fts_candidates(query):
             try:
                 rows = c.execute(
@@ -792,7 +795,8 @@ async def search(store, query: str, exclude: str | None = None, limit: int = 20,
                     "    AND c.trashed_at IS NULL"
                     "    AND m.conversation_id != ? " + of +
                     "  ORDER BY rank LIMIT ?",
-                    (snippet_tokens, match, exclude or "", *(kinds or ()), limit)).fetchall()
+                    (snippet_tokens, match, exclude or "", *(kinds or ()),
+                     *((within,) if within else ()), limit)).fetchall()
             except sqlite3.OperationalError as e:
                 if not is_query_error(e):
                     raise

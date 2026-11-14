@@ -48,6 +48,7 @@ KNOBS = (
 READ_TOKENS = 8000          # one read, before the result cap
 LINE = 120                  # characters of a first or last line in the day's index
 LISTED = 50                 # conversations past_conversations__list gives at most
+HERE_MOST = 5               # matches in the current conversation a search shows
 
 # a conversation's kind as the agent reads it: chat, mission, run (a Routine's), task (a
 # background task, a trigger's), sub-agent
@@ -168,19 +169,23 @@ class PastConversations:
         query: Annotated[str, "The words. FTS5 syntax works: quotes, OR, prefix*."],
         limit: Annotated[int | None, "The most matches, default 20."] = None,
     ) -> ToolResult:
-        """Search your earlier conversations with {{username}} in this app, by word search.
-        The current conversation is left out. Do not use it for their WhatsApp or Discord
-        chats: use chat_archive. Returns: one line per match: date, title, conversation
-        id, author, snippet. An archived conversation is over: leave its tasks."""
+        """Search your earlier conversations with {{username}} in this app, by word search,
+        and the earlier messages of this one, each with its message number. Do not use it
+        for their WhatsApp or Discord chats: use chat_archive. Returns: one line per match:
+        date, title, conversation id, author, snippet; then this conversation's matches.
+        An archived conversation is over: leave its tasks."""
         most = int(self.cfg.r("past_conversations.max_results"))
         n = min(int(limit or most), most)
         chars = int(self.cfg.r("past_conversations.snippet_chars"))
+        tokens_ = max(8, min(64, chars // 5))
         hits = await conversations.search(
-            ctx.store, query, exclude=ctx.conversation_id, limit=n,
-            snippet_tokens=max(8, min(64, chars // 5)))
+            ctx.store, query, exclude=ctx.conversation_id, limit=n, snippet_tokens=tokens_)
+        here = await self._here(ctx, query, tokens_)
         if not hits:
-            return ToolResult(content=f"No earlier conversation contains {query!r}. For "
-                                      f"their chats, use the Messages archive.")
+            return ToolResult(content="\n".join(
+                [f"No earlier conversation contains {query!r}. For their chats, use the "
+                 f"Messages archive."] + (here or ["Nor does this conversation."])),
+                display={"hits": 0})
         lines = []
         lock = await ctx.store.read(conversations.lock_archived)
         for h in hits:
@@ -188,7 +193,28 @@ class PastConversations:
             lines.append(f"[{day}] {h['title'] or 'Untitled'} (conversation "
                          f"{h['conversation_id'][:8]}{_archived(h, lock)}), "
                          f"{self._who(h['role'], h['author'])}: ...{h['snippet']}...")
-        return ToolResult(content="\n".join(lines), display={"hits": len(hits)})
+        return ToolResult(content="\n".join(lines + here), display={"hits": len(hits)})
+
+    async def _here(self, ctx: ToolContext, query: str, snippet_tokens: int) -> list[str]:
+        """This conversation's matches, each with its number as past_conversations__read
+        counts (an older part may be in your context only as a summary), or [] for none."""
+        cid = ctx.conversation_id
+        if not cid:
+            return []
+        hits = await conversations.search(ctx.store, query, limit=HERE_MOST,
+                                          snippet_tokens=snippet_tokens, within=cid)
+        if not hits:
+            return []
+        numbers = await ctx.store.read(lambda c: {i["message"]["id"]: i["n"] for i in _items(c, cid)})
+        out = ["This conversation holds it:"]
+        for h in sorted(hits, key=lambda h: numbers.get(h["message_id"], 0)):
+            n = numbers.get(h["message_id"])
+            if n is None:
+                continue
+            out.append(f"#{n} {self._at(h['created_at'])} {self._who(h['role'], h['author'])}: "
+                       f"...{h['snippet']}... (past_conversations__read(conversation=\"{cid[:8]}\", "
+                       f"start={n}))")
+        return out if len(out) > 1 else []
 
     @tool()
     async def list_day(
@@ -496,6 +522,8 @@ class PastConversations:
             else:
                 lines = [f"The app sent you {quoted}. It first reached you in "
                          f"{self._source(origin, part, at(first['at']), at)}.", still]
+                if part is not None and origin[0] not in ("instructions", "summary", "result"):
+                    lines.append(await self._number(ctx, cid, part["id"]))
                 if origin[0] == "summary":
                     lines.append("A summary can be wrong: past_conversations__read reads the "
                                  "messages it stands for.")
@@ -508,6 +536,17 @@ class PastConversations:
         return ToolResult(content="\n".join(lines), display={
             "conversation": cid, "sent": first is not None and not mine,
             "own": own is not None})
+
+    async def _number(self, ctx: ToolContext, cid: str, mid: str) -> str:
+        """Where the message `mid` is to read: its number on the conversation's path, or that
+        it is on an earlier branch, off the path every read and search follows."""
+        n = await ctx.store.read(lambda c: next(
+            (i["n"] for i in _items(c, cid) if i["message"]["id"] == mid), None))
+        if n is None:
+            return ("That message is on an earlier branch of the conversation, off the path "
+                    "that past_conversations__read and __search follow.")
+        return (f"It is message #{n} of the conversation: past_conversations__read("
+                f"conversation=\"{cid[:8]}\", start={n}) reads it.")
 
     def _source(self, kind: tuple[str, str | None], part: dict | None, by: str, at) -> str:
         """Where a text reached it from, in a sentence's words: a piece of a request

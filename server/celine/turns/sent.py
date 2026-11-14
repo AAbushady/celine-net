@@ -204,18 +204,19 @@ def _block(text: str, needle: str, spans: bool) -> tuple[str | None, str | None]
 
 def message_part(c: sqlite3.Connection, cid: str, text: str) -> dict | None:
     """The oldest message to it in conversation `cid` with `text` in one of its stored
-    parts: {at, author (the message's: user, intercom ...), part (`text`: what was
+    parts: {id, at, author (the message's: user, intercom ...), part (`text`: what was
     written to it; `block`: what the app put under it, turns/message_context.py;
     `tail`: its turn's tail, turns/prompt.py), label (the block's, None without one),
     note (the note section a memory block recalled)}. None: no stored part holds it."""
     needle = norm(text)
     like = _like(text)
     for r in c.execute(
-            "SELECT m.created_at, m.author, m.content, x.text AS block, x.tail FROM messages m "
+            "SELECT m.id, m.created_at, m.author, m.content, x.text AS block, x.tail FROM messages m "
             "LEFT JOIN message_context x ON x.message_id = m.id WHERE m.conversation_id=? "
             "AND m.role='user' AND (m.content LIKE ? OR x.text LIKE ? OR x.tail LIKE ?) "
             "ORDER BY m.created_at, m.rowid", (cid, like, like, like)):
-        base = {"at": r["created_at"], "author": r["author"], "label": None, "note": None}
+        base = {"id": r["id"], "at": r["created_at"], "author": r["author"], "label": None,
+                "note": None}
         if needle in norm(r["content"] or ""):
             return {**base, "part": "text"}
         if needle in norm(r["block"] or ""):
