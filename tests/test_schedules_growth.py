@@ -402,3 +402,21 @@ async def test_a_routine_time_limit_of_0_lets_a_run_go_on(store, cfg):
     await sched.tick()
     assert await store.read(lambda c: c.execute(
         "SELECT state FROM runs WHERE id=?", (run["id"],)).fetchone()[0]) == "running"
+
+
+async def test_five_quiet_minutes_free_the_app_and_a_reply_to_the_user_is_use(store, cfg):
+    """idle_only: a user message, or a turn a person waits on that ran or ended, in the
+    last IDLE_MINUTES is use; quiet longer than that is not."""
+    from celine.core.ids import iso
+    chat = await conversations.create(store, "talk")
+    await user_says(store, chat, "hi")
+    sent = datetime.now(timezone.utc)
+    await store.write(lambda c: c.execute("UPDATE turns SET state='done', finished_at=?",
+                                          (iso(sent + timedelta(minutes=3)),)))
+
+    def idle_at(minutes):
+        return store.read(lambda c: runs_mod.idle(c, sent + timedelta(minutes=minutes)))
+    assert runs_mod.IDLE_MINUTES == 5
+    assert not await idle_at(4), "the message came 4 minutes ago"
+    assert not await idle_at(7), "the reply ended 4 minutes ago"
+    assert await idle_at(9)

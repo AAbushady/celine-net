@@ -35,9 +35,9 @@ first that does not, in words:
 While it is frozen (guard/freeze.py) no run starts ("Frozen"); the run whose turn a
 freeze cut is `waiting` ("Frozen") and goes on in that turn after the unfreeze.
 A schedule with `idle_only` starts only when, besides, nobody used the app for
-IDLE_MINUTES (no user message, no turn a person waits on): a run that finds the app in
-use is `skipped` at that look (IN_USE), one still waiting for another reason IDLE_MINUTES
-after its slot is `skipped` (PASSED), and neither is caught up. A run the user started
+IDLE_MINUTES (no user message, no turn a person waits on live or ended in that time): a
+run that finds the app in use is `skipped` at that look (IN_USE), one still waiting for
+another reason LATE_MINUTES after its slot is `skipped` (PASSED), and neither is caught up. A run the user started
 is held to none of this.
 The queue is ordered by night, then by how deep the schedule follows, then by slot, so
 missed nights run night by night, each about its own date.
@@ -157,10 +157,11 @@ END = re.compile(r"\s*\bEND\s*$")
 MISSED = f"Missed while the app was off for more than {CATCH_UP_DAYS} days"
 DELETED = "Its schedule was deleted"
 STOPPED = "Stopped by {{username}}"
-IDLE_MINUTES = 30
+IDLE_MINUTES = 5             # quiet before an idle_only run starts
+LATE_MINUTES = 30            # after its slot, an idle_only run still waiting is skipped
 IN_USE = "The app was in use"
 FROZEN = "Frozen"            # a freeze cut its turn, or it may not start while frozen
-PASSED = f"More than {IDLE_MINUTES} minutes late"
+PASSED = f"More than {LATE_MINUTES} minutes late"
 NEXT_DUE = "The next run was due"     # a Skip routine's older waiting run, at a newer slot
 RETRY_OF = "Retry of the {at} run"    # a Retry routine's run again, until its time
 HELD = "Waiting for the model"         # a running run's reason while its work waits (view)
@@ -445,10 +446,15 @@ def waited_on(c: sqlite3.Connection, missions: bool = False,
 
 def idle(c: sqlite3.Connection, at: datetime, missions: bool = False) -> bool:
     """Nobody used the app for IDLE_MINUTES before `at`: no turn a person waits on is
-    live (waited_on, `missions` as there), and no user message came."""
+    live (waited_on, `missions` as there) or ended in that time, and no user message
+    came."""
     since = iso(at - timedelta(minutes=IDLE_MINUTES))
+    mission = "1" if missions else "t.origin = 'user'"
     return not waited_on(c, missions) and c.execute(
         f"SELECT 1 FROM messages m WHERE {FROM_USER} AND m.created_at >= ? LIMIT 1",
+        (since,)).fetchone() is None and c.execute(
+        f"SELECT 1 FROM turns t JOIN conversations c ON c.id = t.conversation_id "
+        f"WHERE {WAITED_ON.format(mission=mission)} AND t.finished_at >= ? LIMIT 1",
         (since,)).fetchone() is None
 
 
@@ -923,7 +929,7 @@ class Scheduler:
         wait like any run."""
         if not s.idle_only or r["conversation_id"] or r["started_by"] == "user":
             return None
-        if self.now() - datetime.fromisoformat(r["slot"]) > timedelta(minutes=IDLE_MINUTES):
+        if self.now() - datetime.fromisoformat(r["slot"]) > timedelta(minutes=LATE_MINUTES):
             return PASSED
         return None if unused else IN_USE
 

@@ -15,7 +15,7 @@ from ..settings.registry import ROLES
 from ..clock import zone
 from ..core.route_params import TheConfig, TheServices, TheStore
 from . import VARIABLES, fill, run_date, run_roles, shown, words
-from .runs import IDLE_MINUTES, ROW, STOPPED, _repeated, first_slot, results, \
+from .runs import IDLE_MINUTES, LATE_MINUTES, ROW, STOPPED, _repeated, first_slot, results, \
     view as run_view
 
 router = APIRouter(prefix="/api")
@@ -29,7 +29,7 @@ HELP = {
                "limit. Skip ends it with no notice.",
     "idle_only": f"A run starts only when nobody used the app in the last {IDLE_MINUTES} "
                  "minutes, else it is skipped at once; so is one still waiting for another "
-                 f"reason {IDLE_MINUTES} minutes after its time. Run now and Retry are not "
+                 f"reason {LATE_MINUTES} minutes after its time. Run now and Retry are not "
                  "skipped for this.",
     "wall_minutes": "The most minutes one run may work; waiting for a model does not count. "
                     "Empty uses the Routine time limit in Settings, Advanced.",
@@ -111,7 +111,7 @@ async def list_schedules(cfg: TheConfig) -> dict:
 async def put_schedule(request: Request, cfg: TheConfig, services: TheServices, name: str) -> dict:
     """{label, summary, cron or time ("02:00": every day then), prompt, after, reviewer,
     reviewer_prompt, turns, note, role, on, idle_only
-    (start only when nobody used the app for 30 minutes, else skip that run),
+    (start only when nobody used the app for IDLE_MINUTES, else skip that run),
     wall_minutes (minutes it may run, null: the Routine time limit),
     daytime (true: its dates are the calendar date of its slot, not the night's),
     on_fail (retry or skip; daytime and on_fail left out, the stored ones stay)}: the
