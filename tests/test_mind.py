@@ -70,6 +70,29 @@ async def _agent(store, cfg):
     return skill, reg
 
 
+async def test_a_feeling_in_its_own_words_is_kept_and_shown_and_the_word_moves_the_mood(store):
+    """Report #78: mind__feel took only a word of the list. Its own words now are the
+    feeling kept and shown; the nearest word stays the point its mood is worked out from."""
+    from celine.skills import ToolContext
+    cfg = load()
+    skill, _ = await _agent(store, cfg)
+    cid = await conversations.create(store)
+    ctx = ToolContext(cid, "t1", "k1", store, cfg, None)  # type: ignore[arg-type]
+    out = await skill.feel(ctx, emotion="embarrassed", strength=0.4, why="the check landed",
+                           feeling="  stung, and  glad the check was real ")
+    assert not out.is_error, out.content
+    rows = await store.read(mind._mood_rows)
+    assert rows[-1]["emotion"] == "embarrassed"
+    assert rows[-1]["words"] == "stung, and glad the check was real"
+    line = mind.describe_mood(rows, timezone.utc, datetime.now(timezone.utc))
+    assert '"stung, and glad the check was real" since ' in line and "embarrassed" not in line
+    out = await skill.feel(ctx, emotion="embarrassed", strength=0.4, why="x", feeling="w" * 81)
+    assert out.is_error and out.content.startswith("feeling is a word or a few, at most 80")
+    out = await skill.feel(ctx, emotion="stung", strength=0.4, why="x")  # type: ignore[arg-type]
+    assert out.is_error and "Your own words go in feeling" in out.content
+    assert len(await store.read(mind._mood_rows)) == 1
+
+
 async def test_the_block_has_its_mood_and_no_comes_to_mind_line(store):
     cfg = load()
     _, reg = await _agent(store, cfg)

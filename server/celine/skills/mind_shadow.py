@@ -45,7 +45,8 @@ def _kind(c: sqlite3.Connection, kind: str, key: str) -> str | None:
 
 
 def _named(c: sqlite3.Connection, tid: str) -> str | None:
-    """What the agent named with mind__feel in turn `tid`, its last one: "proud 0.6: why"."""
+    """What the agent named with mind__feel in turn `tid`, its last one: "proud 0.6: why",
+    or its own words first: "\"stung, and glad\" (embarrassed) 0.4: why"."""
     r = c.execute("SELECT tc.arguments FROM tool_calls tc JOIN messages m ON m.id = "
                   "tc.message_id WHERE m.turn_id=? AND tc.name='mind__feel' AND "
                   "tc.state='ok' ORDER BY tc.rowid DESC LIMIT 1", (tid,)).fetchone()
@@ -53,7 +54,9 @@ def _named(c: sqlite3.Connection, tid: str) -> str | None:
         return None
     a = json_object(r[0])
     why = " ".join(str(a.get("why") or "").split())
-    return f"{a.get('emotion')} {a.get('strength')}" + (f": {why}" if why else "")
+    words = " ".join(str(a.get("feeling") or "").split())
+    name = f'"{words}" ({a.get("emotion")})' if words else str(a.get("emotion"))
+    return f"{name} {a.get('strength')}" + (f": {why}" if why else "")
 
 
 def facts(c: sqlite3.Connection, cid: str, tid: str) -> dict | None:

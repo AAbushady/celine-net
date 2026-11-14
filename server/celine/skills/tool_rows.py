@@ -720,7 +720,8 @@ PLAN: dict[str, Sentence] = {
 
 MIND: dict[str, Sentence] = {
     "feel": lambda a, d, r: "Changed the mood" +
-        (f" to {_str(a.get('emotion'))}" if _str(a.get("emotion")) else ""),
+        (f" to {_str(a.get('feeling')) or _str(a.get('emotion'))}"
+         if _str(a.get("feeling")) or _str(a.get("emotion")) else ""),
     "set_status": lambda a, d, r: "Set the status" +
         (f" to {_str(a.get('text'))}" if _str(a.get("text")) else ""),
     "list_appraisals": lambda a, d, r: "Read the shadow appraisals",

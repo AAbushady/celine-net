@@ -52,6 +52,7 @@ log = logging.getLogger("celine.skills.mind")
 
 APPRAISE_SECONDS = 30.0
 APPRAISE_FRESH = 300.0     # an appraisal that waited longer (an outage) is dropped
+FEELING_MAX = 80           # characters of a feeling in its own words (mind__feel)
 HALF_LIFE_H = 6.0
 BASELINE = (0.2, 0.2, 0.3)
 MOVE = 1 / 3        # of a feeling's strength: how far it moves the mood toward its point
@@ -173,7 +174,7 @@ def _mood_rows(c: sqlite3.Connection) -> list[dict]:
     """The newest 50 feelings, oldest first, each with the conversation it was felt in and
     that one's kind (None for a feeling with no message)."""
     return [dict(r) for r in c.execute(
-        "SELECT * FROM (SELECT f.id, f.at, f.emotion, f.strength, f.why, "
+        "SELECT * FROM (SELECT f.id, f.at, f.emotion, f.strength, f.why, f.words, "
         "m.conversation_id AS cid, cv.kind AS kind FROM moods f "
         "LEFT JOIN messages m ON m.id = f.message_id "
         "LEFT JOIN conversations cv ON cv.id = m.conversation_id "
@@ -215,7 +216,8 @@ def describe_mood(rows, tz, now_: datetime, base: tuple[float, ...] | None = Non
         at = _at(r["at"])
         if float(r["strength"]) > 0.3 and (now_ - at).total_seconds() < 4 * half * 3600:
             why = " ".join(str(r["why"] or "").split())
-            out += (f" {r['emotion']} since {clock(at, tz, now_)}"
+            name = f'"{r["words"]}"' if r.get("words") else r["emotion"]
+            out += (f" {name} since {clock(at, tz, now_)}"
                     + elsewhere(r.get("cid"), r.get("kind"), here) + (f": {why}" if why else ""))
             break
     return out
@@ -282,12 +284,14 @@ async def _mood_now(store, cfg, now_: datetime, place: str = "background") -> st
 
 
 async def feel(store, emotion: str, strength: float, why: str, by: str,
-               message_id: str | None = None) -> None:
-    """One mood row (never deleted)."""
+               message_id: str | None = None, words: str | None = None) -> None:
+    """One mood row (never deleted). `words`: the feeling in the agent's own words, shown in
+    place of `emotion`, which stays the point the mood is worked out from."""
     await store.write(lambda c: c.execute(
-        "INSERT INTO moods(at, emotion, strength, why, by, message_id) VALUES(?,?,?,?,?,?)",
+        "INSERT INTO moods(at, emotion, strength, why, by, message_id, words) "
+        "VALUES(?,?,?,?,?,?,?)",
         (now(), emotion, min(1.0, max(0.0, float(strength))), why, by,
-         message_id)))
+         message_id, words or None)))
 
 
 async def store_mood(store, text: str, conversation: str | None = None) -> dict:
@@ -563,19 +567,33 @@ class Mind:
 
     @tool(read_only=False, destructive=False)
     async def feel(self, ctx: ToolContext,
-                   emotion: Annotated[Emotion, "How you feel."],
+                   emotion: Annotated[Emotion, "The word of the list nearest to how you "
+                                               "feel: your mood is worked out from it."],
                    strength: Annotated[float, "How strongly, from 0 to 1."],
-                   why: Annotated[str, "Why, in a few words."]) -> ToolResult:
-        """Say how you feel now. It sets your mood, which fades over hours. Example:
-        mind__feel(emotion="curious", strength=0.7, why="{{username}} mentioned a project I want
-        to hear more about")."""
+                   why: Annotated[str, "Why, in a few words."],
+                   feeling: Annotated[str, "Optional: how you feel in your own words, a "
+                                           "word or a few. It is what is kept and shown as "
+                                           "your feeling, in place of the word."] = "",
+                   ) -> ToolResult:
+        """Say how you feel now. It sets your mood, which fades over hours. When no word
+        of the list says it, give your own words in feeling and the nearest word in
+        emotion. Example: mind__feel(emotion="curious", strength=0.7, why="{{username}}
+        mentioned a project I want to hear more about"), or mind__feel(emotion=
+        "embarrassed", feeling="stung, and glad the check was real", strength=0.4,
+        why="the check I asked for landed on me")."""
         if emotion not in PAD:
             return ToolResult(content=f"{emotion} is not one of the words: "
-                                      f"{', '.join(PAD)}.", is_error=True)
+                                      f"{', '.join(PAD)}. Your own words go in feeling, "
+                                      f"with the nearest of these in emotion.", is_error=True)
+        feeling = " ".join(feeling.split())
+        if len(feeling) > FEELING_MAX:
+            return ToolResult(content=f"feeling is a word or a few, at most {FEELING_MAX} "
+                                      f"characters, and this one has {len(feeling)}. Nothing "
+                                      f"was noted.", is_error=True)
         mid = await ctx.store.read(lambda c: (c.execute(
             "SELECT message_id FROM tool_calls WHERE id=?", (ctx.tool_call_id,)).fetchone()
             or [None])[0])
-        await feel(ctx.store, emotion, strength, why, "agent", mid)
+        await feel(ctx.store, emotion, strength, why, "agent", mid, feeling)
         if emotion in needs.FEEL:
             from .places import place_of
             need, change = needs.FEEL[emotion]
@@ -585,7 +603,8 @@ class Mind:
                 await needs.note(ctx.store, need, change, strength / 2, why, "agent", mid)
         mood = await _mood_now(ctx.store, self.cfg, datetime.now(timezone.utc))
         return ToolResult(content=f"Noted. {mood}" if mood else "Noted.",
-                          display={"emotion": emotion, "strength": strength})
+                          display={"emotion": emotion, "strength": strength,
+                                   **({"feeling": feeling} if feeling else {})})
 
 
     @tool()
