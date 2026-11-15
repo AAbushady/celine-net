@@ -152,9 +152,11 @@ class PastConversations:
         self.cfg = cfg
 
     def _who(self, role: str, author: str | None = None) -> str:
+        """Who wrote a line, by name: the user's, or the agent's own for its replies. "you"
+        would read as the user, whom the agent calls "you" when it talks."""
         if author == "intercom":
             return "the intercom"           # an agent, a job, a notice: not the user's words
-        return self.cfg.user if role == "user" else "you"
+        return self.cfg.user if role == "user" else self.cfg.substitute("{{name}}")
 
     def _at(self, iso: str | None, fmt: str = "%Y-%m-%d %H:%M") -> str:
         """A stored UTC time in the app's time zone, as list_day takes days."""
@@ -226,7 +228,8 @@ class PastConversations:
         """Every conversation of yours with messages on one day, as an index: id, kind,
         title, the message numbers of that day, turns, the tool calls with their names
         and the ones that failed, a run's try with its outcome (a failed one is a draft,
-        not a source), a last turn that failed or was cut, the first and the last line.
+        not a source), a last turn that failed or was cut, the first and the last line,
+        each after the name of who wrote it ({{username}}, or {{name}} for yours).
         The current conversation is left out of the list, and one line after it counts its
         turns and tool calls of that day; the archived ones are left out while Lock
         archived chats is on. Read one further with past_conversations__read."""
@@ -274,9 +277,10 @@ class PastConversations:
         """Your newest conversations by their last activity, of every kind or one.
         Returns: one line each: id, kind, title, when it started and when it last moved,
         a mission's status, a run's outcome, a last turn that failed or was cut, and its
-        last line. The current conversation is left out, and the archived ones while Lock
-        archived chats is on. Read one with past_conversations__read."""
-        from ..conversations.store import last_line
+        last line after the name of who wrote it ({{username}}, or {{name}} for yours).
+        The current conversation is left out, and the archived ones while Lock archived
+        chats is on. Read one with past_conversations__read."""
+        from ..conversations.store import last_said
         n = min(max(int(limit or 10), 1), LISTED)
 
         def fn(c):
@@ -288,7 +292,7 @@ class PastConversations:
                 "c.active_leaf_id IS NOT NULL ORDER BY c.updated_at DESC, c.id DESC LIMIT ?",
                 (ctx.conversation_id, kind, n)).fetchall()
             return [{**dict(r), "ended": _ended(c, r["id"], r["trigger_key"]),
-                     "last": last_line(c, r["active_leaf_id"])} for r in rows]
+                     "last": last_said(c, r["active_leaf_id"])} for r in rows]
         rows = await ctx.store.read(fn)
         if not rows:
             return ToolResult(content=f"No {kind + ' ' if kind else ''}conversations yet.",
@@ -298,8 +302,11 @@ class PastConversations:
             facts = [f"started {self._at(r['created_at'])}", f"last {self._at(r['updated_at'])}"]
             facts += [f"mission {r['status'].replace('_', ' ')}"] if r["status"] else []
             facts += [r["ended"]] if r["ended"] else []
+            said = r["last"]
+            last = (f"\n  last: {self._who(said['role'], said['author'])}: {said['line']}"
+                    if said and said["line"] else "")
             lines.append(f"- {r['id'][:8]} {r['kind']} \"{r['title'] or 'Untitled'}\": "
-                         f"{', '.join(facts)}" + (f"\n  last: {r['last']}" if r["last"] else ""))
+                         f"{', '.join(facts)}" + last)
         return ToolResult(content=self.cfg.substitute("\n".join(lines)),
                           display={"conversations": len(rows)})
 
@@ -397,7 +404,8 @@ class PastConversations:
                          "result."] = "names",
     ) -> ToolResult:
         """Read one earlier conversation in order: {{username}}'s messages, your answers,
-        and the tools you used. A long one comes in slices: `earlier:` and `later:` lines
+        and the tools you used, each message after the name of who wrote it ({{username}},
+        or {{name}} for yours). A long one comes in slices: `earlier:` and `later:` lines
         read on. A tool call's id reads it raw with past_conversations__read_tool_call."""
         from ..backends import tokens
         conv, wrong = await self._find(ctx, conversation)

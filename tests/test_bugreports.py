@@ -125,7 +125,7 @@ async def test_continue_in_a_chat_moves_the_thread_into_a_new_chat_with_the_agen
     assert tuple(conv) == ("chat", "Bug #1: read cuts results")
     assert held == [
         "Joe continued Intercom thread #1 in this chat. The thread:\n\n"
-        '[From you (#1, "Bug #1: read cuts results")]\n'
+        f'[From {rows.NAMES["agent"]} (#1, "Bug #1: read cuts results")]\n'
         "High: past_conversations__read cut a 9k result.\n\nChecked: read it again: cut at 4k\n\n"
         '[From Joe (#2, re #1, "Bug #1: read cuts results")]\nwhich chat was it?']
     assert turns == 0, "it lands without waking it; their first line does"

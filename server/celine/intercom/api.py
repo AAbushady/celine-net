@@ -208,9 +208,7 @@ async def to_chat(services: TheServices, tid: int) -> dict:
     tz, lines = zone(cfg), [CARRIED.format(user=cfg.user, thread=tid)]
     for m in msgs:
         if not m["cancelled"]:
-            # its own conversations' lines are its own: "From you"
-            mine = m["from"].startswith("agent:") and m["from_name"] == rows.NAMES["agent"]
-            head = header({**m, "mine": mine}, cfg.user, tz) or \
+            head = header(m, cfg.user, tz) or \
                 f"[From {cfg.user} (#{m['id']})]\n"     # their own first line, as typed
             lines.append(head + m["text"])
     cid = await conversations.create(store, (msgs[0]["subject"] or "").strip()[:200])

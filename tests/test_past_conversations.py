@@ -59,6 +59,33 @@ async def test_search_skips_the_current_thread_and_hidden_branches(store):
     assert gull.content.endswith("Nor does this conversation.")
 
 
+async def test_its_own_lines_come_under_its_name_never_you(store):
+    """A daydream read "last: send the fourth whenever." and "#75 you: send the fourth
+    whenever." from a chat where it had written that line, and told the user he said it:
+    it calls the user "you" when it talks, so "you" read as the user."""
+    cfg = load()
+    cfg.timezone = "UTC"
+    skill = PastConversations(cfg)
+    music = await conversations.create(store, "Music")
+    here = await conversations.create(store, "Daydream")
+
+    def chat(c):
+        m = tree.append(c, store, music, None, "user", "here are three songs", "user")
+        tree.append(c, store, music, m["id"], "assistant", "\n\nsend the fourth whenever.",
+                    "model")
+    await store.write(chat)
+    ctx = ToolContext(conversation_id=here, turn_id="t", tool_call_id="x", store=store,
+                      config=cfg, emit=None)
+    name = cfg.substitute("{{name}}")
+    assert name and name != "you"
+    listed = (await skill.list(ctx)).content
+    assert f"\n  last: {name}: send the fourth whenever." in listed
+    read = (await skill.read(ctx, music[:8])).content
+    assert f" {name}: send the fourth whenever." in read
+    assert f" {cfg.user}: here are three songs" in read
+    assert " you: " not in read and "last: you" not in listed
+
+
 async def test_a_day_is_an_index_a_read_is_a_slice_and_a_tool_call_reads_raw(store):
     cfg = load()
     cfg.timezone = "UTC"
@@ -86,7 +113,7 @@ async def test_a_day_is_an_index_a_read_is_a_slice_and_a_tool_call_reads_raw(sto
     assert "#1 to #3" in day and "2 tool calls (web__search, web__read_page)" in day
     assert "1 failed (web__read_page)" in day
     assert "first: User: buy milk" in day or f"first: {cfg.user}: buy milk" in day
-    assert "last: you: Milk is on the list." in day
+    assert f"last: {cfg.substitute('{{name}}')}: Milk is on the list." in day
 
     names = (await skill.read(ctx, a[:8])).content
     assert "    call t1 web__search ok" in names and "milk is 1 euro" not in names

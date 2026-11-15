@@ -286,7 +286,7 @@ class Missions:
         if talk:
             lines.append("With {{username}}, newest last:")
             for m in talk:
-                by = "{{username}}" if m["from_addr"] == "user" else "you"
+                by = "{{username}}" if m["from_addr"] == "user" else "{{name}}"
                 waits = " (waits for {{username}})" if m["waits"] else ""
                 lines.append(f"- #{m['id']} {when(m['created_at'], tz)} {by}: "
                              f"{one_line(m['text'], TALK_LINE)}{waits}")

@@ -498,22 +498,29 @@ async def ensure_writable(store, cid: str) -> None:
     await archive(store, cid, False)
 
 
-def last_line(c: sqlite3.Connection, leaf_id: str | None) -> str:
-    """The first line of the newest message's text on the active path (its own or the
-    user's; tool results are passed over), at most 120 characters; "" when that message
-    has no text."""
+def last_said(c: sqlite3.Connection, leaf_id: str | None) -> dict | None:
+    """The newest message on the active path that is the agent's or the user's (tool
+    results are passed over): {role, author, line}, `line` the first line of its text at
+    most 120 characters ("" when it has no text). None for a path without one."""
     mid, seen = leaf_id, set()
     while mid and mid not in seen:
         seen.add(mid)
-        m = c.execute("SELECT parent_id, role, content FROM messages WHERE id=?",
+        m = c.execute("SELECT parent_id, role, author, content FROM messages WHERE id=?",
                       (mid,)).fetchone()
         if m is None:
             break
         if m["role"] in ("user", "assistant"):
             text = (m["content"] or "").strip()
-            return text.splitlines()[0].strip()[:120] if text else ""
+            return {"role": m["role"], "author": m["author"],
+                    "line": text.splitlines()[0].strip()[:120] if text else ""}
         mid = m["parent_id"]
-    return ""
+    return None
+
+
+def last_line(c: sqlite3.Connection, leaf_id: str | None) -> str:
+    """last_said's line alone: "" when there is none."""
+    said = last_said(c, leaf_id)
+    return said["line"] if said else ""
 
 
 _SUMMARY = (

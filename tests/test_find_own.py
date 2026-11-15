@@ -85,7 +85,8 @@ async def test_missions_read_gives_one_mission_whole_and_list_its_brief(store):
     assert f"[x] 1. Sort\n[>] 2. Tag (ask {user} when done)" in out
     assert f"- scout (done, conversation {h.sub[:8]}): report #{h.report}: Found 400 photos." in out
     talk = out.split(f"With {user}, newest last:\n", 1)[1].splitlines()
-    assert talk[0].startswith(f"- #{h.asked} ") and talk[0].endswith("you: Which year first?")
+    assert talk[0].startswith(f"- #{h.asked} ") and \
+        talk[0].endswith(f"{cfg.substitute('{{name}}')}: Which year first?")
     assert talk[1].endswith(f"{user}: 2019")
     assert talk[2] == f'Its conversation: past_conversations__read(conversation="{h.m[:8]}").'
     assert (await skill.read(ctx, h.m[:8])).content == out
@@ -140,7 +141,8 @@ async def test_past_conversations_list_the_newest_of_a_kind(store):
     skill, ctx = PastConversations(cfg), _ctx(h, store, cfg)
     runs = (await skill.list(ctx, kind="run")).content
     assert runs.startswith(f'- {h.run[:8]} run "World": started ') and "run World, done" in runs
-    assert "\n  last: The rain stops" not in runs and "\n  last: Headlines." in runs
+    name = cfg.substitute("{{name}}")
+    assert "The rain stops" not in runs and f"\n  last: {name}: Headlines." in runs
     assert h.chat[:8] not in runs
     every = (await skill.list(ctx, limit=50)).content
     assert all(x[:8] in every for x in (h.chat, h.m, h.run, h.task))
@@ -159,8 +161,9 @@ async def test_intercom_read_with_user_lists_every_conversations_threads(store):
     out = (await skill.read(ctx, with_="user")).content.splitlines()
     assert out[0].startswith(f'#{h.asked} in mission "Photos" ({h.m}): 2 messages, last from '
                              f'{user} ')
-    assert out[1].startswith(f'#{h.hello} in chat "Groceries" ({h.chat}): 1 message, waits for '
-                             f'{user}, last from you ')
+    name = rows.NAMES["agent"]
+    assert name and out[1].startswith(f'#{h.hello} in chat "Groceries" ({h.chat}): 1 message, '
+                                      f'waits for {user}, last from {name} ')
     waiting = (await skill.read(ctx, with_="user", unread=True)).content
     assert waiting.startswith(f"#{h.hello} ") and f"#{h.asked} " not in waiting
 

@@ -9,9 +9,8 @@ LABEL = {"message": "From", "brief": "Brief from", "report": "Report from",
 
 
 def who(iv: dict, user: str) -> str:
-    """Who wrote message `iv`, as it reads it: you, the user's name, or the sender."""
-    if iv.get("mine"):
-        return "you"
+    """Who wrote message `iv`, as it reads it: the user's name, or the sender's, its own
+    conversations' by its name. "you" would read as the user, whom it calls "you"."""
     if iv["from"] == "user":
         return user
     return iv.get("from_name") or iv["from"]

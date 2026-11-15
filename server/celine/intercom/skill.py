@@ -345,11 +345,11 @@ class IntercomSkill:
         for t in shown:
             last, src = t["last"], t["src"]
             subject = f' "{t["subject"]}"' if t["subject"] else ""
-            by = "you" if last["from"].startswith("agent:") else who(last, user)
             waits = f", waits for {user}" if t["unread"] else ""
             lines.append(f"#{t['thread']}{subject} in {src.get('kind', 'conversation')} "
                          f"\"{src.get('title') or 'Untitled'}\" ({t['home']}): {t['count']} "
-                         f"message{'s' if t['count'] != 1 else ''}{waits}, last from {by} "
+                         f"message{'s' if t['count'] != 1 else ''}{waits}, last from "
+                         f"{who(last, user)} "
                          f"{when(last['created_at'], self.tz)}: {_short(last['text'])}")
         if total > len(shown):
             lines.append(f"and {total - len(shown)} older.")
