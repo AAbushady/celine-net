@@ -18,7 +18,7 @@ from ..config import CONFIG_DIR
 from ..turns.compact import one_line
 from . import ToolContext, ToolResult, guide, knob, tool, described
 from . import note_feelings, notebook_index, quotes
-from .anchors import Edit, EditRefused, apply, is_stamp, lines_of, numbered, plan
+from .anchors import Edit, EditRefused, apply, is_stamp, lines_of, named, numbered, plan
 from ..clock import zone
 from ..core.ids import when
 from ..errors import ToolRefused
@@ -52,9 +52,10 @@ PLACEHOLDERS = {
 NOTES_HEAD = "[your notes]"   # notes_block's first line (turns/legend.py)
 UNNAMED = ("", "User")      # the user's name before the first run sets it
 WAITING = "placeholders were created, the ones named after the user wait for a name\n"
-FELT = ("Optional: what you feel as you write this, in your own words, a word or a few. It "
-        "stays with the sections this save makes or changes, and shows beside them when they "
-        "come back. Leave it out when you have nothing to say there.")
+FELT = ("Optional: what you feel as you write this, in your own words, a word or a few, at "
+        f"most {note_feelings.FELT_MAX} characters. It stays with the sections this save makes "
+        "or changes, and shows beside them when they come back. Leave it out when you have "
+        "nothing to say there.")
 
 
 class Notebook:
@@ -402,10 +403,10 @@ class Notebook:
                 edits = json.loads(edits)
             except ValueError:
                 pass
-        edits = [{**e, "text": _joined(e["text"])}
-                 if isinstance(e, dict) and e.get("text") else e for e in edits]
         moved: list[str] = []
         try:
+            edits = [{**e, "text": _joined(e["text"])}
+                     if isinstance(e, dict) and e.get("text") else e for e in named(edits)]
             planned = plan(edits, lines, has_stamp, _texts_before(self.root, path), moved)
         except EditRefused as e:
             return ToolResult(content=f"Nothing changed in {path}. {e}", is_error=True)

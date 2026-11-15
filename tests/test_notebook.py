@@ -345,8 +345,8 @@ async def test_the_stamp_has_no_anchor_and_text_as_a_list_is_joined(store, cfg):
 async def test_an_edit_of_the_wrong_shape_is_told_the_right_one(store, cfg):
     """A third of the failed edits in two days: an insert with `start` was told "None is
     not an anchor", and an edit with no `op` or with "append" only the three names. Later
-    ones: fields no edit has (`new_text`, `old_text`), which the answer names beside the
-    fields of the op, and an edit sent as text holding JSON."""
+    ones: a field no edit has, which the answer names beside the fields of the op, and an
+    edit sent as text holding JSON."""
     nb = Notebook(cfg)
     ctx = _ctx("c", store, cfg)
     a = await _note(nb, ctx)
@@ -358,10 +358,10 @@ async def test_an_edit_of_the_wrong_shape_is_told_the_right_one(store, cfg):
         "\"start\" for the top or \"end\" for the bottom), and `start` is not a field of "
         "insert, which takes `after` "
         "and `text`.")
-    out = await nb.edit(ctx, "opinions/food.md", [{"op": "replace", "start": a[2], "end": a[3],
-                                                   "new_text": "x", "old_text": "y"}])
+    out = await nb.edit(ctx, "opinions/food.md", [{"op": "replace", "start": a[2],
+                                                   "lines": "x"}])
     assert out.is_error and out.content == nothing + (
-        "edit 1 (replace) needs `text`, and `new_text` and `old_text` are not fields of "
+        "edit 1 (replace) needs `text`, and `lines` is not a field of "
         "replace, which takes `start`, `end` and `text`.")
     out = await nb.edit(ctx, "opinions/food.md", [{"op": "replace", "start": a[2]}])
     assert out.is_error and out.content == nothing + "edit 1 (replace) needs `text`."
@@ -375,6 +375,47 @@ async def test_an_edit_of_the_wrong_shape_is_told_the_right_one(store, cfg):
         'edit 1 has the `op` "add": `op` is "replace", "insert", "delete" or "append" '
         "(at the bottom of the note, with no anchor).")
     assert (cfg.agent.notebook / "opinions/food.md").read_text() == before
+
+
+async def test_new_text_is_text_and_old_text_is_checked(store, cfg):
+    """Bug 82: `new_text` for `text` was the most refused call of a night (7 in one run),
+    once with `old_text`, the lines it replaces as it read them. `new_text` is `text` now,
+    and `old_text` on a replace or delete must be in the lines start to end."""
+    nb = Notebook(cfg)
+    ctx = _ctx("c", store, cfg)
+    a = await _note(nb, ctx)
+    out = await nb.edit(ctx, "opinions/food.md", [
+        {"op": "replace", "start": a[3], "new_text": "- pizza: fine",
+         "old_text": f"{a[3]}| - pizza: love it"},
+        {"op": "append", "new_text": "- tea: no"}])
+    assert not out.is_error, out.content
+    body = (cfg.agent.notebook / "opinions/food.md").read_text()
+    assert "- pizza: fine" in body and "love it" not in body and body.endswith("- tea: no\n")
+    a = _anchors((await nb.read(ctx, "opinions/food.md")).content)
+    before = (cfg.agent.notebook / "opinions/food.md").read_text()
+    out = await nb.edit(ctx, "opinions/food.md", [
+        {"op": "delete", "start": a[3], "end": a[4], "old_text": "- pizza: love it"}])
+    assert out.is_error and out.content == (
+        "Nothing changed in opinions/food.md. edit 1: `old_text` is not in lines 3 to 4. "
+        f"The lines there now:\n{a[3]}| - pizza: fine\n{a[4]}| - olives: gross\n\n"
+        "Use these anchors and send all the edits again.")
+    out = await nb.edit(ctx, "opinions/food.md", [
+        {"op": "replace", "start": a[3], "text": "x", "new_text": "y"}])
+    assert out.is_error and out.content == (
+        "Nothing changed in opinions/food.md. edit 1 has both `text` and `new_text`, which "
+        "are one field: send it with `text` alone.")
+    assert (cfg.agent.notebook / "opinions/food.md").read_text() == before
+    out = await nb.edit(ctx, "opinions/food.md", [
+        {"op": "delete", "start": a[3], "old_text": "pizza: fine"}])
+    assert not out.is_error, out.content
+    assert "pizza" not in (cfg.agent.notebook / "opinions/food.md").read_text()
+
+
+async def test_felt_says_its_limit(store, cfg):
+    """Bug 83: "a word or a few" was all the description said of the 80 characters."""
+    from celine.skills.note_feelings import FELT_MAX
+    from celine.skills.notebook import FELT
+    assert f"at most {FELT_MAX} characters" in FELT
 
 
 async def test_append_adds_at_the_bottom_with_no_anchor(store, cfg):

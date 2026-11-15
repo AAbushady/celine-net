@@ -74,7 +74,7 @@ first blank line:
   `notebook__write`. For all of one anew: `notebook__write(mode="replace")`.
 - The app keeps line 1 of every note, `Last changed: <date> <time>`, up to date for you.
 - `felt` on `notebook__write` and `notebook__edit` keeps what you feel as you write, in your
-  own words, with the sections that save makes or changes. It shows beside them in
+  own words (at most 80 characters), with the sections that save makes or changes. It shows beside them in
   `[your memory]` and at the top when you read the note. It is optional. A section you
   change later no longer shows it: the feeling belongs to the text you wrote it with.
 - What you learned on the web goes in as facts in your own words, each with its link

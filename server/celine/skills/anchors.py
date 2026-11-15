@@ -132,6 +132,37 @@ NEEDS = {"replace": ("start", "text"), "insert": ("after", "text"), "delete": ("
          "append": ("text",)}
 HOLDS = {"after": "the anchor of the line the text goes under, \"start\" for the top or "
                   "\"end\" for the bottom"}
+# what the agent writes beside the fields of Edit, from the edit tools it knows elsewhere:
+# `new_text` is `text`, and `old_text` (the lines it replaces or deletes, as it read them)
+# is checked against the lines start to end
+NEW_TEXT, OLD_TEXT = "new_text", "old_text"
+CHECKED = {"replace": (OLD_TEXT,), "delete": (OLD_TEXT,)}
+_ANCHORED = re.compile(r"^\s*\d+:[0-9a-z]{2}\|\s?", re.M)
+
+
+def named(edits):
+    """`edits` with an edit's `new_text` read as its `text` (replace, insert, append). An
+    edit that has both is refused (EditRefused), since they are one field."""
+    if not isinstance(edits, list):
+        return edits
+    out = []
+    for i, e in enumerate(edits, 1):
+        if isinstance(e, dict) and NEW_TEXT in e and e.get("op") != "delete":
+            if "text" in e:
+                raise EditRefused(f"edit {i} has both `text` and `{NEW_TEXT}`, which are "
+                                  f"one field: send it with `text` alone.")
+            e = {("text" if k == NEW_TEXT else k): v for k, v in e.items()}
+        out.append(e)
+    return out
+
+
+def _holds(lines: list[str], old) -> bool:
+    """Lines `lines` hold the text `old`, spaces and line breaks aside; anchors copied in
+    front of its lines (`12:ab| `) are no part of it."""
+    if isinstance(old, list):
+        old = "\n".join(map(str, old))
+    want = " ".join(_ANCHORED.sub("", str(old)).split())
+    return want in " ".join(" ".join(lines).split())
 
 
 def _listed(names: list[str]) -> str:
@@ -158,7 +189,8 @@ def _op(i: int, e) -> str:
     if missing:
         said = f"edit {i} ({op}) needs " + _listed(
             [f"`{k}` ({HOLDS[k]})" if k in HOLDS else f"`{k}`" for k in missing])
-        other = [f"`{k}`" for k in e if k != "op" and k not in TAKES[op]]
+        other = [f"`{k}`" for k in e
+                 if k != "op" and k not in TAKES[op] and k not in CHECKED.get(op, ())]
         if other:
             said += (f", and {_listed(other)} "
                      f"{'is not a field' if len(other) == 1 else 'are not fields'} of {op}, "
@@ -207,6 +239,10 @@ def plan(edits, lines: list[str], has_stamp: bool, earlier=(),
                 continue
             if end < s:
                 raise EditRefused(f"edit {i}: `end` ({end}) is above `start` ({s}).")
+            if e.get(OLD_TEXT) is not None and not _holds(lines[s - 1:end], e[OLD_TEXT]):
+                bad.append(f"edit {i}: `{OLD_TEXT}` is not in {_span(s, end)}. The lines "
+                           f"there now:\n" + "\n".join(numbered(lines, s, end)))
+                continue
             planned.append((s, end, [] if op == "delete" else new))
     if bad:
         raise EditRefused("\n\n".join(bad) + "\n\nUse these anchors and send all the "
