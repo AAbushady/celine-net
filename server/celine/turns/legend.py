@@ -5,7 +5,8 @@ its notes, so its own account of what the user said is never read as the user's 
 
 Everything the app inserts is marked one way, a line in square brackets: the send time
 (context.time_line), the intercom headers (intercom/render.py header), its mind block
-(skills/mind.py HEAD), its memory block (skills/recall.py HEAD), its notes (skills/notebook.py notes_block), the other chats working now
+(skills/mind.py HEAD), its memory block (skills/recall.py HEAD), its notes (skills/notebook.py notes_block), the quote check
+(skills/quotes.py HEAD), the other chats working now
 (conversations/here.py busy), shortened and cut
 results (compact.STUB_HEAD, tools._capped), a result's pictures (context.pictures_from, "[the images from ...]") and a load that came with a call
 (skills/meta.py CALL_HEAD).
@@ -39,6 +40,9 @@ LINES = (
     "- [also working now]: your other chats working at the same time.",
     "- [your notes]: notes from your notebook, written by you unless their tag says "
     "otherwise.",
+    "- [quote check] at the end of a message: words your last reply gave {{username}} "
+    "that you wrote first yourself, and where you wrote them. {{username}} never wrote "
+    "them.",
     "- [earlier result, shortened to save room] and [cut: ...]: the app shortened a tool "
     "result. Call the tool again for the whole of it.",
     "- [N lines, about T tokens, shortened; the call is kept: ...] in an earlier call's "

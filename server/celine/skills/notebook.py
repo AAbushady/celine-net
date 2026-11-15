@@ -17,7 +17,7 @@ from typing import Annotated, Literal
 from ..config import CONFIG_DIR
 from ..turns.compact import one_line
 from . import ToolContext, ToolResult, guide, knob, tool, described
-from . import note_feelings, notebook_index
+from . import note_feelings, notebook_index, quotes
 from .anchors import Edit, EditRefused, apply, is_stamp, lines_of, numbered, plan
 from ..clock import zone
 from ..core.ids import when
@@ -293,6 +293,7 @@ class Notebook:
         said = (f"Saved {path}, a new note of {n}." if old is None
                 else f"Saved {path}, {did}. {n} now, was {len(lines_of(old)[0])}.")
         said += await self._felt(ctx, path, old, now, felt)
+        said += await self._quote_check(ctx, content)
         # its anchors, so an edit right after needs no read: half the failed edits were on
         # a note the same conversation had just written
         lines = lines_of(now)[0]
@@ -426,6 +427,8 @@ class Notebook:
         followed = (f" Anchors read before an earlier save were followed to their lines: "
                     f"{', '.join(moved)}." if moved else "")
         followed += await self._felt(ctx, path, text, body, felt)
+        followed += await self._quote_check(ctx, "\n".join(
+            e["text"] for e in edits if isinstance(e, dict) and isinstance(e.get("text"), str)))
         return ToolResult(content=f"Saved {path}. {n} {'change' if n == 1 else 'changes'}, "
                                   f"{len(new)} lines now.{followed} The changed part, with "
                                   f"its new anchors:\n\n{shown}",
@@ -443,6 +446,20 @@ class Notebook:
         if not n:
             return " No section changed, so the feeling was not kept."
         return f" What you felt is kept with {n} {'section' if n == 1 else 'sections'}."
+
+    async def _quote_check(self, ctx: ToolContext, text: str) -> str:
+        """What the answer says of words `text` gives the user that the agent wrote itself
+        (skills/quotes.py), "" for none; a note says "he" or "she" of the user, and a
+        sub-agent's words are not the agent's."""
+        if not text.strip() or await folder_of(ctx):
+            return ""
+        user, tz = self.cfg.user, zone(self.cfg)
+
+        def fn(c) -> list[str]:
+            return [quotes.line(c, m, user, tz, "in this note")
+                    for m in quotes.misquotes(c, text, user, you=False, they=True,
+                                              own=quotes.own_pronoun(self.cfg))]
+        return "".join(f" Quote check: {x}" for x in await ctx.store.read(fn))
 
     @tool()
     async def search(

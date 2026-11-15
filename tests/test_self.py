@@ -281,7 +281,8 @@ async def test_the_legend_names_the_marks_the_code_writes(cfg):
     assert stamp == "[Thu 22 Oct 18:00]"
     iv = {"kind": "report", "from": "agent:x", "from_name": "scout", "id": 4, "data": {}}
     from celine.skills.meta import CALL_HEAD
-    for mark in (mind.HEAD, recall.HEAD, NOTES_HEAD, compact.STUB_HEAD, "[cut: ", CALL_HEAD,
+    from celine.skills.quotes import HEAD as QUOTE_HEAD
+    for mark in (mind.HEAD, recall.HEAD, NOTES_HEAD, QUOTE_HEAD, compact.STUB_HEAD, "[cut: ", CALL_HEAD,
                  "[Report from ", pictures_from("...", 1), pictures_from("...", 2)):
         assert mark.rstrip() in text, mark
     assert header(iv, "Joe", None) == "[Report from scout (#4)]\n"

@@ -17,6 +17,7 @@ from ..clock import zone
 from . import store as rows
 from .addresses import GUARD, GUARD_NAMES, Refused, resolve
 from .render import header, who
+from ..skills import quotes
 
 TEXT_MAX = 60       # characters of a scheduled message's text in its instructions
 LISTED = 5          # scheduled messages listed there, the rest a count
@@ -230,8 +231,27 @@ class IntercomSkill:
         where = "a new thread" if tid == iid else f"thread #{tid}"
         said = f"Sent #{iid} to {went} in {where}." if due is None else \
             f"#{iid} to {went} lands {clock(due, self.tz, now_)}, in {where}."
+        said += await self._quote_check(ctx, text, "user" in stored.split(", "), iid)
         return ToolResult(content=said, display={
             "id": iid, "to": to, "text": text, "due_at": iso(due) if due else None})
+
+    async def _quote_check(self, ctx: ToolContext, text: str, to_user: bool, iid: int) -> str:
+        """What the answer says of words message `iid` gives the user that the agent wrote
+        itself (skills/quotes.py), "" for none. "You" is the user only in a message to
+        them; a sub-agent's words are not the agent's."""
+        sub = await ctx.store.read(lambda c: c.execute(
+            "SELECT agent_of FROM conversations WHERE id=?",
+            (ctx.conversation_id,)).fetchone())
+        if sub is None or sub[0] is not None:
+            return ""
+        user = self.cfg.user
+
+        def fn(c) -> list[str]:
+            return [quotes.line(c, m, user, self.tz, "in this message")
+                    for m in quotes.misquotes(c, text, user, you=to_user, they=not to_user,
+                                              own=quotes.own_pronoun(self.cfg),
+                                              skip_intercom={iid})]
+        return "".join(f" Quote check: {x}" for x in await ctx.store.read(fn))
 
     @tool()
     async def read(

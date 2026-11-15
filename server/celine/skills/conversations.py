@@ -18,6 +18,7 @@ from ..turns.compact import one_line
 from . import ToolContext, ToolResult, guide, knob, parts, tool, described
 from ..clock import zone
 from .. import attachments as files
+from . import quotes
 
 
 def _pictures(c: sqlite3.Connection, display: str | None, result_id: str | None) -> int:
@@ -157,6 +158,23 @@ class PastConversations:
         if author == "intercom":
             return "the intercom"           # an agent, a job, a notice: not the user's words
         return self.cfg.user if role == "user" else self.cfg.substitute("{{name}}")
+
+    async def message_context(self, ctx: ToolContext, message: dict):
+        """The quote check at the end of a message the user typed: the words its reply
+        before it gave the user that it wrote itself (skills/quotes.py). Only the agent
+        reads it; the chat shows nothing."""
+        user, tz = self.cfg.user, zone(self.cfg)
+
+        def fn(c: sqlite3.Connection) -> list[str]:
+            r = c.execute("SELECT author FROM messages WHERE id=?", (message["id"],)).fetchone()
+            if r is None or r[0] != "user":
+                return []           # "you" in its reply is the user only where they typed
+            return [quotes.line(c, m, user, tz, "in your last reply")
+                    for m in quotes.of_reply(c, message["id"], user)]
+        lines = await ctx.store.read(fn)
+        if not lines:
+            return None
+        return "\n".join([quotes.HEAD, *lines]), {"quotes": len(lines)}
 
     def _at(self, iso: str | None, fmt: str = "%Y-%m-%d %H:%M") -> str:
         """A stored UTC time in the app's time zone, as list_day takes days."""
