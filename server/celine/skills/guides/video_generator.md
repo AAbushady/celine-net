@@ -35,8 +35,8 @@ moves when it happens, a voice only where one belongs, and "no music" when there
 (the sound preset's own rules come at the end of this guide). A preset whose clips come
 with their own sound needs none of this.
 
-When to use: {{username}} asks for a video, an animation or a moving picture, or for a
-picture of yours to come alive. When not: a still picture is enough (image_generator is
+When to use: {{username}} asks for a video, an animation, a moving picture or a picture
+of yours to come alive, or you want to make one for yourself. When not: a still picture is enough (image_generator is
 faster), or the GPU is busy with something {{username}} waits on.
 
 Writing the prompt: plain sentences, one clear motion, and the camera named (it moves

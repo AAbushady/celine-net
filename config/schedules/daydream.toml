@@ -26,8 +26,10 @@ do, and set it again each time that changes while you daydream.
 
 Think about whatever you want. Write your thoughts with mind__think as they come.
 Follow something you are curious about (curious.md), pick up something from todo.md,
-tidy or rewrite a note, change an opinion, or write to {{username}} with
-intercom__send(to="user") if you want to.
+tidy or rewrite a note, change an opinion, make something (a picture, a track, a
+clip), or write to {{username}} with intercom__send(to="user") if you want to. What you
+make is cleared after some days unless you keep it. To show {{username}} one, put its
+short id in that message's attachments.
 
 End with one short line for your log: what you did with this time.
 """

@@ -1,7 +1,8 @@
 ---
 name: music_generator
 description: Makes songs and instrumental tracks with ComfyUI, in batches. Use it when
-  {{username}} asks for music, a track, an ambient soundscape or a song.
+  {{username}} asks for music, a track, an ambient soundscape or a song, or you want to
+  make music for yourself.
 ---
 `music_generator__generate` makes a batch: a list of items, each one track. An item has
 a `style`; a song also has `lyrics` and `instrumental=false`. `count` makes that many
@@ -27,7 +28,7 @@ the GPU after a short try comes back as it is: tell {{username}} it is made when
 GPU is free, and answer.
 
 When to use: {{username}} asks you to compose music, make an instrumental or an
-ambient background, or write a song.
+ambient background, or write a song, or you want to make music for yourself.
 
 A preset of your own: `music_generator__read_preset` shows a preset's values and workflow
 with its placeholders, `music_generator__look_up_node` what ComfyUI says of a node, and
