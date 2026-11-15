@@ -20,8 +20,7 @@ from typing import Any
 
 from .core.ids import now
 
-# the directions read as the Probes setting comes: the patch's longing is never asked for, at
-# the agent's own request (it read unreliably, and what is not read cannot creep into anything)
+# the directions read when the Probes setting names none
 PROBES = ("valence", "arousal", "dominance", "tired", "lonely")
 
 

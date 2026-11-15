@@ -11,9 +11,8 @@ left alone: the check names only the case the record settles.
 It never changes what the agent wrote. It tells the agent: in the result of the tool that
 wrote the words (notebook__write, notebook__edit, intercom__send), and for a reply in a
 chat at the end of the user's next message (`[quote check]`, PastConversations
-message_context), which the user does not see in the chat. A daydream that read its own
-"send the fourth whenever" as the user's and made a song "because he asked" is the case
-it was made for.
+message_context), which the user does not see in the chat. A daydream that read a line of
+its own as the user's, and acted on it as the user's wish, is the case it was made for.
 """
 from __future__ import annotations
 

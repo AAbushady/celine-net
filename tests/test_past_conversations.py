@@ -60,18 +60,18 @@ async def test_search_skips_the_current_thread_and_hidden_branches(store):
 
 
 async def test_its_own_lines_come_under_its_name_never_you(store):
-    """A daydream read "last: send the fourth whenever." and "#75 you: send the fourth
-    whenever." from a chat where it had written that line, and told the user he said it:
+    """A daydream read "last: try the next one whenever." and "#2 you: try the next one
+    whenever." from a chat where it had written that line, and told the user they said it:
     it calls the user "you" when it talks, so "you" read as the user."""
     cfg = load()
     cfg.timezone = "UTC"
     skill = PastConversations(cfg)
-    music = await conversations.create(store, "Music")
+    recipes = await conversations.create(store, "Recipes")
     here = await conversations.create(store, "Daydream")
 
     def chat(c):
-        m = tree.append(c, store, music, None, "user", "here are three songs", "user")
-        tree.append(c, store, music, m["id"], "assistant", "\n\nsend the fourth whenever.",
+        m = tree.append(c, store, recipes, None, "user", "here are three recipes", "user")
+        tree.append(c, store, recipes, m["id"], "assistant", "\n\ntry the next one whenever.",
                     "model")
     await store.write(chat)
     ctx = ToolContext(conversation_id=here, turn_id="t", tool_call_id="x", store=store,
@@ -79,10 +79,10 @@ async def test_its_own_lines_come_under_its_name_never_you(store):
     name = cfg.substitute("{{name}}")
     assert name and name != "you"
     listed = (await skill.list(ctx)).content
-    assert f"\n  last: {name}: send the fourth whenever." in listed
-    read = (await skill.read(ctx, music[:8])).content
-    assert f" {name}: send the fourth whenever." in read
-    assert f" {cfg.user}: here are three songs" in read
+    assert f"\n  last: {name}: try the next one whenever." in listed
+    read = (await skill.read(ctx, recipes[:8])).content
+    assert f" {name}: try the next one whenever." in read
+    assert f" {cfg.user}: here are three recipes" in read
     assert " you: " not in read and "last: you" not in listed
 
 
