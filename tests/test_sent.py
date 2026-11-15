@@ -15,7 +15,7 @@ from celine.skills.conversations import PastConversations
 from celine.turns import sent, store as turns
 
 pytestmark = pytest.mark.anyio
-LINE = "week? or ya bedtime once vera done?"
+LINE = "back by six? or once the game is over?"
 
 
 def test_a_request_is_read_as_pieces_in_every_shape_a_backend_sends():
@@ -45,7 +45,7 @@ def test_a_request_is_read_as_pieces_in_every_shape_a_backend_sends():
 
 
 def test_curly_quotes_and_spacing_do_not_hide_a_text():
-    assert sent.norm("I’m  a\nFAILED run") == "i'm a failed run"
+    assert sent.norm("I’m  a\nNIGHT owl") == "i'm a night owl"
 
 
 async def _request(store, mid: str, tid: str, step: int, messages: list[dict], at: str) -> None:
@@ -60,19 +60,19 @@ async def _chat(store):
     """A chat in which the app sent one real line and the model then wrote an invented
     one into a note: two requests, the second carrying its own call back to it."""
     cid = await conversations.create(store, "Evening")
-    asked, tid, _ = await user_says(store, cid, "I’m a failed run")
+    asked, tid, _ = await user_says(store, cid, "I’m a night owl")
     await turns.claim(store, "w")
     await store.write(lambda c: c.execute(
         "INSERT INTO message_context(message_id, text, tail) VALUES(?,?,?)",
         (asked, "[your memory] sections of your notes this message brings up:\n\n"
                 "### tea/list.md#oolong (0.51, 8 Nov 2026)\nOolong from the hill shop.\n\n"
                 "[your mind]\nmood: clear",
-         "Today is Tuesday.\n\n[also working now] the run of the Routine Followed sites.")))
+         "Today is Tuesday.\n\n[also working now] the run of the Routine Morning news.")))
     user = {"role": "user", "content":
-            "[Tue 10 Nov 17:22]\nI’m a failed run\n\n[your memory] sections of your notes "
+            "[Tue 10 Nov 17:22]\nI’m a night owl\n\n[your memory] sections of your notes "
             "this message brings up:\n\n### tea/list.md#oolong (0.51, 8 Nov 2026)\nOolong "
             "from the hill shop.\n\n[your mind]\nmood: clear\n\nToday is Tuesday.\n\n"
-            "[also working now] the run of the Routine Followed sites."}
+            "[also working now] the run of the Routine Morning news."}
     system = {"role": "system", "content": "You are Ash."}
     mid = await tree.start_assistant_message(store, cid, asked, tid)
     await tree.finish_assistant_message(store, cid, mid, "", reasoning="a note about today")
@@ -97,7 +97,7 @@ async def _chat(store):
 
 async def test_the_first_request_that_held_a_text_and_what_kind_of_piece_held_it(store):
     cid = await _chat(store)
-    got = await sent.first_sent(store, cid, "i'm a FAILED run")
+    got = await sent.first_sent(store, cid, "i'm a NIGHT owl")
     assert got["searched"] == 2 and got["skipped"] == 0
     assert got["first"] == {"at": "2026-11-10T22:24:25.000+00:00", "kinds": [("message", None)]}
     assert got["now"], "the newest request still carries it"
@@ -105,19 +105,19 @@ async def test_the_first_request_that_held_a_text_and_what_kind_of_piece_held_it
     assert invented["first"] == {"at": "2026-11-10T22:25:19.000+00:00",
                                  "kinds": [("call", "notebook__write")]}, \
         "it first went out as the model's own call, in the request after the one that made it"
-    assert (await sent.first_sent(store, cid, "can't you even remember"))["first"] is None
+    assert (await sent.first_sent(store, cid, "remember the picnic"))["first"] is None
 
 
 async def test_the_stored_part_of_a_message_that_held_a_text(store):
     cid = await _chat(store)
     part = lambda text: store.read(lambda c: sent.message_part(c, cid, text))   # noqa: E731
-    typed = await part("failed run")
+    typed = await part("night owl")
     assert (typed["part"], typed["author"], typed["label"]) == ("text", "user", None)
     recalled = await part("from the hill shop")
     assert (recalled["part"], recalled["label"], recalled["note"]) == (
         "block", "your memory", "tea/list.md#oolong")
     assert (await part("mood: clear"))["label"] == "your mind"
-    tail = await part("Followed sites")
+    tail = await part("Morning news")
     assert (tail["part"], tail["label"]) == ("tail", "also working now")
     assert (await part("Today is Tuesday"))["label"] is None, "a tail's own line has no label"
     assert await part(LINE) is None, "nobody wrote it to the model"
@@ -129,7 +129,7 @@ async def test_where_the_model_first_wrote_a_text_itself(store):
     assert (own["kind"], own["name"]) == ("call", "notebook__write")
     assert (await store.read(lambda c: sent.own_first(c, cid, "a note about today")))["kind"] \
         == "thinking"
-    assert await store.read(lambda c: sent.own_first(c, cid, "failed run")) is None
+    assert await store.read(lambda c: sent.own_first(c, cid, "night owl")) is None
 
 
 async def test_the_tool_says_who_wrote_it_first(store):
@@ -145,16 +145,16 @@ async def test_the_tool_says_who_wrote_it_first(store):
     assert "the app sent it back to you as your own earlier words. It is still in what is " \
            "sent to you now." in own
     assert own.splitlines()[-1].startswith("2 requests of this conversation were searched")
-    typed = (await skill.find_sent(ctx, text="I'm a failed run")).content
-    assert typed.startswith(f"The app sent you \"I'm a failed run\". It first reached you in "
+    typed = (await skill.find_sent(ctx, text="I'm a night owl")).content
+    assert typed.startswith(f"The app sent you \"I'm a night owl\". It first reached you in "
                             f"the message {cfg.user} wrote at ")
     assert f"It is message #1 of the conversation: past_conversations__read(conversation=" \
            f"\"{cid[:8]}\", start=1) reads it." in typed, "where to read it (bug 68)"
     recalled = (await skill.find_sent(ctx, text="oolong from the hill shop")).content
     assert "in the [your memory] block the app put under the message of " in recalled
     assert recalled.splitlines()[0].endswith("from your note tea/list.md#oolong.")
-    never = await skill.find_sent(ctx, text="WOW silly, can't you even remember the evening")
+    never = await skill.find_sent(ctx, text="you promised the blue one, remember the picnic")
     assert never.content.startswith("Nothing the app sent you in this conversation holds")
     assert never.display == {"conversation": cid, "sent": False, "own": False}
-    short = await skill.find_sent(ctx, text="vera")
+    short = await skill.find_sent(ctx, text="game")
     assert short.is_error and "at least 8 characters" in short.content

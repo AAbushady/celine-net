@@ -46,7 +46,7 @@ def _kind(c: sqlite3.Connection, kind: str, key: str) -> str | None:
 
 def _named(c: sqlite3.Connection, tid: str) -> str | None:
     """What the agent named with mind__feel in turn `tid`, its last one: "proud 0.6: why",
-    or its own words first: "\"stung, and glad\" (embarrassed) 0.4: why"."""
+    or its own words first: "\"caught out, and glad\" (embarrassed) 0.4: why"."""
     r = c.execute("SELECT tc.arguments FROM tool_calls tc JOIN messages m ON m.id = "
                   "tc.message_id WHERE m.turn_id=? AND tc.name='mind__feel' AND "
                   "tc.state='ok' ORDER BY tc.rowid DESC LIMIT 1", (tid,)).fetchone()

@@ -79,16 +79,16 @@ async def test_a_feeling_in_its_own_words_is_kept_and_shown_and_the_word_moves_t
     cid = await conversations.create(store)
     ctx = ToolContext(cid, "t1", "k1", store, cfg, None)  # type: ignore[arg-type]
     out = await skill.feel(ctx, emotion="embarrassed", strength=0.4, why="the check landed",
-                           feeling="  stung, and  glad the check was real ")
+                           feeling="  caught out, and  glad it was noticed ")
     assert not out.is_error, out.content
     rows = await store.read(mind._mood_rows)
     assert rows[-1]["emotion"] == "embarrassed"
-    assert rows[-1]["words"] == "stung, and glad the check was real"
+    assert rows[-1]["words"] == "caught out, and glad it was noticed"
     line = mind.describe_mood(rows, timezone.utc, datetime.now(timezone.utc))
-    assert '"stung, and glad the check was real" since ' in line and "embarrassed" not in line
+    assert '"caught out, and glad it was noticed" since ' in line and "embarrassed" not in line
     out = await skill.feel(ctx, emotion="embarrassed", strength=0.4, why="x", feeling="w" * 81)
     assert out.is_error and out.content.startswith("feeling is a word or a few, at most 80")
-    out = await skill.feel(ctx, emotion="stung", strength=0.4, why="x")  # type: ignore[arg-type]
+    out = await skill.feel(ctx, emotion="sheepish", strength=0.4, why="x")  # type: ignore[arg-type]
     assert out.is_error and "Your own words go in feeling" in out.content
     assert len(await store.read(mind._mood_rows)) == 1
 

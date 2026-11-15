@@ -579,8 +579,8 @@ class Mind:
         of the list says it, give your own words in feeling and the nearest word in
         emotion. Example: mind__feel(emotion="curious", strength=0.7, why="{{username}}
         mentioned a project I want to hear more about"), or mind__feel(emotion=
-        "embarrassed", feeling="stung, and glad the check was real", strength=0.4,
-        why="the check I asked for landed on me")."""
+        "embarrassed", feeling="caught out, and glad it was noticed", strength=0.4,
+        why="my mistake was pointed out kindly")."""
         if emotion not in PAD:
             return ToolResult(content=f"{emotion} is not one of the words: "
                                       f"{', '.join(PAD)}. Your own words go in feeling, "

@@ -71,10 +71,10 @@ class Helper:
             elif self.mode == "listen":
                 out.update(end=278, next=None, duration=278, lines=[
                     "[0:06] (the sound gets louder: -48 to -14 dBFS)",
-                    "[0:26-0:58] section (MOSS-Music): verse. Words it heard: you were born to suffer"],
+                    "[0:26-0:58] section (MOSS-Music): verse. Words it heard: the night is long and wide"],
                     heard={"ear": "music", "tempo": 92.3, "meter": 4, "voice": 161, "words": False,
-                           "about": [{"from": 0, "to": 278, "by": "MOSS-Music", "text": "Metalcore, heavy."}]},
-                    captions={"kind": "uploader", "lines": ["[0:26] You were born to suffer"]},
+                           "about": [{"from": 0, "to": 278, "by": "MOSS-Music", "text": "Synth pop, bright."}]},
+                    captions={"kind": "uploader", "lines": ["[0:26] The night is long and wide"]},
                     pictures=self.pictures if at == 0 else [])
             else:
                 out.update(lines=[], captions={"kind": "film", "lines": ["[0:23] You're a jerk, Thom."]},
@@ -177,8 +177,8 @@ def test_a_queued_watch_reads_by_its_source_and_a_background_one_names_it(cfg):
     plex = {"id": "86144e7180b8", "source": {"kind": "plex", "server": "a" * 40, "item": "254348"},
             "title": None, "state": "queued"}
     assert Video._line(plex) == f"#86144e7180b8 plex:{'a' * 40}:254348: queued", "the id video__watch took"
-    assert Video._line({**plex, "title": "In the Mouth of Madness (1994)"}).startswith(
-        "#86144e7180b8 In the Mouth of Madness (1994): ")
+    assert Video._line({**plex, "title": "A Quiet Harbour (1994)"}).startswith(
+        "#86144e7180b8 A Quiet Harbour (1994): ")
     reg = Registry()
     reg.add(Video(cfg))
     said = reg.tools["video__watch"].detached.format_map(
@@ -219,12 +219,12 @@ async def test_a_listen_reads_with_what_was_measured_and_the_uploaders_captions(
         "#abc123def456 A short film (Blender), 0:00 to 3:00 of 0:00-4:38",
         "Heard as music, about 92 beats a minute, 4 beats to a bar.",
         "A voice in 2:41 of it. Its words are the captions below, so they were not written down again.",
-        "What MOSS-Music says of 0:00 to 4:38: Metalcore, heavy.",
+        "What MOSS-Music says of 0:00 to 4:38: Synth pop, bright.",
         "What was heard:",
         "[0:06] (the sound gets louder: -48 to -14 dBFS)",
-        "[0:26-0:58] section (MOSS-Music): verse. Words it heard: you were born to suffer",
+        "[0:26-0:58] section (MOSS-Music): verse. Words it heard: the night is long and wide",
         "The uploader's captions:",
-        "[0:26] You were born to suffer",
+        "[0:26] The night is long and wide",
         "That is the end of what was heard."]
     out = await v.listen(_ctx(store, cfg), "https://youtu.be/x", minutes=25)
     assert out.is_error and out.content.startswith("A listen hears at most 20 minutes;")

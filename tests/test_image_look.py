@@ -162,9 +162,9 @@ async def test_the_users_image_is_named_by_its_line_its_file_name_or_its_box_pat
     name, so it could never be an edit's source (#55)."""
     monkeypatch.setattr(attachments, "turn_sees_images", _sees(True))
     here = await conversations.create(store)
-    att = await upload(app.cfg, store, PNG, "8t6onhjeacpf1.jpeg", "image/png")
+    att = await upload(app.cfg, store, PNG, "photo_0417.jpeg", "image/png")
     await user_says(store, here, "for the second image", attachment_ids=[att["id"]])
-    box = "~/uploads/e082b5bc9be8/8t6onhjeacpf1.jpeg"
+    box = "~/uploads/0a1b2c3d4e5f/photo_0417.jpeg"
     await attachments.set_box_path(store, att["id"], box)
     short = att["id"][:8]
     # its line says its short id, beside where it is in the box
@@ -174,13 +174,13 @@ async def test_the_users_image_is_named_by_its_line_its_file_name_or_its_box_pat
     [said] = attachments.render(app.cfg, [{"role": "user", "content": "for the second image",
                                            "attachments": rows}])
     text = said["content"][0]["text"]
-    assert f"[image 8t6onhjeacpf1.jpeg, short id {short}, in your box at " in text
+    assert f"[image photo_0417.jpeg, short id {short}, in your box at " in text
     ctx, mid = await _call(store, here, "c1", LOOK)
-    for ref in ("8t6onhjeacpf1.jpeg", box, "/home/celine/uploads/e082b5bc9be8/8t6onhjeacpf1.jpeg"):
+    for ref in ("photo_0417.jpeg", box, "/home/celine/uploads/0a1b2c3d4e5f/photo_0417.jpeg"):
         out = await _look(app, ctx, mid, images=[ref])
         assert not out.is_error and [p["id"] for p in out.display["see"]] == [att["id"]], ref
     listed = (await ImageGenerator(app.cfg).list_images(ctx, scope="all")).content
-    assert f"{short}  " in listed and "attached 8t6onhjeacpf1.jpeg" in listed
+    assert f"{short}  " in listed and "attached photo_0417.jpeg" in listed
 
 
 async def test_a_cleared_image_an_unknown_id_and_a_good_one_in_one_look(app, store, monkeypatch):
