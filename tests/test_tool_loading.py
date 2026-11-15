@@ -131,7 +131,8 @@ async def test_a_call_by_name_is_checked_against_the_real_schema(store):
     assert rows[0][:2] == ("mac__tool02", "error")
     assert rows[0][2] == ("invalid arguments: missing command; cmd is not a parameter, did "
                           "you mean command?\nmac__tool02 takes command (a string, required), "
-                          "cwd (a string), timeout_ms (a whole number), shell (a string)."), \
+                          "cwd (a string), timeout_ms (a whole number), shell (a string)."
+                          "\n\nThe call as sent: mac__tool02(cmd=\"sw_vers\")."), \
         "the name it meant and its parameters in one line, not its description"
     assert rows[1][:2] == ("mac__tool02", "ok") and RAN == [{"tool": 2, "command": "sw_vers"}]
 

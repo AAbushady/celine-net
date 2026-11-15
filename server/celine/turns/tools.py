@@ -230,8 +230,8 @@ async def _resolve(turn, call, store, cfg, registry, overrides, token, jobs):
     if (wrong := _invalid(args, call["arguments"], spec, cfg)) is not None:
         # a tool sent by name: what it takes, in one line, with the error
         full = "" if spec.skill in CORE else f"\n{call['name']} takes {_takes(spec.schema)}."
-        return "error", ToolResult(content=f"invalid arguments: {wrong}{full}",
-                                   is_error=True), None
+        return "error", ToolResult(content=f"invalid arguments: {wrong}{full}"
+                                           f"{_as_sent(spec, call)}", is_error=True), None
 
     said: list[str] = []
 
@@ -253,12 +253,61 @@ async def _resolve(turn, call, store, cfg, registry, overrides, token, jobs):
     if out is None:
         await guard_passes.retell(store, gate.told)   # shutdown: its next result tells them
         return out
+    state, result, withheld = out
+    if state == "error" and not NOT_REFUSED & set(result.display or {}):
+        out = state, replace(result, content=result.content + _as_sent(spec, call)), withheld
     if not gate.lines:
         return out
     # after the result, outside any <outside> wrapper and the cap (marked())
     state, result, withheld = out
     return state, replace(result, display={**(result.display or {}),
                                            "bastet": gate.lines}), withheld
+
+
+# A refused call to a tool that changes something ends with the call as it was sent:
+# short values as they are, long ones by their size. A retry the agent types anew keeps
+# the fields the refusal was not about (#84: retries dropped `mode` and `path`).
+SENT_SHORT = 60         # characters of a string shown as it is
+SENT_MOST = 600         # characters of the call as shown; past it lists and objects are
+                        # shown by their size
+NOT_REFUSED = frozenset({"time_up", "raised", "expired"})    # display keys of a call
+                                                             # stopped or crashed
+
+
+def _as_sent(spec, call) -> str:
+    """"\n\nThe call as sent: name(field=value, ...)." for a tool that changes something
+    (spec.mutating) whose arguments were an object, else ""."""
+    args = call.get("args")
+    if not spec.mutating or not isinstance(args, dict):
+        return ""
+    for deep in (2, 0):
+        shown = f"{call['name']}({_fields(args, deep)})"
+        if len(shown) <= SENT_MOST:
+            break
+    return f"\n\nThe call as sent: {shown}."
+
+
+def _fields(d: dict, deep: int) -> str:
+    return ", ".join(f"{k}={_shown(v, deep)}" for k, v in d.items())
+
+
+def _shown(v, deep: int) -> str:
+    """One value as the call shows it: lists and objects field by field `deep` levels
+    down, by their size below that."""
+    if isinstance(v, str):
+        return json.dumps(v, ensure_ascii=False) if len(v) <= SENT_SHORT \
+            else f"<{len(v):,} characters>"
+    if isinstance(v, dict):
+        return "{" + _fields(v, deep - 1) + "}" if deep > 0 else \
+            f"<an object with {_listed(list(v))}>" if v else "{}"
+    if isinstance(v, list):
+        return "[" + ", ".join(_shown(x, deep - 1) for x in v) + "]" if deep > 0 or not v \
+            else f"<{len(v)} {'item' if len(v) == 1 else 'items'}>"
+    return json.dumps(v)
+
+
+def _listed(names: list[str]) -> str:
+    return ", ".join(names[:-1]) + " and " + names[-1] if len(names) > 1 else names[0]
 
 
 async def _replayed(store, turn, call):
@@ -547,7 +596,8 @@ async def _run_call(turn, call, spec, args, store, cfg, token, jobs):
     if not handle.done.is_set() and not asked:
         await jobs.stop_handle(handle)
         await handle.done.wait()
-        return "error", ToolResult(content=expired, is_error=True), None
+        return "error", ToolResult(content=expired, is_error=True,
+                                   display={"expired": True}), None
 
     if handle.done.is_set():
         # no await between the done check and the claim
@@ -585,7 +635,8 @@ async def _bounded(spec, ctx, args, limit, token, name, expired: str):
         if stopped:
             return "cancelled", ToolResult(content="cancelled"), None
         if scope.cancelled_caught:
-            return "error", ToolResult(content=expired, is_error=True), None
+            return "error", ToolResult(content=expired, is_error=True,
+                                       display={"expired": True}), None
     except Exception as e:
         log.warning("tool raised", exc_info=True,
                     extra={"event": "tool.raised", "tool": name,

@@ -110,6 +110,12 @@ class T:
         self.runs += 1
         return ToolResult(content="nothing found")
 
+    @tool(read_only=False)
+    async def save(self, ctx, path: str, content: str = "", mode: str = "new") -> ToolResult:
+        """save"""
+        self.runs += 1
+        return ToolResult(content="felt is too long. Nothing was saved.", is_error=True)
+
     @tool()
     async def see(self, ctx) -> ToolResult:
         """see"""
@@ -230,6 +236,42 @@ async def test_the_same_call_with_the_same_result_runs_every_time(store, cfg):
     _, _, final = await _turn(store, cfg, _reg(t), b)
     assert t.runs == 4 and await _tool_results(store) == ["nothing found"] * 4
     assert b.tools == [True] * 5 and final["content"] == "Nothing found."
+
+
+async def test_a_refused_call_that_changes_something_ends_with_the_call_as_sent(store, cfg):
+    """Bug 84: after a refusal the agent typed the call anew, and the retry dropped a field
+    the refusal was not about (`mode`, `path`). A refused call of a tool that changes
+    something ends with the call as it was sent; a read-only tool's does not."""
+    t = T()
+    b = Script([_call(0, "t__save", {"path": "opinions/re.md", "mode": "append",
+                                     "content": "x" * 3014}),
+                _call(1, "t__save", {"path": 5}),
+                _call(2, "t__same", {"q": 5}),
+                [TextDelta("k"), Done(reason="stop")]])
+    await _turn(store, cfg, _reg(t), b)
+    assert await _tool_results(store) == [
+        "felt is too long. Nothing was saved.\n\nThe call as sent: t__save(path="
+        "\"opinions/re.md\", mode=\"append\", content=<3,014 characters>).",
+        "invalid arguments: path is a string\n\nThe call as sent: t__save(path=5).",
+        "invalid arguments: q is a string"]
+    assert t.runs == 1
+
+
+def test_the_call_as_sent_shows_lists_and_objects_until_it_is_long():
+    from types import SimpleNamespace
+    from celine.turns.tools import _as_sent
+    edit = {"op": "replace", "start": "40:6w", "new_text": "y" * 1263}
+    call = {"name": "notebook__edit", "args": {"path": "a.md", "edits": [edit]}}
+    assert _as_sent(SimpleNamespace(mutating=True), call) == (
+        '\n\nThe call as sent: notebook__edit(path="a.md", edits=[{op="replace", '
+        'start="40:6w", new_text=<1,263 characters>}]).')
+    many = {"name": "notebook__edit", "args": {"path": "a.md", "edits": [edit] * 30,
+                                               "felt": None, "on": True}}
+    assert _as_sent(SimpleNamespace(mutating=True), many) == (
+        '\n\nThe call as sent: notebook__edit(path="a.md", edits=<30 items>, felt=null, '
+        "on=true).")
+    assert _as_sent(SimpleNamespace(mutating=False), call) == ""
+    assert _as_sent(SimpleNamespace(mutating=True), {"name": "x", "args": None}) == ""
 
 
 async def test_a_malformed_argument_fails_with_its_reason(store, cfg):
