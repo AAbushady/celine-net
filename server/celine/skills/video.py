@@ -370,6 +370,17 @@ class Video:
             return ToolResult(content='at is a time in the video, like "12:30".', is_error=True)
         return await self._stretch(ctx, id.strip().lstrip("#"), where)
 
+    @staticmethod
+    def _nothing(s: dict) -> str:
+        """The line of a stretch with nothing in it. One the watch has not reached says so: read while the watch
+        went on, it came back empty and was full an hour later (bug 81)."""
+        done = s.get("done_to")
+        if done is None or s["from"] < done or s["state"] == "done":
+            return "(nothing in this stretch)"
+        if s["state"] in ("failed", "cancelled"):
+            return f"(not watched: the watch stopped at {clock(done)})"
+        return f"(not watched yet: the watch is done up to {clock(done)})"
+
     async def _stretch(self, ctx: ToolContext, jid: str, at: float | None) -> ToolResult:
         params = {"span": READ_SPAN}
         if at is not None:
@@ -390,7 +401,7 @@ class Video:
             if cap else []
         if s["mode"] == "omni":
             lines.append("What the watching model saw and heard:")
-            lines += s["lines"] or ["(nothing in this stretch)"]
+            lines += s["lines"] or [self._nothing(s)]
             lines += said
         elif s["mode"] == "listen":
             lines += self._heard(s, bool(cap))

@@ -135,6 +135,16 @@ async def test_a_watch_starts_and_its_first_stretch_comes_back_in_order(store, c
     assert "at=180" in h.seen[-1]
 
 
+def test_a_stretch_the_watch_has_not_reached_says_so():
+    """Bug 81: read while the watch went on, a stretch came back empty and was full an hour
+    later, so the agent kept a rule that one empty read is never final."""
+    s = {"from": 2980, "done_to": 2700, "state": "watching"}
+    assert Video._nothing(s) == "(not watched yet: the watch is done up to 45:00)"
+    assert Video._nothing({**s, "state": "failed"}) == "(not watched: the watch stopped at 45:00)"
+    assert Video._nothing({**s, "state": "done"}) == "(nothing in this stretch)"
+    assert Video._nothing({**s, "from": 2600}) == "(nothing in this stretch)"
+
+
 async def test_a_watch_that_stopped_early_goes_on_under_its_id_from_where_its_log_ends(store, cfg):
     h = Helper()
     h.stopped_at = 360.0
