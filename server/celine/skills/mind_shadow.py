@@ -13,7 +13,8 @@ what it names in `shadow_feelings`, moving neither its mood nor its needs:
 
 Each row keeps what the agent named with mind__feel in that turn, so the two can be set
 side by side. Never a sub-agent's turn, and intimacy only in a chat. The agent reads the
-rows with mind__list_appraisals (view)."""
+rows with mind__list_appraisals (view), after the live appraisal's readings, which did
+move its mood and needs."""
 from __future__ import annotations
 
 import json
@@ -178,31 +179,66 @@ async def appraise(app, cid: str, tid: str, backend=None) -> dict | None:
     return row
 
 
+def _needs_words(moved: list[dict]) -> str:
+    return "; needs: " + ", ".join(f"{n['need']} {n['change']} {n['strength']:g}"
+                                   for n in moved) if moved else ""
+
+
+def _live(c: sqlite3.Connection, since: str, tz) -> str:
+    """The readings of the appraisal after a chat turn (mind.appraise) since `since`, which
+    moved the mood and the needs, one line per reply read, newest first; "" without any."""
+    turns: dict[str, dict] = {}
+    for at, emotion, strength, why, mid in c.execute(
+            "SELECT at, emotion, strength, why, message_id FROM moods WHERE by = 'appraisal' "
+            "AND at >= ?", (since,)):
+        turns.setdefault(mid or at, {"at": at, "needs": []}).update(
+            emotion=emotion, strength=strength, why=why)
+    for at, need, change, strength, why, mid in c.execute(
+            "SELECT at, need, change, strength, why, message_id FROM needs WHERE "
+            "by = 'appraisal' AND at >= ?", (since,)):
+        t = turns.setdefault(mid or at, {"at": at, "needs": [], "why": why})
+        t["needs"].append({"need": need, "change": change, "strength": strength})
+    if not turns:
+        return ""
+    rows = sorted(turns.values(), key=lambda t: t["at"], reverse=True)
+    lines = []
+    for t in rows[:SHOWN]:
+        when = datetime.fromisoformat(t["at"]).astimezone(tz).strftime("%a %-d %b %H:%M")
+        said = f"{t['emotion']} {t['strength']:g}" if t.get("emotion") else "no feeling"
+        said += (f" ({t['why']})" if t.get("why") else "") + _needs_words(t["needs"])
+        lines.append(f"- {when}, chat: {said}.")
+    more = f"\n(the newest {SHOWN} of {len(rows)})" if len(rows) > SHOWN else ""
+    return (f"{len(rows)} of your chat turns read as they ended, each reading moving your "
+            f"mood or your needs:\n\n" + "\n".join(lines) + more)
+
+
 def view(c: sqlite3.Connection, cfg, days: float, now_: datetime | None = None) -> str:
-    """mind__list_appraisals: the shadow readings of the last `days`, newest first, with what
-    the agent named beside them."""
+    """mind__list_appraisals, the last `days` of both appraisals, newest first: the readings
+    after its chat turns, which moved its mood and needs, then the shadow readings, with
+    what the agent named beside them, which moved nothing."""
     from ..clock import zone
     now_ = now_ or datetime.now(timezone.utc)
     since = iso(now_ - timedelta(days=days))
+    tz = zone(cfg)
+    live = _live(c, since, tz)
     rows = c.execute("SELECT at, kind, emotion, strength, why, needs, named FROM "
                      "shadow_feelings WHERE at >= ? ORDER BY at DESC, id DESC",
                      (since,)).fetchall()
     if not rows:
-        return ("Nothing was read in shadow in that time." if cfg.r("shadow_appraisal") else
-                "Shadow appraisal is off, and nothing was read in that time.")
+        shadow = ("Nothing was read in shadow in that time." if cfg.r("shadow_appraisal")
+                  else "Shadow appraisal is off, and nothing was read in shadow in that time.")
+        return f"{live}\n\n{shadow}" if live else shadow
     per = {k: sum(1 for r in rows if r[1] == k) for k in KINDS}
     head = (f"{len(rows)} of your turns read in shadow ("
             + ", ".join(f"{k} {n}" for k, n in per.items() if n) + "), a feeling named in "
             f"{sum(1 for r in rows if r[2])}. None of it moved your mood or your needs.")
-    tz, lines = zone(cfg), []
+    lines = []
     for at, kind, emotion, strength, why, listed, named in rows[:SHOWN]:
         when = datetime.fromisoformat(at).astimezone(tz).strftime("%a %-d %b %H:%M")
         said = f"{emotion} {strength:g}" + (f" ({why})" if why else "") if emotion else \
             "nothing"
-        moved = json.loads(listed or "[]")
-        if moved:
-            said += "; needs: " + ", ".join(f"{n['need']} {n['change']} {n['strength']:g}"
-                                            for n in moved)
+        said += _needs_words(json.loads(listed or "[]"))
         lines.append(f"- {when}, {kind}: {said}." + (f" You named: {named}." if named else ""))
     more = f"\n(the newest {SHOWN} of {len(rows)})" if len(rows) > SHOWN else ""
-    return head + "\n\n" + "\n".join(lines) + more
+    shadow = head + "\n\n" + "\n".join(lines) + more
+    return f"{live}\n\n{shadow}" if live else shadow

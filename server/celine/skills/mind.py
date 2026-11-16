@@ -611,10 +611,12 @@ class Mind:
     async def list_appraisals(self, ctx: ToolContext,
                               days: Annotated[float, "How far back, in days."] = 1,
                               ) -> ToolResult:
-        """What the appraiser read into your own turns in shadow (your own time, routine
-        runs, missions, and the chat turns where you named your feeling yourself), beside
-        what you named. Kept for you to compare; none of it moves your mood or your
-        needs. Returns: the count per kind, then one line per turn, newest first."""
+        """What the appraiser read into your own turns. Its reading after a chat turn where
+        you did not name your feeling moves your mood and your needs. Your own time,
+        routine runs, missions and the chat turns where you named your feeling yourself are
+        read in shadow, beside what you named, and move nothing. Returns: the readings that
+        moved you, then the shadow readings with the count per kind, one line per turn,
+        newest first."""
         from . import mind_shadow
         if days <= 0:
             return ToolResult(content="days is a number over 0.", is_error=True)
