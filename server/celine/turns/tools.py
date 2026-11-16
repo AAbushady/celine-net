@@ -444,13 +444,42 @@ def _broken_json(args: dict, schema: dict) -> str | None:
         if kind not in _JSON or not isinstance(v, str) or v.strip()[:1] not in ("[", "{"):
             continue
         what = "a list" if kind == "array" else "an object"
+        deep = f"{key} is {what}, and the string sent for it nests too deep to read"
         try:
             json.loads(v)
-        except ValueError as e:
-            return f"{key} is {what}, and the string sent for it is not valid JSON: {e}"
         except RecursionError:
-            return f"{key} is {what}, and the string sent for it nests too deep to read"
+            return deep
+        except ValueError as e:
+            # Python stops on deep JSON only when the C stack runs out, so on a big stack it
+            # reads to the end and names what is missing there: the depth is the fault
+            return deep if _deeper(v, NESTS) else \
+                f"{key} is {what}, and the string sent for it is not valid JSON: {e}"
     return None
+
+
+NESTS = 1000            # a list or object sent as a string nested deeper is "too deep"
+
+
+def _deeper(text: str, most: int) -> bool:
+    """The brackets of `text`, outside its strings, nest deeper than `most`."""
+    depth, quoted, escaped = 0, False, False
+    for ch in text:
+        if quoted:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                quoted = False
+        elif ch == '"':
+            quoted = True
+        elif ch in "[{":
+            depth += 1
+            if depth > most:
+                return True
+        elif ch in "]}":
+            depth -= 1
+    return False
 
 
 def _meant(name: str, missing: list[str], props: list[str]) -> str | None:

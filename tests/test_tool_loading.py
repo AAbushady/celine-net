@@ -360,6 +360,23 @@ def test_a_list_sent_as_broken_json_is_refused_not_run_as_one_string():
         assert _broken_json(fine, schema) is None, fine
 
 
+def test_a_string_nested_too_deep_says_so_whatever_the_stack(monkeypatch):
+    """On a big C stack Python reads deep JSON to its end and names what is missing there
+    (CI): nested past NESTS, the depth is what is wrong; brackets in a string do not nest."""
+    import json
+
+    from celine.turns import tools
+
+    def to_the_end(s, *a, **k):
+        raise json.JSONDecodeError("Expecting value", s, len(s))
+    monkeypatch.setattr(tools.json, "loads", to_the_end)
+    schema = {"properties": {"items": {"type": "array"}}}
+    assert "nests too deep" in tools._broken_json({"items": "[" * (tools.NESTS + 1)}, schema)
+    for shallow in ("[" * tools.NESTS, '["' + "[" * 2000 + '"'):
+        assert tools._broken_json({"items": shallow}, schema).startswith(
+            "items is a list, and the string sent for it is not valid JSON: Expecting value")
+
+
 def test_a_plain_value_in_a_string_is_read_as_its_type_and_a_wrong_name_gets_a_hint():
     from celine.turns.tools import _lenient, _meant
     schema = {"properties": {"unread": {"type": "boolean"}, "limit": {"type": "integer"},
