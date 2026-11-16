@@ -46,6 +46,29 @@ async def test_the_agent_starts_a_mission_with_what_the_form_takes(store):
     assert (await skill.start(ctx, brief=" ")).is_error
 
 
+async def test_a_mission_reports_in_the_chat_it_was_started_from(store):
+    """Bug 86: started from a chat with no report_to, it reports there; started from a
+    run, its end reaches the user on the Intercom, its whole note with it."""
+    cfg = load()
+    skill = _skill(store, cfg)
+    chat = await conversations.create(store, "Plans")
+    run = await conversations.create(store, "Evening walk", kind="background")
+    went = []
+    for home in (chat, run):
+        out = await skill.start(ToolContext(home, "t", "k", store, cfg, None),
+                                brief="Count the shelves.", name=f"Shelves {len(went)}")
+        cid = out.display["mission"]
+        assert (await missions.get(store, cid))["report_to"] == (home if home == chat else None)
+        assert not (await skill.update(ToolContext(cid, "t", "k", store, cfg, None),
+                                       status="Done", note="Nine shelves, two of them loose.")
+                    ).is_error
+        went.append(await store.read(lambda c: c.execute(
+            "SELECT to_addr, text FROM intercom WHERE from_addr=? AND kind='report'",
+            (f"agent:{cid}",)).fetchone()[:]))
+    assert went == [(f"agent:{chat}", "Mission Shelves 0 done: Nine shelves, two of them loose."),
+                    ("user", "Mission Shelves 1 done: Nine shelves, two of them loose.")]
+
+
 async def test_start_is_offered_everywhere_but_in_a_sub_agent(store):
     skill = _skill(store, load())
     chat = await conversations.create(store, "Plans")

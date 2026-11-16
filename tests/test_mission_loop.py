@@ -186,7 +186,7 @@ async def test_done_with_an_open_step_needs_a_note(store):
     cid = await _mission(store, intercom)
     await plans.save(store, cid, "", plans.clean(["Read", "Write", "Check"]))
     skill = Missions(cfg)
-    skill.app = SimpleNamespace(store=store, intercom=intercom)
+    skill.app = SimpleNamespace(store=store, intercom=intercom, cfg=cfg)
     ctx = ToolContext(cid, "t", "k", store, cfg, None)
     out = await skill.update(ctx, status="Done")
     assert out.is_error and out.content.startswith("Step 1, 2, 3 of your plan is still open")

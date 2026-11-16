@@ -57,8 +57,9 @@ async def record(app, store, cid: str, word: str, note: str | None) -> dict | No
     follow): the row and the feed (missions.set_status_sync); done or stopped cancels what
     it scheduled; stopped reads what it asked the user, so nothing of it waits for them;
     any status but active is reported in the conversation it reports to, and the user's
-    Stop also in the conversation that started it. -> the row, None when there is no such
-    mission."""
+    Stop also in the conversation that started it; with no conversation, its end (done,
+    or stopped with the note why) goes to the user on the Intercom. -> the row, None when
+    there is no such mission."""
     row = await store.write(lambda c: missions.set_status_sync(c, store, cid, word, note))
     if row is None or app is None:
         return row
@@ -77,7 +78,9 @@ async def record(app, store, cid: str, word: str, note: str | None) -> dict | No
     to = row["report_to"]
     if word == "stopped" and not note and not to and row["started_by"] not in (None, "user"):
         to = row["started_by"]          # the user's Stop: the chat that started it hears
-    if word != "active" and to:
+    where = f"agent:{to}" if to else "user" if word == "done" or (
+        word == "stopped" and note) else None
+    if word != "active" and where:
         # a report the user reads in that conversation; it starts no turn there
         from ..intercom.addresses import Refused
         said = "stopped" if word == "stopped" and note else WORDS[word]   # not by them
@@ -86,7 +89,7 @@ async def record(app, store, cid: str, word: str, note: str | None) -> dict | No
         heading = f"Mission {row['name']} is {MissionStatus(word).display['words'].lower()}"
         try:
             await app.intercom.send(
-                f"agent:{cid}", f"agent:{to}", app.cfg.substitute(
+                f"agent:{cid}", where, app.cfg.substitute(
                     f"Mission {row['name']} {said}" + (f": {note}" if note else ".")),
                 kind="report", wake=False,
                 data={"mission": cid, "status": word, "heading": heading, "note": note or ""})
@@ -309,7 +312,8 @@ class Missions:
         check_in: Annotated[str | None, 'How often a line on where it stands goes where it '
                                         'reports, like "30 min".'] = None,
         report_to: Annotated[str | None, "The conversation id it reports in; without one "
-                                         "its reports go to {{username}}."] = None,
+                                         "the chat you start it from, and started "
+                                         "elsewhere its reports go to {{username}}."] = None,
     ) -> ToolResult:
         """Start a mission: it works on the brief in a conversation of its own, with its
         own plan and sub-agents, until it is done.

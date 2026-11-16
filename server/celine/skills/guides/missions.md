@@ -22,8 +22,10 @@ waits for them. Its transcript: past_conversations__read(conversation="<its name
 
 missions__start(brief) starts a mission of your own, from anywhere but a sub-agent: it
 takes what {{username}}'s form takes (name, model, time_limit, min_time, check_in,
-report_to) and runs in a conversation of its own, its brief from you. A cloud model you
-pick yourself asks {{username}} first.
+report_to) and runs in a conversation of its own, its brief from you. Started from a chat
+with {{username}}, it reports in that chat unless report_to names another; started from
+a run, its end reaches {{username}} on the Intercom. A cloud model you pick yourself asks
+{{username}} first.
 
 With a minimum time, missions__update(status="Done") before it is refused with the time
 left; force=true closes it all the same.

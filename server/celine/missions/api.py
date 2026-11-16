@@ -139,6 +139,11 @@ async def start(services, body: MissionIn, by: str | None = None) -> str:
     if not brief:
         raise CelineError("bad_request", "Instructions are required.", 400)
     await _conversation_exists(store, body.report_to)
+    report_to = body.report_to or None
+    if report_to is None and by and await store.read(lambda c: c.execute(
+            "SELECT 1 FROM conversations WHERE id=? AND kind='chat' AND agent_of IS NULL",
+            (by,)).fetchone()) is not None:
+        report_to = by                  # started from a chat with the user: it reports there
     from ..settings import conversations as conv_settings
     chosen = conv_settings.validate(cfg.settings, getattr(services, "registry", None),
                                     {"model": body.model}) if body.model else None
@@ -153,7 +158,7 @@ async def start(services, body: MissionIn, by: str | None = None) -> str:
     terminal = await missions.terminal_name(store, slug(name) or "mission")
     await missions.create(store, cid, {
         "name": name or title, "terminal": terminal, "brief": brief,
-        "report_to": body.report_to or None, "until": iso(until) if until else None,
+        "report_to": report_to, "until": iso(until) if until else None,
         "min_until": least, "check_in": check_in, "started_by": by})
     if chosen:                          # before the brief: its first turn runs on it
         await conv_settings.apply(store, cid, chosen)
