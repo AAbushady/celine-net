@@ -202,6 +202,25 @@ async def test_a_reply_to_her_own_message_goes_where_that_one_went(store):
     assert await _queued(store, parent) == 0, "nothing wakes her"
 
 
+async def test_a_run_answering_what_an_earlier_run_told_the_user_answers_the_user(store):
+    """Bug 85: a later run's reply to a message an earlier run sent the user, with no to,
+    reaches the user, never the earlier run. A mission's message is the mission's."""
+    from celine.intercom import Intercom
+    ic = Intercom(store)
+    earlier = await conversations.create(store, "Evening walk", kind="background")
+    later = await conversations.create(store, "Evening walk", kind="background")
+    mission = await conversations.create(store, "tidy", kind="mission")
+    told = await ic.send(f"agent:{earlier}", "user", "Three of five checks held.")
+    asked = await ic.send(f"agent:{mission}", "user", "Which shelf first?")
+    went = []
+    for answered in (told, asked):
+        out = await ic.send(f"agent:{later}", "", "The other two are written up.",
+                            reply_to=answered["intercom_id"])
+        went.append(await store.read(lambda c: c.execute(
+            "SELECT to_addr FROM intercom WHERE id=?", (out["intercom_id"],)).fetchone()[0]))
+    assert went == ["user", f"agent:{mission}"]
+
+
 async def test_the_users_reply_marks_the_thread_read(store):
     """A message waits for the user until they reply (or dismiss it), not until they
     open the thread."""

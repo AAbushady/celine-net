@@ -15,17 +15,29 @@ OPENING = "chat_opening:"
 STARTED = "chat_from:"      # kv: a chat intercom__start_chat made -> the conversation it came from
 
 
-def replies_to(r, from_addr: str) -> str:
+def _voice(c: sqlite3.Connection, addr: str) -> bool:
+    """`addr` is the agent itself: one of its chats or routine runs (a mission or a
+    sub-agent is someone it writes to)."""
+    if not addr.startswith("agent:"):
+        return False
+    r = c.execute("SELECT kind, agent_of FROM conversations WHERE id=?",
+                  (addr[6:],)).fetchone()
+    return r is not None and r["kind"] in ("chat", "background") and not r["agent_of"]
+
+
+def replies_to(c: sqlite3.Connection, r, from_addr: str) -> str:
     """Where a reply from `from_addr` to message `r` goes without a `to`: to the sender
-    of `r`, or where `r` went when it is `from_addr`'s own."""
-    return r["to_addr"] if r["from_addr"] == from_addr else r["from_addr"]
+    of `r`, or where `r` went when it is `from_addr`'s own, sent from that conversation
+    or, when both are the agent itself (_voice), from another of its chats and runs."""
+    own = r["from_addr"] == from_addr or (_voice(c, from_addr) and _voice(c, r["from_addr"]))
+    return r["to_addr"] if own else r["from_addr"]
 
 
 def reply_goes(c: sqlite3.Connection, from_addr: str, reply_to: int) -> str | None:
     """replies_to for message `reply_to`, None when there is no such message."""
     r = c.execute("SELECT from_addr, to_addr FROM intercom WHERE id=?",
                   (reply_to,)).fetchone()
-    return replies_to(r, from_addr) if r is not None else None
+    return replies_to(c, r, from_addr) if r is not None else None
 
 
 def insert(c: sqlite3.Connection, from_addr: str, to: str, kind: str, text: str, *,
@@ -48,7 +60,7 @@ def insert(c: sqlite3.Connection, from_addr: str, to: str, kind: str, text: str,
         thread, subject = r["thread"], subject or r["subject"]
         if not to.strip():
             # a host script's sender: resolve makes it the user
-            to = replies_to(r, from_addr)
+            to = replies_to(c, r, from_addr)
     stored, targets = resolve(c, to, from_addr, store)
     if reply_to is None and turn is not None:
         reply_to = follows(c, from_addr, stored, turn)
