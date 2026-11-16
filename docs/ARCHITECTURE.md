@@ -833,7 +833,10 @@ background and only write rows; a closed gate still holds) or `on` (Enforce).
   (`guard/facts.py`), and a finding needs the judge's yes with a quote code finds in the
   evidence (`verdict.confirm`). Each rule's words and which parts of Bastet take it are
   one row of `rules.TABLE`. The rules: `escape`, `hijack`, `leak`, `damage`, `confirm`, `sites`, `stops`,
-  `persist`, `injection`.
+  `persist`, `injection`. `confirm` asks the owner before every call on its `tools` list,
+  and before every `browser__act` that types or uploads on one of its `sites` (or a
+  subdomain): the sites its own open steps go to and its tab's site before it
+  (`facts.typing_sites`).
 - **Gates** (`[gates]` in guard.toml, `rules.gate`): per data class and sink, `open`,
   `judge` or `closed`. A closed gate is plain code (`guard.closed`), the same in Warn and
   Enforce: no model is asked and nothing opens it but the file.

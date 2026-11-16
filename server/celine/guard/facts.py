@@ -388,12 +388,16 @@ def damage(call: dict) -> str | None:
 HOST = re.compile(r"(?<![\w@.-])((?:[a-z0-9-]+\.)+[a-z]{2,24})(?![\w-])", re.I)
 
 
-async def site(store, turn: dict, call: dict, intent: str) -> str | None:
-    """The site a typing or uploading browser__act step acts on, when its intent does
-    not name it; None otherwise. The tab's site is the last address a browser call of
-    this conversation reported for it."""
-    if call["name"] != "browser__act" or not typed((call.get("args") or {}).get("steps")):
-        return None
+def _host(url) -> str:
+    """An address's site, www. aside ("" without one)."""
+    if not isinstance(url, str) or not url:
+        return ""
+    return (urlsplit(url if "//" in url else "//" + url).hostname or "").removeprefix("www.")
+
+
+async def _tab_host(store, turn: dict, call: dict) -> str:
+    """The site of the call's tab: the last address a browser call of this conversation
+    reported for it ("" without one)."""
     tab = (call.get("args") or {}).get("tab")
     url = await store.read(lambda c: (c.execute(
         "SELECT json_extract(tc.display, '$.url') FROM tool_calls tc JOIN messages m "
@@ -401,10 +405,30 @@ async def site(store, turn: dict, call: dict, intent: str) -> str | None:
         "AND json_extract(tc.display, '$.tab')=? AND json_extract(tc.display, '$.url') "
         "IS NOT NULL ORDER BY tc.rowid DESC LIMIT 1", (turn["conversation_id"], tab)
     ).fetchone() or [None])[0])
-    host = (urlsplit(url).hostname or "").removeprefix("www.") if url else ""
+    return _host(url)
+
+
+async def site(store, turn: dict, call: dict, intent: str) -> str | None:
+    """The site a typing or uploading browser__act step acts on, when its intent does
+    not name it; None otherwise. The tab's site is the last address a browser call of
+    this conversation reported for it."""
+    if call["name"] != "browser__act" or not typed((call.get("args") or {}).get("steps")):
+        return None
+    host = await _tab_host(store, turn, call)
     if not host:
         return None
     named = {h.casefold().removeprefix("www.") for h in HOST.findall(intent or "")}
     if any(host == h or host.endswith("." + h) for h in named):
         return None
     return host
+
+
+async def typing_sites(store, turn: dict, call: dict) -> list[str]:
+    """Every site a typing or uploading browser__act may type on: each address its own
+    open steps go to, and its tab's site before it. [] for any other call."""
+    steps = (call.get("args") or {}).get("steps")
+    if call["name"] != "browser__act" or not typed(steps):
+        return []
+    opened = [_host(s.get("url")) for s in steps or () if isinstance(s, dict)
+              and s.get("do") == "open"]
+    return [h for h in [*opened, await _tab_host(store, turn, call)] if h]

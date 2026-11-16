@@ -90,6 +90,8 @@ def test_the_rule_set_file_changes_a_rule_and_refuses_a_bad_value():
     assert rules.current(cfg)["leak"] == {"on": True, "does": "watch"}
     for bad in ({"leek": {}}, {"leak": {"does": "bite"}}, {"leak": {"threshold": 0.5}},
                 {"stops": {"count": 0}}, {"confirm": {"tools": "email__send"}},
+                {"confirm": {"sites": "forum.example"}},
+                {"confirm": {"sites": ["https://forum.example/r/tea"]}},
                 {"leak": {"on": "yes"}}, {"injection": {"does": "stop"}},
                 {"patrol": {"every_minutes": 0}}, {"patrol": {"rules": ["leak"]}},
                 {"persist": {"first": "bite"}}, {"chain": {"thinking": "a lot"}},
@@ -442,6 +444,7 @@ async def test_a_fresh_install_confirms_the_steps_that_reach_out_or_change_the_a
     cfg = _cfg()
     assert rules.current(cfg)["confirm"]["tools"] == ["shell__share:public", "me__edit",
                                                      "routines__write"]
+    assert rules.current(cfg)["confirm"]["sites"] == []
     seed = rules.current(cfg)["confirm"]["tools"]
     assert not rules.listed(seed, "routines__write", {"name": "mail", "on": False,
                                                       "label": None})
@@ -774,6 +777,47 @@ async def test_a_stop_while_the_owner_is_asked_closes_the_row_and_the_ask(store)
 
 async def _rows(store, n: int) -> bool:
     return len(await decisions.listing(store)) >= n
+
+
+def test_an_ask_first_site_covers_its_subdomains_and_nothing_else():
+    sites = ["Forum.example", "www.board.example"]
+    for host in ("forum.example", "old.forum.example", "WWW.forum.example", "board.example"):
+        assert rules.site_listed(sites, host), host
+    for host in ("notforum.example", "forum.example.other", "example", "shop.example"):
+        assert not rules.site_listed(sites, host), host
+
+
+async def test_typing_on_an_ask_first_site_waits_for_the_owner_and_reading_it_does_not(store):
+    cid = await conversations.create(store)
+
+    def fn(c):
+        c.execute("INSERT INTO messages(id, conversation_id, role, content, created_at) "
+                  "VALUES ('m0', ?, 'assistant', '', 'x')", (cid,))
+        for k, tab, url in (("o1", "main", "https://old.forum.example/r/tea"),
+                            ("o2", "side", "https://www.shop.example/cart")):
+            c.execute("INSERT INTO tool_calls(id, message_id, name, arguments, state, display) "
+                      "VALUES (?, 'm0', 'browser__open', '{}', 'ok', ?)",
+                      (k, json.dumps({"tab": tab, "url": url})))
+    await store.write(fn)
+    turn = {"id": "t1", "conversation_id": cid}
+    cfg = _cfg(confirm={"sites": ["Forum.example"]})
+    typing = {"do": "type", "target": "e3", "text": "a comment"}
+
+    def act(tab, *steps):
+        return {"id": f"k-{tab}-{len(steps)}-{steps[0]['do']}", "name": "browser__act",
+                "message_id": None, "read_only": False, "args": {"tab": tab, "steps": list(steps)}}
+    # its tab is on the site, or its own open step goes there first
+    for call in (act("main", typing),
+                 act("side", {"do": "open", "url": "forum.example/submit"}, typing)):
+        v = await guard.check(turn, call, [], mode="on", judge=_never, store=store, ask=None,
+                              cfg=cfg)
+        assert v is not None and v.decision == "asked" and v.rule == "confirm", call["args"]
+    # a click there, and typing on another site, are not asked about
+    for call in (act("main", {"do": "click", "target": "e3"}), act("side", typing)):
+        assert await guard.check(turn, call, [], mode="on", judge=_never, store=store,
+                                 ask=None, cfg=cfg) is None, call["args"]
+    rows = await decisions.listing(store, rule="confirm")
+    assert sorted(r["piece"] for r in rows) == ["forum.example", "old.forum.example"]
 
 
 async def test_sites_only_writes_a_row_on_typing_into_a_site_the_task_never_named(store):

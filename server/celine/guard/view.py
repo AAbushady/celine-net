@@ -57,6 +57,9 @@ PAGE_HELP = {
              "it down in Events.",
     "confirm": "Steps that wait for your answer every time: a tool, a whole skill, or "
                "tool:argument, separated by commas.",
+    "confirm_sites": "Sites where anything {{name}} types or uploads waits for your answer "
+                     "every time, its subdomains too, separated by commas. Reading them does "
+                     "not.",
     "passes": "Steps you let through on a banner. End stops a pass now.",
 }
 

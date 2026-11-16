@@ -11,6 +11,7 @@ values stay on a reload.
 
     [confirm]            # a tool, a whole skill by its name, or "tool:arg": that tool
     tools = ["email__send", "shell__share:public"]   # only when its argument is set
+    sites = ["forum.example"]   # typing or uploading into a page there or on a subdomain
 
     [stops]
     count = 3            # stops in one turn, then `does`
@@ -56,6 +57,7 @@ row, a closed gate still holds), on.
 from __future__ import annotations
 
 import copy
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -114,9 +116,9 @@ TABLE: dict[str, Rule] = {
         asked=True, reviewed=True, repeatable=True),
     "confirm": Rule(
         plain="a step {{user}} wants to be asked about", label="Ask you first",
-        to_agent="{{user}} said this tool waits for an answer every time",
-        to_owner="this tool is on Ask you first",
-        banner="You put this tool on Ask you first in Settings, Guard."),
+        to_agent="{{user}} said this waits for an answer every time",
+        to_owner="this is on Ask you first",
+        banner="You put this on Ask you first in Settings, Guard."),
     "sites": Rule(
         plain="typing on a site that is not part of the task", label="typing on other sites",
         to_agent="this types on {site}, which is not part of this task",
@@ -170,7 +172,9 @@ DEFAULTS: dict[str, dict[str, Any]] = {
     # list replaces it: a public share, its persona, a routine's prompt, which runs later
     # with nobody watching. What runs on its own box or Mac (the coding agent, a CLI
     # sub-agent, a drone) is its own and not on it
-    "confirm": {"on": True, "tools": ["shell__share:public", "me__edit", "routines__write"]},
+    # `sites`: typing or uploading into a page of one of them (or of a subdomain) waits too
+    "confirm": {"on": True, "tools": ["shell__share:public", "me__edit", "routines__write"],
+                "sites": []},
     "sites": {"on": True, "does": "watch"},
     "stops": {"on": True, "does": "freeze", "count": 3},
     # after a stop, the same thing again another way: `first` the first
@@ -243,6 +247,13 @@ def listed(tools: list[str], name: str, args: dict) -> bool:
     return False
 
 
+def site_listed(sites: list[str], host: str) -> bool:
+    """Is `host` one of the confirm list's sites or a subdomain of one (www. aside)?"""
+    host = host.casefold().removeprefix("www.")
+    return any(host == s or host.endswith("." + s)
+               for s in (x.casefold().removeprefix("www.") for x in sites))
+
+
 def gate(rules: dict, cls: str, sink: str) -> str:
     """The gate of class `cls` to `sink` in a rule set (current): open, judge, closed."""
     return rules["gates"].get(cls, {}).get(sink, "open")
@@ -277,6 +288,7 @@ def _count(v) -> bool:
     return not isinstance(v, bool) and isinstance(v, int) and v >= 1
 
 
+SITE = re.compile(r"(?:[a-z0-9-]+\.)+[a-z]{2,24}", re.I)     # a host, no scheme or path
 _DOES = ("This must be one of " + ", ".join(DOES) + ".")
 _COUNT = "This must be a whole number of at least 1."
 _TEXT = "This must be text."
@@ -290,6 +302,9 @@ _KEYS: dict[str, tuple[Any, str]] = {
     "tools": (lambda v: isinstance(v, list) and all(isinstance(t, str) and t.strip()
                                                     for t in v),
               "This must be a list of tool or skill names."),
+    "sites": (lambda v: isinstance(v, list) and all(isinstance(s, str) and SITE.fullmatch(s)
+                                                    for s in v),
+              "This must be a list of sites, like example.org."),
     "every_minutes": (_count, _COUNT),
     "turns": (_count, _COUNT),
     "rules": (lambda v: isinstance(v, list) and all(r in PATROLLED for r in v),

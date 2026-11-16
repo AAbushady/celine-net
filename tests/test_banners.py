@@ -192,7 +192,7 @@ async def test_approve_and_deny_on_an_ask_banner_answer_the_waiting_request(stor
             changed = anyio.Event()
             [b] = [x for x in (await view.snapshot(store, cid))["guard"] if x["id"] == v.row]
             assert b["kind"] == "ask" and b["line"] == (
-                "Asks you before a notebook step. You put this tool on Ask you first in Settings, Guard.")
+                "Asks you before a notebook step. You put this on Ask you first in Settings, Guard.")
             got = await banners.answer(app, v.row, by=OWNER, said=button, decided={
                 "grant": grant, "rule": "all", "minutes": 60, "where": "here"})
             assert got["thread"][-1]["text"] == said

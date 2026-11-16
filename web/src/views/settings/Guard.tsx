@@ -96,16 +96,14 @@ export function Guard() {
 }
 
 /* ── what each rule does, one Segmented per rule (Off is its switch, else its `does`), and the
-   tools that ask you first, saved when the field is left ── */
+   tools and sites that ask you first, each saved when its field is left ── */
 function Rules({ rules, set, disabled }: { rules: GuardRules; set: (r: GuardRules) => void; disabled: boolean }) {
   const save = useAction(async (tables: Record<string, Record<string, unknown>>) => set(await guardApi.putRules(tables)))
-  const tools = rules.confirm.tools.join(', ')
-  const [draft, setDraft] = useState<string | null>(null)
   const act = (rule: string, v: RuleAct) => void save.run({ [rule]: v === 'off' ? { on: false } : { on: true, does: v } })
-  const keep = () => {
-    if (draft === null || draft === tools) { setDraft(null); return }
-    void save.run({ confirm: { tools: draft.split(',').map(t => t.trim()).filter(Boolean) } }).then(() => setDraft(null))
-  }
+  const list = (key: 'tools' | 'sites') => ({
+    saved: rules.confirm[key].join(', '),
+    keep: (text: string) => save.run({ confirm: { [key]: text.split(',').map(t => t.trim()).filter(Boolean) } }),
+  })
   return (
     <div className="stack">
       {rules.rows.map(r => (
@@ -113,12 +111,27 @@ function Rules({ rules, set, disabled }: { rules: GuardRules; set: (r: GuardRule
           <Segmented label={r.label} value={r.act} options={rules.acts} disabled={disabled || save.busy} onChange={v => act(r.rule, v)} />
         </Field>
       ))}
-      <Field label="Ask you first" help={rules.help.confirm}>
-        <Input value={draft ?? tools} disabled={disabled} onChange={e => setDraft(e.target.value)} onBlur={keep}
-               onKeyDown={e => { if (e.key === 'Enter') keep() }} />
-      </Field>
+      <ListField label="Ask you first" help={rules.help.confirm} disabled={disabled} {...list('tools')} />
+      <ListField label="Ask you first on these sites" help={rules.help.confirm_sites} disabled={disabled} {...list('sites')} />
       {save.error && <InlineError compact message={save.error} />}
     </div>
+  )
+}
+
+/** a comma-separated list, saved when the field is left or on Enter, and only when it changed */
+function ListField({ label, help, disabled, saved, keep }: {
+  label: string; help: string; disabled: boolean; saved: string; keep: (text: string) => Promise<unknown>
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const done = () => {
+    if (draft === null || draft === saved) { setDraft(null); return }
+    void keep(draft).then(() => setDraft(null))
+  }
+  return (
+    <Field label={label} help={help}>
+      <Input value={draft ?? saved} disabled={disabled} onChange={e => setDraft(e.target.value)} onBlur={done}
+             onKeyDown={e => { if (e.key === 'Enter') done() }} />
+    </Field>
   )
 }
 

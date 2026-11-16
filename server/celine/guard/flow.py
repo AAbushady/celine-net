@@ -178,9 +178,13 @@ async def check(turn: dict, call: dict, request: list[dict], *, mode: str,
         if on["persist"] and persist.can_again(call, sink) and (same := await _again(store, turn, call, sink, sent, mode,
                                                    rules["persist"], cfg, at)):
             found["persist"] = same
-    if on["confirm"] and rule_set.listed(rules["confirm"]["tools"], call["name"],
-                                         call.get("args") or {}):
-        found["confirm"] = {}
+    if on["confirm"]:
+        if rule_set.listed(rules["confirm"]["tools"], call["name"], call.get("args") or {}):
+            found["confirm"] = {}
+        elif rules["confirm"]["sites"] and (site := next(
+                (h for h in await facts.typing_sites(store, turn, call)
+                 if rule_set.site_listed(rules["confirm"]["sites"], h)), None)):
+            found["confirm"] = {"site": site}
     if hit is None and not found:
         return None
 
@@ -255,8 +259,9 @@ async def check(turn: dict, call: dict, request: list[dict], *, mode: str,
                 answers.append(rule)
     if "confirm" in found:
         act = "ask"
-        answers.append(Ruling("confirm", act, {}, None, await _row(
-            store, turn, call, mode, rules, "confirm", _decision(act, mode), {}, sink,
+        f = found["confirm"]                    # {"site": ...} when a site put it there
+        answers.append(Ruling("confirm", act, f, None, await _row(
+            store, turn, call, mode, rules, "confirm", _decision(act, mode), f, sink,
             layer=1)))
     if hit is not None:
         h = await _hijack(turn, call, hit, mode, judge, store, rules, progress, cfg)

@@ -83,8 +83,8 @@ export type RuleAct = 'off' | 'watch' | 'stop' | 'freeze'
 export type GuardRules = {
   rows: { rule: string; label: string; act: RuleAct }[]
   acts: { value: RuleAct; label: string }[]
-  confirm: { on: boolean; tools: string[] }
-  help: Record<'mode' | 'decision' | 'second_look' | 'rules' | 'confirm' | 'passes', string>
+  confirm: { on: boolean; tools: string[]; sites: string[] }
+  help: Record<'mode' | 'decision' | 'second_look' | 'rules' | 'confirm' | 'confirm_sites' | 'passes', string>
 }
 
 const enc = encodeURIComponent
@@ -105,7 +105,7 @@ export const guardApi = {
   passes: () => request<{ passes: GuardPass[] }>('/guard/passes'),
   endPass: (id: number) => del<{ ended: number }>(`/guard/passes/${enc(String(id))}`),
   rules: () => request<GuardRules>('/guard/rules'),
-  /** the rule tables to change: { leak: { on, does } }, { confirm: { tools } } */
+  /** the rule tables to change: { leak: { on, does } }, { confirm: { tools } }, { confirm: { sites } } */
   putRules: (tables: Record<string, Record<string, unknown>>) => request<GuardRules>('/guard/rules', json('PUT', tables)),
   decision: (id: number) => request<{ decision: GuardDecision }>(`/guard/decisions/${enc(String(id))}`),
   frozen: () => request<{ frozen: Freeze | null }>('/guard/freeze'),
