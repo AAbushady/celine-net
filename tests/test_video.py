@@ -30,6 +30,7 @@ class Helper:
         self.stopped_at: float | None = None      # where a watch that stopped early ends, None: it is done
         self.files: list[dict] = []                # what was sent to PUT /files/<sha256>
         self.pictures: list[str] = []              # what a listen's first stretch names (listen.py PICTURES)
+        self.live_to: float | None = None          # a watch still going: where its log ends now
 
     def job(self, state="queued"):
         return {"id": "abc123def456", "kind": "listen" if self.mode == "listen" else "watch",
@@ -66,8 +67,11 @@ class Helper:
             at = float(request.url.params.get("at", 0))
             out = {"id": "abc123def456", "title": "A short film (Blender)", "mode": self.mode, "state": "done",
                    "from": at, "to": at + 180, "start": 0, "end": 600, "done_to": 600, "next": at + 180}
+            if self.live_to is not None:
+                out.update(state="watching", done_to=self.live_to)
             if self.mode == "omni":
-                out["lines"] = [f"[{int(at) // 60}:00] A bird lands on a branch; soft strings play."]
+                out["lines"] = [f"[{int(at) // 60}:00] A bird lands on a branch; soft strings play."] \
+                    if self.live_to is None or at < self.live_to else []
             elif self.mode == "listen":
                 out.update(end=278, next=None, duration=278, lines=[
                     "[0:06] (the sound gets louder: -48 to -14 dBFS)",
@@ -143,6 +147,23 @@ def test_a_stretch_the_watch_has_not_reached_says_so():
     assert Video._nothing({**s, "state": "failed"}) == "(not watched: the watch stopped at 45:00)"
     assert Video._nothing({**s, "state": "done"}) == "(nothing in this stretch)"
     assert Video._nothing({**s, "from": 2600}) == "(nothing in this stretch)"
+
+
+async def test_a_stretch_cut_at_the_live_edge_goes_on_where_the_watch_is(store, cfg):
+    """Bug 88: following next: from a stretch the running watch had not finished skipped the
+    rest of it; next is where the watch is now, also from a stretch it has not reached."""
+    h = Helper()
+    h.live_to = 220
+    v = _video(cfg, h)
+    cut = (await v.read(_ctx(store, cfg), "abc123def456", at="3:00")).content.splitlines()
+    assert cut[0].endswith("(still going: done up to 3:40)")
+    assert cut[-1] == 'next: video__read(id="abc123def456", at="3:40")'
+    ahead = (await v.read(_ctx(store, cfg), "abc123def456", at="5:00")).content.splitlines()
+    assert ahead[2] == "(not watched yet: the watch is done up to 3:40)"
+    assert ahead[-1] == 'next: video__read(id="abc123def456", at="3:40")'
+    h.live_to = None
+    done = await v.read(_ctx(store, cfg), "abc123def456", at="3:00")
+    assert done.content.endswith('at="6:00")'), "a finished watch reads on a whole stretch"
 
 
 async def test_a_watch_that_stopped_early_goes_on_under_its_id_from_where_its_log_ends(store, cfg):

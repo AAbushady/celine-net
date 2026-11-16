@@ -392,7 +392,8 @@ class Video:
         head = f"#{jid} {s['title']}, {clock(s['from'])} to {clock(s['to'])} of {clock(s['start'])}-{clock(s['end'])}"
         if s.get("duration") and s["end"] < s["duration"] - 5:
             head += f" (it runs {clock(s['duration'])})"
-        if s["state"] in ("fetching", "watching") and s.get("done_to") is not None and s["to"] > s["done_to"]:
+        going = s["state"] in ("fetching", "watching")
+        if going and s.get("done_to") is not None and s["to"] > s["done_to"]:
             head += f" (still going: done up to {clock(s['done_to'])})"
         lines = [head]
         images: list[str] = []
@@ -421,8 +422,12 @@ class Video:
                 for sheet in s.get("sheets") or []], lines, images)
         else:
             lines.append(f"Nothing to read yet: it is {s['state']}.")
-        if s.get("next") is not None:
-            lines.append(f"next: video__read(id=\"{jid}\", at=\"{clock(s['next'])}\")")
+        nxt = s.get("next")
+        if nxt is not None and going:
+            # at the live edge the next stretch begins where the watch is, so following it skips nothing (bug 88)
+            nxt = min(nxt, s["from"] if s.get("done_to") is None else s["done_to"])
+        if nxt is not None:
+            lines.append(f"next: video__read(id=\"{jid}\", at=\"{clock(nxt)}\")")
         else:
             lines.append("That is the end of what was heard." if s["mode"] == "listen"
                          else "That is the end of what was watched.")
