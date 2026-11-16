@@ -64,8 +64,10 @@ result. A turn that ends with no answer after its last tool call (an empty last 
 step limit) and without the note's write: the run is done with the lead-in
 as its result, the note is not written, and the run's `error` says so. A note it wrote
 and then went on past (ok tool calls after its last write of it, the note older than the
-last of them) is the result still, and the run's `error` says how many calls came after
-it. A later run of the same night reads that error under the result (`results`), and its
+last of them) gives way to its final answer: the note is what it held before the run with
+the answer under it, and the answer is the result (bug 89: a note written first as a log
+kept its placeholder). With no final answer the note is the result still, and the run's
+`error` says how many calls came after it. A later run of the same night reads that error under the result (`results`), and its
 prompt ends with the night's notes that are not in the notebook, each with why (`unwritten`,
 missing.md), so it does not read a path that is empty as if it held something. The run is over
 when its conversation and its sub-agents are quiet and every sub-agent has reported
@@ -1069,11 +1071,18 @@ class Scheduler:
                 answer, final = await self._turn(cid, "system:schedules", "\n\n".join(
                     [prompt, _say(cfg, "background.md", final=where)]), "trigger",
                     {"run": rid})
+            said = answer           # its final answer, before a note of its own stands for it
             answer, own = self._take(note, start, answer, await self._wrote(cid, note))
             if not note:
                 error = None
             elif own:
                 error = await self._stale(cid, note)
+                if error and final:
+                    # later work made its note old: the answer takes the place of what it
+                    # wrote there, what the note held before the run stays (bug 89)
+                    answer = said
+                    error = await self._write_note(cid, note, said, s, day.isoformat(),
+                                                   before=start or "")
             elif not final:
                 error = (f"The note {note} was not written: the run ended with a tool call "
                          "and no answer after it.")
@@ -1170,9 +1179,9 @@ class Scheduler:
 
     def _take(self, note: str, start: str | None, answer: str,
               wrote: bool) -> tuple[str, bool]:
-        """(the result, it wrote it): when it wrote `note` itself (`wrote`), the note, and
-        the app writes nothing over it; only what it added when it added to `start` (what
-        was there before its turns). Else its answer."""
+        """(the result, it wrote it): when it wrote `note` itself (`wrote`), the note; only
+        what it added when it added to `start` (what was there before its turns). Else its
+        answer."""
         from ..skills.notebook import unstamped
         text = self._note_text(note)
         if not note or not wrote or text is None:
@@ -1213,18 +1222,27 @@ class Scheduler:
         return (f"The note {note} was last written before {n} later tool "
                 f"call{'' if n == 1 else 's'}: {', '.join(dict.fromkeys(x for x, _ in later))}.")
 
-    async def _write_note(self, cid: str, path: str, answer: str, s, day: str) -> str | None:
+    async def _write_note(self, cid: str, path: str, answer: str, s, day: str,
+                          before: str | None = None) -> str | None:
         """The agent's answer into the notebook at `path`: a note there already gets it appended
         under "## <day> <label>", `day` the run's date (run_date) (its own renames and
-        edits stay). -> the sentence why not, or None."""
+        edits stay). `before`: what the run wrote there gives way, and the note is `before`
+        (what it held before the run) with the answer under it. -> the sentence why not, or
+        None."""
+        from ..skills.notebook import unstamped
         spec = getattr(self.app.registry, "tools", {}).get("notebook__write")
         if spec is None:
             return f"The note {path} was not written: the notebook is off."
-        there = (self.app.cfg.agent.notebook / path).is_file()
+        under = f"\n\n## {day} {shown(s)}\n\n{answer}\n"
+        if before is not None:
+            kept = unstamped(before).strip()
+            args = {"content": kept + under if kept else answer, "mode": "replace"}
+        elif (self.app.cfg.agent.notebook / path).is_file():
+            args = {"content": under, "mode": "append"}
+        else:
+            args = {"content": answer}
         out = await spec.fn(self._ctx(cid), path=path, summary=f"{shown(s)}, "
-                            f"{night_words(day)}",
-                            **({"content": f"\n\n## {day} {shown(s)}\n\n{answer}\n",
-                                "mode": "append"} if there else {"content": answer}))
+                            f"{night_words(day)}", **args)
         return f"The note {path} was not written: {out.content}" if out.is_error else None
 
     def _ctx(self, cid: str) -> ToolContext:

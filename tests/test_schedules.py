@@ -1006,16 +1006,18 @@ async def test_nothing_said_after_another_write_leaves_the_note_unwritten(store,
                             "call and no answer after it.")
 
 
-async def test_a_note_the_agent_wrote_then_went_on_past_is_the_result_and_the_run_says_so(
+async def test_a_note_the_agent_wrote_then_went_on_past_gives_way_to_its_answer(
         store, cfg, monkeypatch):
-    """The agent writes the note, reads it, then answers with a correction: the note is the
-    result, untouched, and the run's error says the note is older than its later calls."""
+    """Bug 89: the agent writes its note first as a log, reads on, then answers: the answer
+    takes the place of what it wrote there, and what the note held before the run stays."""
     from celine.skills.notebook import unstamped
     from celine.turns import store as turns
     clock = Clock(datetime(2026, 10, 10, 4, tzinfo=UTC))
     monkeypatch.setattr(turns, "now", lambda: iso(clock.at))
-    draft = "# Self-review\n\nDiagnosis: the mail."
+    draft = "# Self-review\n\nStatus: started, nothing done yet."
     note = cfg.agent.notebook / NOTE
+    note.parent.mkdir(parents=True, exist_ok=True)
+    note.write_text("# Reviews\n\nThe night before.\n")
 
     def read_it():
         os.utime(note, (clock.at.timestamp(), clock.at.timestamp()))
@@ -1025,7 +1027,36 @@ async def test_a_note_the_agent_wrote_then_went_on_past_is_the_result_and_the_ru
                 Done(reason="tool_calls")]
     backend = Writer({"Review the night": _write(NOTE, draft),     # no text: it goes on
                       "Saved": read_it,
-                      "Diagnosis": [TextDelta("corrected diagnosis"), Done(reason="stop")]})
+                      "Status": [TextDelta("Diagnosis: the mail."), Done(reason="stop")]})
+    row = await _one_run(store, cfg, backend, clock)
+    assert (row["state"], row["result"], row["error"]) == ("done", "Diagnosis: the mail.", None)
+    kept = unstamped(note.read_text())
+    assert kept.startswith("# Reviews\n\nThe night before.\n\n## 2026-10-10 ")
+    assert kept.endswith("\n\nDiagnosis: the mail.\n") and "nothing done yet" not in kept
+
+
+async def test_a_note_the_agent_wrote_then_went_on_past_with_no_answer_stays_and_says_so(
+        store, cfg, monkeypatch):
+    """Cut before its answer, the note it wrote as a log is how far it got, and the run's
+    error says the note is older than its later calls."""
+    from celine.skills.notebook import unstamped
+    from celine.turns import store as turns
+    clock = Clock(datetime(2026, 10, 10, 4, tzinfo=UTC))
+    monkeypatch.setattr(turns, "now", lambda: iso(clock.at))
+    draft = "# Self-review\n\nRead the mail runs, the search runs are next."
+    note = cfg.agent.notebook / NOTE
+
+    def read_it():
+        os.utime(note, (clock.at.timestamp(), clock.at.timestamp()))
+        clock.at += timedelta(minutes=1)
+        return [ToolCallDelta(index=0, id="r", name="notebook__read",
+                              arguments=json.dumps({"path": NOTE})),
+                Done(reason="tool_calls")]
+    backend = Writer({"Review the night": _write(NOTE, draft),
+                      "Saved thoughts/x.md": [Done(reason="stop")],
+                      "Saved": read_it,
+                      "the search runs": [TextDelta("Merging first."),
+                                          *_write("thoughts/x.md", "The merge.")]})
     row = await _one_run(store, cfg, backend, clock)
     assert (row["state"], row["result"]) == ("done", draft)
     assert row["error"] == f"The note {NOTE} was last written before 1 later tool call: " \

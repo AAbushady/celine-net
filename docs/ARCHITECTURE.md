@@ -1817,12 +1817,13 @@ its lines land as intercom messages from `system:<reviewer>` (the file's name wi
 final answer. The run is over when its conversation and its sub-agents are quiet and
 every sub-agent has reported. The result is written to `note` with `notebook__write`: a
 note that was there gets the answer appended under "## <date> <label>"; a note it wrote
-itself is the result and the app writes nothing over it. A turn that ends with a tool
+itself as its last work is the result and the app writes nothing over it. A turn that ends with a tool
 call that is not the note's write has no answer: the run is done with the lead-in beside
 that call as its result, the note is not written, and the run's `error` says so. A note
 it wrote and then went on past (ok tool calls after its last write of it, the note older
-than the last of them) is the result still, and the run's `error` says how many calls
-came after it.
+than the last of them) gives way to its final answer: the note is what it held before the
+run with the answer under it. Without a final answer that note is the result still, and
+the run's `error` says how many calls came after it.
 
 **When a run fails.** A run is never re-asked or rewritten. When its turn fails and the
 Router says the role's model cannot answer (unreachable, or none set), the run is `waiting`
