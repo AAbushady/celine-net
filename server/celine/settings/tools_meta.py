@@ -126,6 +126,9 @@ TOOLS: dict[str, dict[str, str]] = {
                                            "deleted one."},
     "notebook__read_version": {"label": "Notebook: read an earlier version",
                                "summary": "Reads one earlier text of a note."},
+    "notebook__restore_version": {"label": "Notebook: restore an earlier version",
+                                  "summary": "Puts a note back as one of its earlier texts; "
+                                             "the text it had is kept as a version."},
     "notebook__list_deleted": {"label": "Notebook: list the Trash",
                                "summary": "Lists the notes and folders in the Trash."},
     "notebook__read_deleted": {"label": "Notebook: read a deleted note",

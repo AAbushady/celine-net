@@ -1836,9 +1836,10 @@ itself as its last work is the result and the app writes nothing over it. A turn
 call that is not the note's write has no answer: the run is done with the lead-in beside
 that call as its result, the note is not written, and the run's `error` says so. A note
 it wrote and then went on past (ok tool calls after its last write of it, the note older
-than the last of them) gives way to its final answer: the note is what it held before the
-run with the answer under it. Without a final answer that note is the result still, and
-the run's `error` says how many calls came after it.
+than the last of them) gets its final answer under "## <date> <label>", and the answer is
+the result. The app never replaces a note: it makes one or adds under it, and a note's own
+index line stays. Without a final answer that note is the result still, and the run's
+`error` says how many calls came after it.
 
 **When a run fails.** A run is never re-asked or rewritten. When its turn fails and the
 Router says the role's model cannot answer (unreachable, or none set), the run is `waiting`

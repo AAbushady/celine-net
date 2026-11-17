@@ -86,7 +86,7 @@ def for_pages(ev: dict, place: str | None = None) -> bool:
 # settled: a turn or a job ended, a tool call finished. Store.event sends `events.added`
 # for each in the same write; the other sources call events.added themselves.
 NOTEBOOK_TOOLS = ("notebook__write", "notebook__edit", "notebook__delete", "notebook__move",
-                  "notebook__restore")
+                  "notebook__restore", "notebook__restore_version")
 
 
 def lands(ev: dict) -> str | None:

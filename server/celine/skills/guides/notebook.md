@@ -133,7 +133,9 @@ first blank line:
   the note as you read it. A refused edit shows
   the current lines: try again with those anchors.
 - `notebook__write(path, content, summary, mode)`: a new note, all of a note anew
-  (`replace`), or more text at its end, starting on a new line (`append`). Without a mode a note that exists is
+  (`replace`), or more text at its end, starting on a new line (`append`). A write that
+  leaves a long note with under half its lines says so, with the version that brings it
+  back. Without a mode a note that exists is
   refused, so a retry keeps the mode it had.
 - `notebook__move(src, dst)`: change the path of a note or a whole folder. Your index
   follows.
@@ -142,8 +144,8 @@ first blank line:
   and edit keeps the text the note had, and those texts stay after a delete. The texts
   from before {{username}} deleted a note or its folder are {{username}}'s and not
   listed, until {{username}} restores it. `notebook__read_version(path, version)` reads one in plain lines, without
-  anchors: it is not the note now. To have it back, write it with
-  `notebook__write(mode="replace")`.
+  anchors: it is not the note now. `notebook__restore_version(path, version)` puts the
+  note back as that text in one call, and keeps the text it has now as a version.
 - `notebook__list_deleted(folder)`: what the trash holds, newest first, with who deleted
   each and when. `notebook__read_deleted(id)` reads a note you deleted and leaves it
   there; what {{username}} deleted is {{username}}'s to read.

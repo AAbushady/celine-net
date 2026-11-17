@@ -303,6 +303,10 @@ NOTEBOOK: dict[str, Sentence] = {
     "read_version": lambda a, d, r: f"Read version {_js(a['version'])} of the note "
                                     f"{_path(a)}".strip() if _num(a.get("version"))
                                     else f"Read a version of the note {_path(a)}".strip(),
+    "restore_version": lambda a, d, r: f"Restored the note {_path(a)} to version "
+                                       f"{_js(a['version'])}".strip()
+                                       if _num(a.get("version"))
+                                       else f"Restored a version of the note {_path(a)}".strip(),
     "list_deleted": lambda a, d, r: "Listed the notebook's Trash",
     "read_deleted": lambda a, d, r: f"Read the deleted note {_str(d.get('path')) or _path(a)}"
                                     .strip(),

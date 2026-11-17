@@ -478,6 +478,36 @@ async def test_a_write_over_a_note_says_its_lines_before_and_now(store, cfg):
     assert len(read) == 3
 
 
+async def test_a_write_that_drops_most_of_a_note_says_so_and_one_call_brings_it_back(
+        store, cfg, monkeypatch):
+    """Bug 94: a 356-line review became 12 lines and was found only when every anchor
+    refused, and getting it back took the whole note through the context twice."""
+    from celine.skills import notebook_index
+    from celine.skills.notebook import unstamped
+    ticks = iter(range(100))        # each kept text its own time, as the clock moves
+    monkeypatch.setattr(notebook_mod, "_now", lambda: datetime(
+        2026, 9, 24, 19, 52, next(ticks), tzinfo=timezone.utc))
+    nb = Notebook(cfg)
+    cid = await conversations.create(store)
+    ctx = ToolContext(cid, "t", "x", store, cfg, None)  # type: ignore[arg-type]
+    whole = "\n".join(f"finding {i}" for i in range(30))
+    await nb.write(ctx, "diary/r.md", whole, "the review")
+    out = (await nb.write(ctx, "diary/r.md", "short", "the review", mode="replace")).content
+    assert "That dropped 29 of its 31 lines. notebook__restore_version(path=\"diary/r.md\", " \
+           "version=1) brings back the text it had." in out, out
+    small = (await nb.write(ctx, "diary/r.md", "shorter", "the review", mode="replace")).content
+    assert "That dropped" not in small, "a short note is not said"
+    out = await nb.restore_version(ctx, "diary/r.md", 1)
+    assert not out.is_error and out.content.startswith(
+        "Restored diary/r.md to version 1: 31 lines now, was 2."), out.content
+    assert unstamped((cfg.agent.notebook / "diary/r.md").read_text()) == whole
+    assert await notebook_index.summary(store, "diary/r.md") == "the review"
+    listed = (await nb.list_versions(ctx, "diary/r.md")).content
+    assert "version 3" in listed and "shorter" in listed, "what it held stays a version"
+    assert (await nb.restore_version(ctx, "diary/r.md", 4)).is_error, "the text it has now"
+    assert (await nb.restore_version(ctx, "diary/r.md", 9)).is_error
+
+
 async def test_an_append_starts_on_a_line_of_its_own_and_answers_with_that_part(store, cfg):
     """An append onto a note that ended mid-line glued its heading onto the last line, and
     the answer began with the note's old last line (bug 91)."""

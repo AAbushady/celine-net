@@ -301,6 +301,7 @@ class Notebook:
         did = "added to its end" if mode == "append" else "all its text replaced"
         said = (f"Saved {path}, a new note of {n}." if old is None
                 else f"Saved {path}, {did}. {n} now, was {len(lines_of(old)[0])}.")
+        said += self._shrunk(path, old, now)
         said += await self._felt(ctx, path, old, now, felt)
         said += await self._quote_check(ctx, content)
         # its anchors, so an edit right after needs no read: half the failed edits were on
@@ -442,6 +443,20 @@ class Notebook:
                                   f"{len(new)} lines now.{followed} The changed part, with "
                                   f"its new anchors:\n\n{shown}",
                           display={"path": path, "bytes": len(body), "changes": n})
+
+    def _shrunk(self, path: str, old: str | None, now: str) -> str:
+        """The sentence on how many lines a write dropped and the version that brings them
+        back, when it left a note of SHRUNK lines or more with less than half of them; else
+        "". A 356-line review became 12 lines and was found only when every anchor refused
+        (bug 94)."""
+        before, after = len(lines_of(old)[0]) if old else 0, len(lines_of(now)[0])
+        if before < SHRUNK or after * 2 >= before:
+            return ""
+        every = history(self.root.resolve(), path, agent=True)
+        kept = every[-2]["id"] if len(every) > 1 else None
+        back = (f" notebook__restore_version(path=\"{path}\", version={kept}) brings back "
+                f"the text it had." if kept else "")
+        return f" That dropped {before - after} of its {before} lines.{back}"
 
     async def _felt(self, ctx: ToolContext, path: str, old: str | None, new: str,
                     felt: str) -> str:
@@ -686,6 +701,49 @@ class Notebook:
         return _earlier(head, text, from_line, ctx,
                         f"notebook__read_version(path=\"{path}\", version={version}",
                         {"path": path, "version": version, "class": class_line(text)})
+
+    @tool(read_only=False, destructive=True)
+    async def restore_version(
+        self,
+        ctx: ToolContext,
+        path: Annotated[str, "The note's path."],
+        version: Annotated[int, "The version's number, from notebook__list_versions."],
+    ) -> ToolResult:
+        """Put one of your notes back as one of its earlier texts, in one call: its text now
+        is kept as a version first, so this is undone the same way. Its index line stays.
+        Example: notebook__restore_version(path="people/noor.md", version=3)."""
+        try:
+            p, path = self._place(path, await folder_of(ctx))
+        except ToolRefused as e:
+            return ToolResult(content=str(e), is_error=True)
+        if self.owner(path) == "generated":
+            return ToolResult(content="tools/ is not part of your notebook.", is_error=True)
+        if self._owned_by_user(path):
+            return ToolResult(content=self.cfg.substitute(
+                f"{path} is {{{{username}}}}'s, not yours to change."), is_error=True)
+        if p.is_dir():
+            return _folder(path)
+        every = history(self.root.resolve(), path, agent=True)
+        found = next((v for v in every if v["id"] == version), None)
+        if found is None:
+            return ToolResult(content=f"{path} has no version {version}: notebook__list_"
+                                      f"versions(path=\"{path}\") lists its versions.",
+                              is_error=True)
+        old = p.read_text() if p.is_file() else None
+        if old is not None and found is every[-1]:
+            return ToolResult(content=f"Version {version} is the text {path} has now.",
+                              is_error=True)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        body = stamped(found["text"], self.cfg)
+        keep_version(self.root, p, path)
+        p.write_text(body)
+        summary = await notebook_index.summary(ctx.store, path) or NO_SUMMARY
+        await notebook_index.upsert(ctx.store, path, summary, len(body), body)
+        n = _lines(p.read_text())
+        was = f", was {len(lines_of(old)[0])}" if old is not None else ""
+        return ToolResult(content=f"Restored {path} to version {version}: {n} now{was}. "
+                                  f"notebook__read shows it.",
+                          display={"path": path, "version": version, "bytes": len(body)})
 
     @tool()
     async def list_deleted(
@@ -1359,6 +1417,7 @@ async def build_index_fragment(store, cfg, tag=lambda path: "",
 
 
 NO_SUMMARY = "(no summary yet)"
+SHRUNK = 20             # a note this long that a write left with under half its lines is said
 
 
 async def write_note(cfg, store, ch, p: Path, rel: str, text: str) -> str:

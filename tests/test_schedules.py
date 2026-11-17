@@ -1006,10 +1006,13 @@ async def test_nothing_said_after_another_write_leaves_the_note_unwritten(store,
                             "call and no answer after it.")
 
 
-async def test_a_note_the_agent_wrote_then_went_on_past_gives_way_to_its_answer(
+async def test_a_note_the_agent_wrote_then_went_on_past_gets_its_answer_under_it(
         store, cfg, monkeypatch):
-    """Bug 89: the agent writes its note first as a log, reads on, then answers: the answer
-    takes the place of what it wrote there, and what the note held before the run stays."""
+    """Bug 89: the agent writes its note first, reads on, then answers: the answer is the
+    result and goes under the note. Bug 94: the app put it in place of what the run wrote,
+    and a whole review written before the run's last steps was lost to a 12-line answer:
+    what the agent wrote stays, its index line too."""
+    from celine.skills import notebook_index
     from celine.skills.notebook import unstamped
     from celine.turns import store as turns
     clock = Clock(datetime(2026, 10, 10, 4, tzinfo=UTC))
@@ -1031,8 +1034,9 @@ async def test_a_note_the_agent_wrote_then_went_on_past_gives_way_to_its_answer(
     row = await _one_run(store, cfg, backend, clock)
     assert (row["state"], row["result"], row["error"]) == ("done", "Diagnosis: the mail.", None)
     kept = unstamped(note.read_text())
-    assert kept.startswith("# Reviews\n\nThe night before.\n\n## 2026-10-10 ")
-    assert kept.endswith("\n\nDiagnosis: the mail.\n") and "nothing done yet" not in kept
+    assert kept.startswith(draft + "\n\n## 2026-10-10 "), kept
+    assert kept.endswith("\n\nDiagnosis: the mail.\n")
+    assert await notebook_index.summary(store, NOTE) == "The review.", "its own index line"
 
 
 async def test_a_note_the_agent_wrote_then_went_on_past_with_no_answer_stays_and_says_so(
