@@ -62,7 +62,7 @@
 /* the files kept with a call: picture tiles, then files to download */
 .tool__files { display: flex; flex-wrap: wrap; gap: var(--s-2); margin: var(--s-1) 0 var(--s-2); }
 .tool__files > .msg__file { flex-basis: 100%; max-width: 26rem; }
-.tool__picture { width: min(100%, 18rem); }
+.tool__picture { width: 18rem; max-width: 100%; }   /* as .msg__picture: WebKit gave min(100%, 18rem) 0 */
 
 /* a page it wrote: one card per page under its reply */
 .artcards { display: grid; gap: var(--s-2); margin: var(--s-3) 0 0; }

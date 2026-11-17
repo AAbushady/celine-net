@@ -41,7 +41,9 @@
 .msg__text pre code { padding: 0; background: none; }
 .msg__text a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
 .msg__text blockquote { margin-left: 0; padding-left: var(--s-3); border-left: 2px solid var(--bubble-meta); }
-.msg__picture { width: min(100%, 18rem); }
+/* a width of its own: in your message every box around it takes its content's width, and
+   WebKit (Safari on an iPhone) resolved min(100%, 18rem) there to 0, so the picture never showed */
+.msg__picture { width: 18rem; max-width: 100%; }
 /* a message's pictures in their fold (Attached): side by side; yours to the right, its head too */
 .msg__pictures { display: flex; flex-wrap: wrap; gap: var(--s-2); }
 .ui-msg--mine .msg__pictures { justify-content: flex-end; }
