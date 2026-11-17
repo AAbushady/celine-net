@@ -255,7 +255,7 @@ class Notebook:
         felt: Annotated[str, FELT] = "",
     ) -> ToolResult:
         """Write one note. `replace` creates the note or replaces all its text. `append`
-        adds text to its end. Without a mode it only makes a new note, and a note that
+        adds text to its end, starting on a new line. Without a mode it only makes a new note, and a note that
         exists is refused. To change some lines, use notebook__edit. Write what
         {{username}} asks you to remember, their preferences and corrections, your plans,
         your diary. Do not copy chat messages: keep references. Answer first, then write,
@@ -283,8 +283,16 @@ class Notebook:
                 f"{path} exists ({_lines(old)}). Nothing was saved: mode=\"append\" adds "
                 f"content to its end, mode=\"replace\" replaces all its text."), is_error=True)
         p.parent.mkdir(parents=True, exist_ok=True)
-        body = stamped(old + content if mode == "append" and old is not None
-                       else content, self.cfg)
+        first = 0                                   # an append: the number of its first line
+        if mode == "append" and old is not None:
+            # the added text starts a line of its own: on a note an earlier write or edit
+            # left ending mid-line it was glued onto the last line (bug 91)
+            kept = old + ("\n" if old and not old.endswith("\n")
+                          and not content.startswith("\n") else "")
+            first = len(lines_of(stamped(kept, self.cfg))[0]) + 1
+            body = stamped(kept + content, self.cfg)
+        else:
+            body = stamped(content, self.cfg)
         keep_version(self.root, p, path)
         p.write_text(body)
         await notebook_index.upsert(ctx.store, path, summary, len(body), body)
@@ -298,8 +306,8 @@ class Notebook:
         # its anchors, so an edit right after needs no read: half the failed edits were on
         # a note the same conversation had just written
         lines = lines_of(now)[0]
-        if mode == "append" and old is not None:
-            shown = numbered(lines, max(2, len(lines_of(old)[0])), len(lines))
+        if first:
+            shown = numbered(lines, first, len(lines))
             head = "The added part, with its anchors"
         else:
             shown, head = _anchored(lines, path), "The note, with its anchors"

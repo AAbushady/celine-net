@@ -133,7 +133,7 @@ first blank line:
   the note as you read it. A refused edit shows
   the current lines: try again with those anchors.
 - `notebook__write(path, content, summary, mode)`: a new note, all of a note anew
-  (`replace`), or more text at its end (`append`). Without a mode a note that exists is
+  (`replace`), or more text at its end, starting on a new line (`append`). Without a mode a note that exists is
   refused, so a retry keeps the mode it had.
 - `notebook__move(src, dst)`: change the path of a note or a whole folder. Your index
   follows.

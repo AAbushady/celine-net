@@ -473,10 +473,28 @@ async def test_a_write_over_a_note_says_its_lines_before_and_now(store, cfg):
     out = await nb.write(ctx, "diary/y.md", "\nfive", "a day", mode="append")
     assert out.content.startswith("Saved diary/y.md, added to its end. 3 lines now, was 2. "
                                   "The added part, with its anchors:\n\n"), out.content
-    assert out.content.splitlines()[-2:] == [f"2:{line_hash('one')}| one",
-                                             f"3:{line_hash('five')}| five"]
+    assert out.content.endswith(f"anchors:\n\n3:{line_hash('five')}| five"), out.content
     read = (await nb.read(ctx, "diary/y.md")).content.splitlines()
     assert len(read) == 3
+
+
+async def test_an_append_starts_on_a_line_of_its_own_and_answers_with_that_part(store, cfg):
+    """An append onto a note that ended mid-line glued its heading onto the last line, and
+    the answer began with the note's old last line (bug 91)."""
+    nb = Notebook(cfg)
+    cid = await conversations.create(store)
+    ctx = ToolContext(cid, "t", "x", store, cfg, None)  # type: ignore[arg-type]
+    note = cfg.agent.notebook / "diary/z.md"
+    await nb.write(ctx, "diary/z.md", "# a day\nwalked", "a day")
+    out = await nb.write(ctx, "diary/z.md", "## evening\nread", "a day", mode="append")
+    assert note.read_text().endswith("# a day\nwalked\n## evening\nread")
+    assert out.content.split("anchors:\n\n")[1].splitlines() == [
+        f"4:{line_hash('## evening')}| ## evening", f"5:{line_hash('read')}| read"]
+    await nb.write(ctx, "diary/z.md", "\n## night\n", "a day", mode="append")
+    assert note.read_text().endswith("read\n## night\n"), "its own line end, not a second one"
+    out = await nb.write(ctx, "diary/z.md", "slept", "a day", mode="append")
+    assert note.read_text().endswith("## night\nslept")
+    assert out.content.endswith(f"anchors:\n\n7:{line_hash('slept')}| slept"), out.content
 
 
 async def test_a_write_without_a_mode_never_replaces_a_note_that_exists(store, cfg):
