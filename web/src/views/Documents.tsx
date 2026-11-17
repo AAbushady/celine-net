@@ -17,6 +17,7 @@ import { bulkApi, type BulkDo } from '../lib/api'
 import { useServerEvents } from '../lib/bus'
 import { format, useNav, type Route } from '../lib/nav'
 import { bytes, count, errorText, listTime, stamp } from '../lib/format'
+import { pickFiles } from '../lib/pickFiles'
 import { useAction } from '../lib/useAction'
 import { useResource } from '../lib/useResource'
 import {
@@ -99,18 +100,9 @@ async function dropped(dt: DataTransfer): Promise<{ files: File[]; paths: string
   return { files, paths }
 }
 
-/** the browser's file picker, files or a whole folder */
-function pickFiles(folder: boolean, then: (files: File[], paths: string[]) => void) {
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.multiple = true
-  if (folder) input.setAttribute('webkitdirectory', '')
-  input.onchange = () => {
-    const files = [...(input.files ?? [])]
-    if (files.length) then(files, files.map(f => f.webkitRelativePath || f.name))
-  }
-  input.click()
-}
+/** files or a whole folder from the picker, each with the path it keeps under the folder shown */
+const pick = (folder: boolean, then: (files: File[], paths: string[]) => void) =>
+  pickFiles(files => then(files, files.map(f => f.webkitRelativePath || f.name)), { folder })
 
 /** every folder, loaded folder by folder (note: one request per folder; a tree route when there are hundreds) */
 async function loadTree(path = ''): Promise<TreeNode[]> {
@@ -205,8 +197,8 @@ export function Documents({ active }: { active: boolean }) {
           : <FolderPage folder={folder} version={version} onChanged={bump} uploads={uploads}
                         onUploadDone={key => setUploads(u => u.filter(x => x.key !== key))}
                         folderMenu={folderMenu} itemMenu={itemMenu} dropOn={dropOn} onAsk={setAsk} onFolder={goFolder}
-                        onUpload={() => pickFiles(false, (files, paths) => setPicked({ files, paths }))}
-                        onUploadFolder={() => pickFiles(true, (files, paths) => setPicked({ files, paths }))} />}
+                        onUpload={() => pick(false, (files, paths) => setPicked({ files, paths }))}
+                        onUploadFolder={() => pick(true, (files, paths) => setPicked({ files, paths }))} />}
         {drop && (
           <div className="doc-drop" onDragOver={e => e.preventDefault()} onDragLeave={e => { if (e.currentTarget === e.target) setDrop(false) }}
                onDrop={e => {

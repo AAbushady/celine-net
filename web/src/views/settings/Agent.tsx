@@ -14,6 +14,7 @@ import { LongEditor, TextHistory, textHistory } from '../../components/editor'
 import { ApiError } from '../../lib/api'
 import { COLORS, colorOf } from '../../lib/agent'
 import { format, useNav, type Route } from '../../lib/nav'
+import { pickFiles } from '../../lib/pickFiles'
 import { agentApi, type AgentPut, type AgentView, type Voice } from '../../lib/settingsApi'
 import { textsApi } from '../../lib/texts'
 import { useOnline } from '../../lib/socket'
@@ -110,13 +111,8 @@ function Who({ agent, auto }: { agent: AgentView; auto: Autosave<unknown> }) {
   const [big, setBig] = useState(false)
   const upload = useAction(async (f: File) => { await agentApi.putPortrait(f) })
   const remove = useAction(async () => { await agentApi.deletePortrait() })
-  const pick = () => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'image/png,image/jpeg,image/webp'
-    input.onchange = () => { const f = input.files?.[0]; if (f) void upload.run(f) }
-    input.click()
-  }
+  const pick = () => pickFiles(files => { if (files[0]) void upload.run(files[0]) },
+                               { accept: 'image/png,image/jpeg,image/webp', multiple: false })
   const menu: MenuItem[] = [
     { label: 'Upload', icon: Upload, disabled: !online, onSelect: pick },
     ...(agent.portrait ? ['sep' as const, { label: 'Remove', icon: Trash2, danger: true, disabled: !online, onSelect: () => void remove.run() }] : []),

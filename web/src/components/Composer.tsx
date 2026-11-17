@@ -20,6 +20,7 @@ import { SETTINGS_EVENTS, settingsApi, type ConversationSettings, type ProviderV
 import { OFFLINE_TITLE } from '../lib/socket'
 import { THINK_WORD, commandsApi, menuRows, parseCommand, useCommands } from '../lib/commands'
 import { isTyping } from '../lib/keys'
+import { pickFiles } from '../lib/pickFiles'
 import { Button, Chip, coarse, ComposerBox, IconButton, Menu, Notice, cx, curve, leave, ms, OUT, reduced, useLeave, type MenuItem } from '../ui'
 import './Composer.css'
 import { SpeechControls } from './Speech'
@@ -57,15 +58,6 @@ export type ComposerHandle = {
   draft: () => string
   /** puts words into the box (a send that failed elsewhere) */
   put: (text: string) => void
-}
-
-/** the browser's file picker, with no element on the page */
-function pickFiles(onFiles: (files: File[]) => void) {
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.multiple = true
-  input.onchange = () => { if (input.files?.length) onFiles(Array.from(input.files)) }
-  input.click()
 }
 
 /** "New messages" on the box's top edge: back to the bottom with a glide; it rises in and
