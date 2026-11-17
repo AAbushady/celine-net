@@ -345,13 +345,24 @@ async def test_a_missing_model_or_a_rejected_key_moves_on_but_an_overflow_does_n
         await collect(llm.bind(role="small", priority=B))
 
 
-async def test_a_chat_whose_model_is_gone_says_which_and_to_pick_another(
+async def test_a_chat_whose_model_does_not_resolve_says_why_and_where_the_model_is_now(
         tmp_path, monkeypatch):
+    """A provider moved to a new address got a new id, and a sub-agent pinned to the old ref
+    died saying its model "no longer exists" while the same model was there under the new
+    id (bug 93)."""
     from celine.backends.router import NoModel
     llm, nets = routed(tmp_path, monkeypatch, {"chat": {"chain": ["main/big"]}})
     llm.cfg.settings.conversation_models["c1"] = "main/renamed"
-    with pytest.raises(NoModel, match=r"main/renamed no longer exists.*another model"):
+    with pytest.raises(NoModel) as e:
         await collect(llm.bind(role="chat", priority=I, conversation_id="c1", fallback=False))
+    assert str(e.value) == ("This chat's model main/renamed does not resolve: main does not "
+                            "list renamed now. Pick another model for this chat.")
+    llm.cfg.settings.conversation_models["c1"] = "old.host-8080/big"
+    with pytest.raises(NoModel) as e:
+        await collect(llm.bind(role="chat", priority=I, conversation_id="c1", fallback=False))
+    assert str(e.value) == ("This chat's model old.host-8080/big does not resolve: Settings has "
+                            "no provider old.host-8080 now, and the same model is main/big. "
+                            "Pick that for this chat to go on.")
     assert nets["main/big"].calls == 0
 
 

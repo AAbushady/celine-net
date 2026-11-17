@@ -198,6 +198,21 @@ def provider_label(backend) -> str:
     return getattr(getattr(backend, "cfg", None), "label", None) or endpoint_key(backend)
 
 
+def unresolved(s, pick: str) -> str:
+    """The sentence for a conversation whose own model ref names no model in Settings: why
+    it does not resolve, and the same model under another provider when one lists it. A
+    provider whose address changed gets a new id; "no longer exists" read as a model
+    someone deleted (bug 93)."""
+    prov, model = s.split(pick)
+    why = (f"Settings has no provider {prov} now" if prov not in s.providers
+           else f"{prov} does not list {model} now")
+    there = s.same_model(pick)
+    if there:
+        return (f"This chat's model {pick} does not resolve: {why}, and the same model is "
+                f"{' and '.join(there)}. Pick that for this chat to go on.")
+    return f"This chat's model {pick} does not resolve: {why}. Pick another model for this chat."
+
+
 def busy(e: BaseException) -> bool:
     """An HTTP 429, 503 or 529: the model is fine, the provider wants us to wait."""
     return getattr(e, "status", None) in (429, 503, 529)
@@ -622,8 +637,7 @@ class QueuedBackend:
                 raise QueueCancelled("stopped")
             pick = router.s.conversation_models.get(self.conversation_id or "")
             if self.role == "chat" and pick and router.s.model(pick) is None:
-                raise NoModel(f"This chat's model {pick} no longer exists. "
-                              f"Pick another model for this chat.")
+                raise NoModel(unresolved(router.s, pick))
             ordered: Ordered = await router.order(self.role,
                                                   conversation_id=self.conversation_id,
                                                   fallback=not only)

@@ -265,6 +265,13 @@ class Settings:
         p = self.providers.get(prov)
         return None if p is None else (p.get("models") or {}).get(model)
 
+    def same_model(self, ref: str) -> list[str]:
+        """The refs of `ref`'s model under the other providers: a provider whose address
+        changes gets a new id, and the refs that named the old one stop resolving."""
+        prov, model = self.split(ref)
+        return [f"{pid}/{model}" for pid, p in self.providers.items()
+                if pid != prov and model in (p.get("models") or {})]
+
 
     def key_missing(self, provider_id: str) -> bool:
         """The provider needs a key and none is saved: its models are not offered."""
