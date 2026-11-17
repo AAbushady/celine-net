@@ -19,6 +19,7 @@ from . import ToolContext, ToolResult, guide, knob, parts, tool, described
 from ..clock import zone
 from .. import attachments as files
 from . import quotes
+from ..guard import classify
 
 
 def _pictures(c: sqlite3.Connection, display: str | None, result_id: str | None) -> int:
@@ -207,13 +208,15 @@ class PastConversations:
                  f"Messages archive."] + (here or ["Nor does this conversation."])),
                 display={"hits": 0})
         lines = []
-        lock = await ctx.store.read(conversations.lock_archived)
+        lock, cls = await ctx.store.read(lambda c: (
+            conversations.lock_archived(c), classify.of(c, [h["conversation_id"] for h in hits])))
         for h in hits:
             day = self._at(h["created_at"], "%Y-%m-%d")
             lines.append(f"[{day}] {h['title'] or 'Untitled'} (conversation "
                          f"{h['conversation_id'][:8]}{_archived(h, lock)}), "
                          f"{self._who(h['role'], h['author'])}: ...{h['snippet']}...")
-        return ToolResult(content="\n".join(lines + here), display={"hits": len(hits)})
+        return ToolResult(content="\n".join(lines + here),
+                          display={"hits": len(hits), "class": cls})
 
     async def _here(self, ctx: ToolContext, query: str, snippet_tokens: int) -> list[str]:
         """This conversation's matches, each with its number as past_conversations__read
@@ -430,9 +433,9 @@ class PastConversations:
         if wrong:
             return wrong
         cid = conv["id"]
-        items, ended, lock = await ctx.store.read(
+        items, ended, lock, cls = await ctx.store.read(
             lambda c: (_items(c, cid), _ended(c, cid, conv["trigger_key"]),
-                       conversations.lock_archived(c)))
+                       conversations.lock_archived(c), classify.of(c, [cid])))
         lines = [self._item(i, tools) for i in items]
         budget = min(READ_TOKENS, int(ctx.max_output_tokens or READ_TOKENS))
         lo = max(1, int(start)) if start else None
@@ -460,7 +463,7 @@ class PastConversations:
         text, _, _ = tokens.cut_to("\n".join(out), budget + 200, "prose")
         return ToolResult(content=text, display={"conversation": cid,
                                                  "title": conv["title"] or "Untitled",
-                                                 "messages": len(picked)})
+                                                 "messages": len(picked), "class": cls})
 
     def _item(self, i: dict, tools: str) -> str:
         m = i["message"]

@@ -28,6 +28,8 @@ JUDGES: dict[str, tuple[str, str]] = {
     "guard.patrol": ("Look back", "Looks back at one finished turn."),
     "guard.review": ("Second look", "Takes a second look at a finding the first check "
                                     "confirmed."),
+    "guard.privacy": ("Privacy check", "Sorts one exchange of yours with {{name}} by who "
+                                       "may see it."),
     "guard.reader": ("Your answers", "Reads your answer to one of Bastet's decisions."),
 }
 # texts edited on their own page: id -> (the title of its editor, its page)

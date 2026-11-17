@@ -851,7 +851,19 @@ background and only write rows; a closed gate still holds) or `on` (Enforce).
   the call with its words. No model now, a timeout or a busy server
   (`small_role.Unavailable`): Enforce holds the step, its line "Waiting for Bastet. {why}" once
   per new why, and reads the switch again before every ask; turned to Warn or off, the
-  wait ends, the step runs and its rows are `unreachable`. No duration is shown.
+  wait ends, the step runs and its rows are `unreachable`. No duration is shown. After
+  `flow.ON_LIMIT` (300 s) of waiting the call fails with why (upstream 58e3790).
+- **First look** (the `decisions` role, `guard/questions.FirstLook`): a System One
+  decision model (`backends/systemone.py`, `/v1/systemone`) answers every question with a
+  probability in one request; only what it flags (`questions.FLAG`) goes to the Decision
+  model, whose yes still needs its quote. With the role empty the Decision model answers
+  every question (upstream 58e3790).
+- **Chat classes** (`guard/classify.py`): after each turn a `privacy` work item classes
+  the exchange (the First look's two questions, else one word from the guard role):
+  informal, sensitive or nsfw, only ever stricter, sensitive until classed, never over a
+  class the owner set in the chat's panel (`conversations.privacy`, `privacy_owner`).
+  past_conversations' read and search results carry it, so the leak rule and its gates
+  treat text from her own chats by who may see it (upstream 9f160b6, 25cbaf7).
 - **Page check** (`guard/page.py`): every outside result is checked as it is received
   (`turns/tools.py` `checked`); a hit is a mark for the hijack check and never blocks
   reading.

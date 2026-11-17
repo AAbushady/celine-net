@@ -1,10 +1,10 @@
-"""The guard as the start-up sees it (core/parts.py): the routes, and Bastet's answers and
-patrol while the guard is on."""
+"""The guard as the start-up sees it (core/parts.py): the routes, each chat's class after
+its turns (classify.py), and Bastet's answers and patrol while the guard is on."""
 from __future__ import annotations
 
 from ..core.parts import Part, Run
 from ..core.services import Services
-from . import api, patrol, store as decisions, talk
+from . import api, classify, patrol, store as decisions, talk
 
 
 def _runs(services: Services) -> dict[str, Run]:
@@ -20,4 +20,4 @@ def _runs(services: Services) -> dict[str, Run]:
     return {"guard": Run(run)}
 
 
-part = Part(name="guard", routes=(api.router,), runs=_runs)
+part = Part(name="guard", routes=(api.router,), wire=classify.start, runs=_runs)

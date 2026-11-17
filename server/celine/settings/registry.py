@@ -60,6 +60,10 @@ ROLES: dict[str, dict[str, Any]] = {
               "help": "Decides whether a risky step may run and writes Bastet's messages and "
                       "answers. Without it, Warn lets every step run and Enforce makes risky "
                       "steps wait."},
+    "decisions": {"label": "First look", "caps": ["decisions"],
+                  "help": "A decision model (System One) that answers Bastet's questions "
+                          "with a probability first. The Decision model reads only what it "
+                          "flags, or every question while this list is empty."},
     "embeddings": {"label": "Topic search", "caps": ["embeddings"],
                    "help": "Finds messages, notes and documents by what they are about, not "
                            "only by their words."},
@@ -646,7 +650,8 @@ def backend_config(s: Settings, ref: str) -> BackendConfig | None:
     opts = p.get("options") or {}
     caps = kinds_mod.caps_of(p, name)
     raw: dict[str, Any] = {"kind": kinds_mod.KINDS[kind]["backend"], "provider_kind": kind,
-                           "images": "vision" in caps, "tools": "tools" in caps}
+                           "images": "vision" in caps, "tools": "tools" in caps,
+                           "decisions": "decisions" in caps}
     if m.get("context"):
         raw["context"] = m["context"]
     if opts.get("timeout"):
