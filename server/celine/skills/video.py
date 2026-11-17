@@ -32,6 +32,7 @@ from . import ToolContext, ToolResult, described, guide, tool
 
 SERVICE = "video"
 POLL = 15.0                 # seconds between two looks at a running watch
+UNANSWERED = 8              # looks in a row the helper may leave unanswered before a wait ends
 READ_SPAN = 180             # seconds of film one read gives
 WAIT_MARGIN = 120           # a wait in a job returns this long before the job's own limit
 LISTEN_MINUTES = 20         # the longest stretch one listen hears (the helper's LISTEN_MAX)
@@ -73,7 +74,21 @@ def seconds(text: str | None) -> float | None:
 
 
 class HelperError(Exception):
-    """The helper answered with an error, or did not answer: the sentence for her."""
+    """The helper answered with an error, or did not answer (`silent`): the sentence for her."""
+
+    def __init__(self, text: str, silent: bool = False):
+        super().__init__(text)
+        self.silent = silent
+
+
+def unanswered(at: str, method: str, path: str, e: httpx.HTTPError, user: str) -> str:
+    """The sentence for a call the helper did not answer: the call and httpx's error. Who can
+    start the helper only when nothing took the connection: a timeout says nothing of whether
+    it serves, and one ended a wait on a watch that went on and finished (bug 92)."""
+    said = f"The watch helper at {urlsplit(at).netloc} did not answer {method} {path} ({type(e).__name__})."
+    if isinstance(e, httpx.ConnectError):
+        said += f" Nothing took the connection: it runs on the GPU machine, and {user} can start it."
+    return said
 
 
 class Video:
@@ -96,8 +111,7 @@ class Video:
                 r = await client.request(method, at + path, json=json, params=params, content=content,
                                          headers=headers)
         except httpx.HTTPError as e:
-            raise HelperError(f"The watch helper at {urlsplit(at).netloc} does not answer "
-                              f"({type(e).__name__}). It runs on the GPU machine; {self.cfg.user} can start it.")
+            raise HelperError(unanswered(at, method, path, e, self.cfg.user), silent=True) from e
         if r.status_code == 401:
             raise HelperError("The watch helper does not take the app's key.")
         try:
@@ -326,27 +340,36 @@ class Video:
     async def _until_done(self, ctx: ToolContext, jid: str, in_job: bool,
                           at: float | None = None) -> ToolResult:
         """Look every POLL seconds until the watch ends, or until the wait's own limit nears, then say where it
-        stands: in a job, the job's limit; in the turn, the tool's and the turn's. A watch that is done gives
-        its first stretch, from `at` when it was taken up again there."""
+        stands: in a job, the job's limit; in the turn, the tool's and the turn's. A look the helper did not
+        answer is followed by the next one, up to UNANSWERED in a row: the watch goes on there whatever the app
+        hears. A watch that is done gives its first stretch, from `at` when it was taken up again there."""
         if in_job:
             limit = float(self.cfg.r("job_timeout_seconds")) - WAIT_MARGIN
         else:
             limit = 600 - 10
             if ctx.time_left is not None:
                 limit = min(limit, ctx.time_left - 5)
-        waited = 0.0
+        waited, missed = 0.0, 0
         while True:
             try:
                 j = await self._call("GET", f"/jobs/{jid}")
             except HelperError as e:
-                return ToolResult(content=str(e), is_error=True)
-            if j["state"] in ("done", "failed", "cancelled"):
-                break
-            if waited + self.poll > limit:
-                return ToolResult(content=f"Still going: {self._line(j)}. video__wait(id=\"{jid}\", "
-                                          f"background=true) waits again.")
-            if ctx.emit:
-                await ctx.emit(j.get("stage") or j["state"])
+                if not e.silent:
+                    return ToolResult(content=str(e), is_error=True)
+                missed += 1
+                if missed >= UNANSWERED or waited + self.poll > limit:
+                    looks = "1 look" if missed == 1 else f"{missed} looks in a row"
+                    return ToolResult(content=f"{e} {looks} at #{jid} went unanswered; the watch may still be "
+                                              f"going, and video__list shows where it stands.", is_error=True)
+            else:
+                missed = 0
+                if j["state"] in ("done", "failed", "cancelled"):
+                    break
+                if waited + self.poll > limit:
+                    return ToolResult(content=f"Still going: {self._line(j)}. video__wait(id=\"{jid}\", "
+                                              f"background=true) waits again.")
+                if ctx.emit:
+                    await ctx.emit(j.get("stage") or j["state"])
             await anyio.sleep(self.poll)
             waited += self.poll
         if j["state"] != "done":

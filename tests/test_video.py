@@ -345,9 +345,35 @@ async def test_the_helpers_words_come_through_and_a_bad_time_is_refused(store, c
     def down(request):
         raise httpx.ConnectError("refused", request=request)
     out = await Video(cfg, transport=httpx.MockTransport(down)).list(_ctx(store, cfg))
-    assert out.is_error and "does not answer" in out.content
+    assert out.is_error and out.content.endswith(
+        "did not answer GET /jobs (ConnectError). Nothing took the connection: it runs on the GPU machine, "
+        f"and {cfg.user} can start it."), out.content
     out = await Video(cfg, transport=httpx.MockTransport(lambda r: httpx.Response(401))).list(_ctx(store, cfg))
     assert out.is_error and out.content == "The watch helper does not take the app's key."
+
+
+async def test_a_wait_goes_on_past_looks_the_helper_did_not_answer(store, cfg):
+    """Bug 92: one look that timed out ended a wait on a watch that went on and finished, with a sentence saying
+    the helper was down and who could start it."""
+    h = Helper()
+    left = {"timeouts": 3}
+
+    def slow(request):
+        if request.url.path == "/jobs/abc123def456" and left["timeouts"]:
+            left["timeouts"] -= 1
+            raise httpx.ConnectTimeout("timed out", request=request)
+        return h(request)
+    v = Video(cfg, transport=httpx.MockTransport(slow))
+    v.poll = 0
+    out = await v.wait(_ctx(store, cfg), "abc123def456", background=True)
+    assert not out.is_error and out.content.startswith("#abc123def456 A short film (Blender), 0:00 to 3:00")
+    assert h.looks == 2, "it looked on until the watch was done"
+    left["timeouts"] = 99
+    out = await v.wait(_ctx(store, cfg), "abc123def456", background=True)
+    assert out.is_error and out.content.endswith(
+        "did not answer GET /jobs/abc123def456 (ConnectTimeout). 8 looks in a row at #abc123def456 went "
+        "unanswered; the watch may still be going, and video__list shows where it stands."), out.content
+    assert "can start it" not in out.content
 
 
 async def test_plex_links_once_and_searches_her_servers(store, cfg):
