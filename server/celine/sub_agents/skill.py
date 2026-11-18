@@ -26,6 +26,7 @@ that started it.
 """
 from __future__ import annotations
 
+import re
 import sqlite3
 from pathlib import Path
 from typing import Annotated, Literal
@@ -70,6 +71,34 @@ async def model_for_sub_agent(store, parent_cid: str) -> dict:
     from ..settings import conversations as conv
     own = await conv.get(store, parent_cid) or {}
     return {"model": own.get("model")}
+
+
+# a brief that asks for a note to be written: a verb of writing, then in the same sentence
+# "to", "into", "in", "as" or "at" and a note's path (review/night.md)
+WRITE_NOTE = re.compile(
+    r"(?<![\w'’])(?:writ(?:e|es|ing|ten)|sav(?:e|es|ing)|append\w*|stor(?:e|es|ing)|record\w*|"
+    r"put|add)\b(?:[^.;!?\n]|\.(?=\S)){0,80}?\b(?:to|into|in|as|at)\s+(?:the\s+note\s+)?"
+    r"[`\"'*]*(?P<path>[\w-][\w.-]*(?:/[\w.-]+)*\.md)\b", re.I)
+NOT = re.compile(r"\b(?:not|never|no|don't|don’t)\s*$", re.I)
+
+
+def note_to_write(brief: str) -> str | None:
+    """The note a brief asks its sub-agent to write, such as review/night.md, or None. A read
+    sub-agent writes nothing, so begin refuses such a start."""
+    for m in WRITE_NOTE.finditer(brief):
+        if not NOT.search(brief[max(0, m.start() - 12):m.start()]):
+            return m["path"]
+    return None
+
+
+def _no_writing(path: str, reading: bool) -> str:
+    if reading:
+        return (f"Not started: the brief asks it to write {path}, and your sub-agents have "
+                f"read access, so it writes no note. Ask for what it finds in its report.")
+    where = Path(path).parent.as_posix()
+    give = f'folder="{where}" or access="work"' if where != "." else 'access="work"'
+    return (f"Not started: the brief asks it to write {path}, and with read access it writes "
+            f"no note. Give it {give}, or ask for what it finds in its report.")
 
 
 def plain_folder(folder: str) -> str | None:
@@ -393,6 +422,11 @@ class SubAgents:
         if reading and known is not None and (known["access"] == "work" or known["cli"]
                                               or known["device"]):
             return None, READ_PARENT, False, None     # a resume gives no more either
+        k = known or {}
+        if (k.get("access") or access) == "read" and not (cli or device or k.get("cli")
+                                                          or k.get("device")) \
+                and (path := note_to_write(brief)):
+            return None, _no_writing(path, reading), False, None
         # the user's answer may take minutes: asked outside the lock, checked again in it
         model = await self._model(store, parent, model, known)
         if asker is not None and (no := await agent_models.ask_cloud(

@@ -438,6 +438,48 @@ async def test_an_inherited_folder_leaves_the_default_access_read(store, cfg):
     assert (row["access"], row["folder"]) == ("work", "agents/scout/out"), "a folder given"
 
 
+def test_a_brief_that_asks_for_a_note_names_it():
+    from celine.sub_agents.skill import note_to_write
+    for brief, want in (
+            ("Read the logs. Write your findings to `review/night.md`.", "review/night.md"),
+            ("Save it as seen/harbor.md and say where it is in the report.", "seen/harbor.md"),
+            ("Summarise seen/a.md and write the summary into review/b.md.", "review/b.md"),
+            ("put the list in notes.md", "notes.md"),
+            ("Which of my notes mention the beach trip? Only the paths, one per line.", None),
+            ("Read review/x.md and write a summary in your report.", None),
+            ("Do not write to review/x.md, only read it.", None),
+            ("Record what you find. Notes are in seen/x.md.", None),
+            ("Write the text from https://example.org/a.md into your report.", None),
+            ("Write to ~/out/findings.md in your shell.", None)):
+        assert note_to_write(brief) == want, brief
+
+
+async def test_a_read_sub_agent_asked_to_write_a_note_is_not_started(store, cfg):
+    from types import SimpleNamespace
+    agents = _registry(cfg).skills["sub_agents"]
+    agents.app = Services(cfg=cfg, store=store, intercom=Intercom(store),
+                          dispatcher=SimpleNamespace(notify=lambda: None))
+    parent = await conversations.create(store)
+    brief = "Read the harbor logs. Write your findings to `review/harbor.md`."
+    kid, refusal, _, _ = await agents.begin(store, parent, brief, "harbor reader")
+    assert kid is None and refusal == (
+        'Not started: the brief asks it to write review/harbor.md, and with read access it '
+        'writes no note. Give it folder="review" or access="work", or ask for what it finds in '
+        'its report.')
+    assert await _subs_of(store, parent) == []
+    _, refusal, _, _ = await agents.begin(store, parent, brief, "harbor reader", folder="review")
+    assert refusal is None, "a folder makes it write there"
+    _, refusal, _, _ = await agents.begin(store, parent, "Which notes name the harbor? Paths only.",
+                                          "harbor finder")
+    assert refusal is None, "a brief with no note to write starts as it did"
+    reader = await conversations.create(store, "r", agent_of=parent, agent_name="a reader",
+                                        access="read")
+    _, refusal, _, _ = await agents.begin(store, reader, brief, "deep reader")
+    assert refusal == ("Not started: the brief asks it to write review/harbor.md, and your "
+                       "sub-agents have read access, so it writes no note. Ask for what it finds "
+                       "in its report.")
+
+
 async def test_sub_agents_start_their_own_down_to_three_levels(store, cfg):
     agents = _registry(cfg).skills["sub_agents"]
     agents.app = Services(dispatcher=object())     # a refusal never reaches it
