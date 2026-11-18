@@ -50,7 +50,7 @@ CLOCK = re.compile(r"^(?:(\d+):)?(\d{1,3}):(\d{2})$")
 SHORT_ID = re.compile(r"[0-9a-f]{4,32}")
 # what a stretch calls the source's own captions, by their kind (the helper's CAPTIONS)
 CAPTIONS = {"uploader": "The uploader's captions", "automatic": "YouTube's automatic captions",
-            "film": "The film's subtitles"}
+            "film": "The film's subtitles", "words": "The words, as Qwen3-ASR heard them"}
 
 
 def address(cfg) -> str:

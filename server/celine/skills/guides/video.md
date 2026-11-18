@@ -33,8 +33,9 @@ the GPU is in use (20 minutes at most). Then `video__read` gives it a stretch at
 watch. The first stretch starts with what was measured: whether it is music with a steady
 beat, its tempo and beats to a bar, and how much of it has a voice, counted from the sound
 itself. The lines after it each say where they come from:
-- `words (Whisper)` are the words sung or spoken, written down where there is a voice.
-  `words (Whisper, unclear)` is a stretch it could not make out (screams, a repeated sound);
+- `words (Qwen3-ASR)` are the words sung or spoken, written down where there is a voice, a line
+  for each stretch of up to 30 seconds, timed where that stretch starts.
+  `words (Qwen3-ASR, unclear)` is a stretch it could not make out (screams, a repeated sound);
   do not read it as lyrics.
 - `section (MOSS-Music)` is the listening model's part of the song (verse, chorus) with the
   words it heard; `What MOSS-Music says` is its account of the music: style, mood, instruments,
@@ -45,8 +46,12 @@ itself. The lines after it each say where they come from:
 
 Captions: a stretch carries the source's own captions under their name: the uploader's
 captions, YouTube's automatic captions (a machine's, with its mistakes) or the film's
-subtitles. When a song has the uploader's captions, they are its words and Whisper is not
-asked. When YouTube refuses a video's captions, the watch or listen goes on without them and
+subtitles. When a song has the uploader's captions, they are its words and they are not
+written down again. A watch with none of these gets the words written down from its sound
+before it starts (a few minutes more for a whole film): they come under "The words, as
+Qwen3-ASR heard them", a line for each stretch of up to 20 seconds, timed where it starts.
+They are a speech model's, closer to what was said than the watching model's quotes, and
+can still mishear a name. When YouTube refuses a video's captions, the watch or listen goes on without them and
 a stretch says "No captions: YouTube did not give them (...)"; the next watch or listen of
 that video asks again.
 

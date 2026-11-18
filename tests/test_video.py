@@ -32,6 +32,7 @@ class Helper:
         self.pictures: list[str] = []              # what a listen's first stretch names (listen.py PICTURES)
         self.live_to: float | None = None          # a watch still going: where its log ends now
         self.missing: str | None = None            # YouTube's words when it refused the captions
+        self.words: list[str] | None = None        # a watch with no captions: the words the helper wrote down
 
     def job(self, state="queued"):
         return {"id": "abc123def456", "kind": "listen" if self.mode == "listen" else "watch",
@@ -75,6 +76,8 @@ class Helper:
                     if self.live_to is None or at < self.live_to else []
                 if self.missing:
                     out["captions_missing"] = self.missing
+                if self.words is not None:
+                    out["captions"] = {"kind": "words", "lines": self.words}
             elif self.mode == "listen":
                 out.update(end=278, next=None, duration=278, lines=[
                     "[0:06] (the sound gets louder: -48 to -14 dBFS)",
@@ -179,6 +182,13 @@ async def test_captions_youtube_refused_are_named_in_the_stretch(store, cfg):
         "[0:00] A bird lands on a branch; soft strings play.",
         "No captions: YouTube did not give them (Unable to download video subtitles for 'en-orig': HTTP Error 429: "
         "Too Many Requests)."]
+
+
+async def test_a_watch_with_no_captions_reads_with_the_words_written_down_under_their_name(store, cfg):
+    h = Helper()
+    h.words = ["[0:04] Keep the lamp lit until the boats are in."]
+    out = (await _video(cfg, h).read(_ctx(store, cfg), "abc123def456")).content.splitlines()
+    assert out[3:5] == ["The words, as Qwen3-ASR heard them:", "[0:04] Keep the lamp lit until the boats are in."]
 
 
 async def test_a_watch_that_stopped_early_goes_on_under_its_id_from_where_its_log_ends(store, cfg):
