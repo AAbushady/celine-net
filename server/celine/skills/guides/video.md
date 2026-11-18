@@ -62,7 +62,8 @@ or after 48 hours when you watched only part of it, so you can come back for the
 What the log is: other models' account of the video or the track. A line in round brackets is
 the helper's own note (a line it left out, a stretch the model went round in circles on, words
 it said over and over, a stretch the film has no sound for, a measurement), never something
-seen or heard. The watching model takes 20 seconds at a time and knows nothing of the 20
+seen or heard. A film's sound is its English track; when it has several, or only one in
+another language, the first stretch's note names the track it heard. The watching model takes 20 seconds at a time and knows nothing of the 20
 before, so a scene that runs on is told again every 20 seconds as if it began there, and the
 second where two meet can show twice. Its times are the film's own, to a second or two. It hears
 most lines word for word, and it can still mishear a name, give a line to the wrong person,

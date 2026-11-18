@@ -305,14 +305,16 @@ async def test_her_tracks_list_with_their_ids_and_a_listen_finds_one_by_its_titl
     two = await atts.save_generated(cfg, store, b"ID3 two", "tower_hum_industrial-112874722676781.mp3",
                                     "audio/mpeg", None, in_message=False, batch_id="b1")
     items = [{"index": 0, "title": "Tower Hum", "style": "dream pop, soft synths", "instrumental": False,
-              "seconds": 103.3, "preset": "yue2", "attachment": {"id": one["id"]}},
+              "seconds": 41.0, "preset": "yue2", "attachment": {"id": one["id"]}},
              {"index": 1, "title": "Tower Hum (industrial)", "style": "90s industrial metal", "instrumental": False,
-              "seconds": 48.6, "preset": "yue2", "attachment": {"id": two["id"]}}]
+              "seconds": 48.6, "lasts": 128.4, "preset": "yue2", "attachment": {"id": two["id"]}}]
     await store.write(lambda c: c.execute("UPDATE media_batches SET items = ? WHERE id = 'b1'", (json.dumps(items),)))
     out = await MusicGenerator(cfg).list_tracks(_ctx(store, cfg))
     blocks = out.content.split("\n\n")
     assert blocks[0].startswith(two["id"][:8]) and blocks[1].startswith(one["id"][:8]), "newest first"
-    assert '"Tower Hum (industrial)", song, 49 s, yue2' in blocks[0] and "\n  style: 90s industrial metal" in blocks[0]
+    assert '"Tower Hum (industrial)", song, 2:08 long, made in 49 s, yue2' in blocks[0] and \
+        "\n  style: 90s industrial metal" in blocks[0]
+    assert '"Tower Hum", song, made in 41 s, yue2' in blocks[1], "a track with no length read names none"
     assert (await MusicGenerator(cfg).list_tracks(_ctx(store, cfg), scope="kept")).content == "You have kept no tracks."
     h = Helper(mode="listen")
     v = _video(cfg, h)

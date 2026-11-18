@@ -750,7 +750,7 @@ class Batches:
             if it is not item and (it["state"] not in ("failed", "stopped")
                                    or "preset" not in it):
                 continue
-            for k in ("error", "seconds", "queued", "note", "attachment"):
+            for k in ("error", "seconds", "queued", "note", "attachment", "lasts"):
                 it.pop(k, None)
             it["state"] = "waiting"
         b.update(state="running", finished_at=None)
@@ -978,6 +978,12 @@ class Batches:
         data, media_type = await server_mod.run(comfy, p.build(values), note, timeout)
         slug = re.sub(r"[^a-z0-9]+", "_", item["title"].lower()).strip("_")[:32] or "track"
         ext = ".mp3" if "mpeg" in media_type or "mp3" in media_type else ".flac"
+        from . import frames
+        try:
+            item["lasts"] = round(await frames.lasts(data, ext[1:]), 1)
+        except frames.FramesError as e:     # the track stands; its lines name no length
+            log.warning("track length not read", extra={"event": "comfyui.track_length",
+                                                         "batch": b["id"], "why": str(e)})
         item["attachment"] = await self._store(b, data, f"{slug}-{item['seed']}{ext}",
                                                media_type)
 

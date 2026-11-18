@@ -84,6 +84,8 @@ export type BatchItem = {
   title?: string | null
   instrumental?: boolean | null
   duration?: number | null
+  /** a made track's seconds */
+  lasts?: number | null
   /** a clip's frames */
   length?: number | null
   fps?: number | null

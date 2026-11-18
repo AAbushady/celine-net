@@ -1,7 +1,7 @@
 """A clip's frames, sampled at even times by ffmpeg (in the app's image), so the agent sees
 how a clip it made moves: `sample` gives each frame's index, its time and a JPEG of it, the
 longer side at most EDGE pixels. Nothing here is stored; video_generator__look keeps what it
-shows with its call."""
+shows with its call. `lasts` reads how long a track or a clip lasts."""
 from __future__ import annotations
 
 import json
@@ -49,6 +49,19 @@ async def _run(*cmd: str) -> bytes:
         last = (done.stderr or b"").decode(errors="replace").strip().splitlines()
         raise FramesError(f"{cmd[0]} failed: {last[-1] if last else done.returncode}")
     return done.stdout
+
+
+async def lasts(data: bytes, ext: str) -> float:
+    """How many seconds the track or clip `data`, a file of type `ext` ("mp3"), lasts."""
+    with tempfile.TemporaryDirectory(prefix="celine-frames-") as tmp:
+        f = Path(tmp) / f"file.{ext}"
+        f.write_bytes(data)
+        out = await _run("ffprobe", "-v", "error", "-show_entries", "format=duration",
+                         "-of", "default=noprint_wrappers=1:nokey=1", str(f))
+    try:
+        return float(out.decode().strip())
+    except ValueError:
+        raise FramesError("ffprobe found no length in the file.") from None
 
 
 async def audio_streams(data: bytes) -> int:

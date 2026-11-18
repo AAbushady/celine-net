@@ -24,7 +24,7 @@ EXPECTED_TABLES = {
 }
 LOG_TABLES = {"events", "global_events", "raw_responses", "requests", "terminal_commands"}
 NOTEBOOK_TABLES = {"notebook_index", "notebook_fts"}
-LATEST = 48
+LATEST = 49
 
 
 def _version(db) -> int:
@@ -838,3 +838,46 @@ def test_0035_names_a_seen_browser_shot_in_the_list_of_pictures_its_result_takes
              for r in c.execute("SELECT id, display FROM tool_calls")}
     c.close()
     assert shown == {**displays, "seen": {"tab": "g", "shot": shot, "see": [shot]}}
+
+
+def test_0049_gives_a_made_track_how_long_its_file_lasts_once(tmp_path, monkeypatch):
+    """A track whose file ffprobe reads gets `lasts`; one whose file is gone and one that has
+    it already stay as they were."""
+    import hashlib
+    import json
+    import os
+    d = tmp_path / "migrations"
+    d.mkdir()
+    for f in sorted(MIGRATIONS_DIR.iterdir()):
+        if f.suffix in (".sql", ".py") and f.name < "0049":
+            shutil.copy(f, d)
+    monkeypatch.setattr(m, "MIGRATIONS_DIR", d)
+    db = tmp_path / "celine.db"
+    assert migrate(db) == 48
+    sha = {k: hashlib.sha256(k.encode()).hexdigest() for k in ("hum", "gone", "had")}
+    for k in ("hum", "had"):
+        blob = tmp_path / "blobs" / sha[k][:2] / sha[k][2:4] / sha[k]
+        blob.parent.mkdir(parents=True, exist_ok=True)
+        blob.write_bytes(b"ID3 " + k.encode())
+    items = [{"index": 0, "title": "Harbor Lights", "seconds": 41.0, "attachment": {"sha256": sha["hum"]}},
+             {"index": 1, "title": "Lost", "seconds": 30.0, "attachment": {"sha256": sha["gone"]}},
+             {"index": 2, "title": "Had", "seconds": 20.0, "lasts": 61.0, "attachment": {"sha256": sha["had"]}},
+             {"index": 3, "title": "Failed", "state": "failed"}]
+    c = sqlite3.connect(db)
+    c.execute("INSERT INTO media_batches(id, kind, state, items, created_at) VALUES('b', 'music', 'done', ?, 'x')",
+              (json.dumps(items),))
+    c.commit()
+    c.close()
+    bin_ = tmp_path / "bin"
+    bin_.mkdir()
+    probe = bin_ / "ffprobe"
+    probe.write_text("#!/bin/sh\necho 95.62\n")
+    probe.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
+    shutil.copy(MIGRATIONS_DIR / "0049_track_lengths.py", d)
+    assert migrate(db) == 49
+    c = sqlite3.connect(db)
+    got = json.loads(c.execute("SELECT items FROM media_batches").fetchone()[0])
+    c.close()
+    assert [i.get("lasts") for i in got] == [95.6, None, 61.0, None]
+    assert [i["seconds"] for i in got[:3]] == [41.0, 30.0, 20.0], "how long it took to make stays"

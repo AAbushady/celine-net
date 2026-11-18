@@ -9,7 +9,7 @@ a `style`; a song also has `lyrics` and `instrumental=false`. `count` makes that
 tracks of each item, each with its own seed. The call returns at once with the batch
 id and one slot per track. The tracks are made one after the other, and each appears in
 this conversation when it is done, where {{username}} hears it; its line says how long
-it took. It is also saved in the music folder of the data folder. What you make is cleared
+it lasts and how long it took to make. It is also saved in the music folder of the data folder. What you make is cleared
 after the number of days set in Settings unless `music_generator__keep` keeps it.
 `music_generator__list_tracks` lists your tracks from every conversation, each with its
 short id and title; `video__listen` takes either to hear one.
@@ -17,7 +17,7 @@ short id and title; `video__listen` takes either to hear one.
 The GPU is shared. While it is in use, a batch waits in line until it is free, as long
 as that takes, and its slots say "Waiting for the GPU" and why. A batch reports back
 once: when it is done, a message from the app says what was made, each track with how
-long it took and how long it waited in ComfyUI's queue behind another, and, when the
+long it lasts, how long it took to make and how long it waited in ComfyUI's queue behind another, and, when the
 batch had to wait for the GPU, how long. That message comes by itself, so answer now
 and do not poll
 `music_generator__read` for it. It shows

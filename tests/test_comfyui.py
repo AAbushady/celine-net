@@ -308,6 +308,30 @@ async def test_music_turns_the_instrumental_lora_off_for_a_song(app):
     assert g["10"]["inputs"]["seed"] == g["5"]["inputs"]["seed"] == item["seed"]
 
 
+async def test_a_track_says_how_long_it_lasts_and_how_long_it_took_to_make(app, monkeypatch):
+    from celine.skills.music import item_line
+    asked = []
+
+    async def lasts(data, ext):
+        asked.append(ext)
+        return 95.62
+    monkeypatch.setattr(frames_mod, "lasts", lasts)
+    b = await app.batches.run((await app.batches.create("music", [
+        {"style": "ambient drone", "title": "Harbor Lights"}]))["id"])
+    [item] = b["items"]
+    assert asked == ["mp3"] and item["lasts"] == 95.6
+    assert item_line({**item, "seconds": 41.0}, app.cfg).endswith(
+        "Harbor Lights (instrumental), seed " + str(item["seed"]) + ", 1:36 long, made in 41 s.")
+
+    async def unread(data, ext):
+        raise frames_mod.FramesError("ffprobe is not in the app's image.")
+    monkeypatch.setattr(frames_mod, "lasts", unread)
+    b = await app.batches.run((await app.batches.create("music", [{"style": "ambient"}]))["id"])
+    [item] = b["items"]
+    assert item["state"] == "done" and "lasts" not in item, "the track stands without its length"
+    assert ", made in " in item_line(item, app.cfg) and " long, " not in item_line(item, app.cfg)
+
+
 async def test_one_lease_per_gpu_and_a_busy_gpu_fails_the_rest_at_once(app, monkeypatch):
     from celine.backends.queue import QueueTimeout
     s = app.llm.router.s

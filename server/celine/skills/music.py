@@ -35,6 +35,12 @@ class Item(TypedDict, total=False):
                              "preset's default."]
 
 
+def lasts(seconds: float) -> str:
+    """A track's length as a player shows it, "1:43"."""
+    m, s = divmod(round(seconds), 60)
+    return f"{m}:{s:02d}"
+
+
 def item_line(i: dict, cfg, lives: bool = False) -> str:
     """One slot of a batch (as batches.view gives it), as it reads it; `lives`: as
     images.item_line."""
@@ -47,8 +53,9 @@ def item_line(i: dict, cfg, lives: bool = False) -> str:
     if i["state"] != "done":
         return f"{n}. {i['title']} ({what}), seed {i['seed']}: {i.get('note') or i['state']}."
     lived = life.words(cfg, i["attachment"].get("life")) if lives else ""
+    long = f"{lasts(i['lasts'])} long, " if i.get("lasts") is not None else ""
     return (f"{n}. track {i['attachment']['id'][:SHORT]}: {i['title']} ({what}), seed "
-            f"{i['seed']}, {took(i)}." + (f" {lived}" if lived else ""))
+            f"{i['seed']}, {long}made in {took(i)}." + (f" {lived}" if lived else ""))
 
 
 def batch_text(b: dict, cfg, *, started: bool, chat: bool = True,
@@ -152,7 +159,8 @@ class MusicGenerator(Generator):
                          "the ones you kept."] = "all",
     ) -> ToolResult:
         """Your tracks, newest first, each with its short id, its title, when it was made,
-        how long it is, its style, and whether it is kept or when it is cleared. The short id
+        how long it lasts, how long it took to make, its style, and whether it is kept or
+        when it is cleared. The short id
         is what music_generator__keep and video__listen take; video__listen also takes the
         title. Returns: one block per track."""
         rows = await life.tracks(ctx.store, ctx.conversation_id if scope == "here" else None,
@@ -167,8 +175,10 @@ class MusicGenerator(Generator):
             made = r["made"]
             head = [r["id"][:SHORT], when(r["created_at"], tz), f'"{life.title(r)}"',
                     "instrumental" if made.get("instrumental", True) else "song"]
+            if made.get("lasts") is not None:
+                head.append(f"{lasts(made['lasts'])} long")
             if made.get("seconds"):
-                head.append(f"{made['seconds']:.0f} s")
+                head.append(f"made in {made['seconds']:.0f} s")
             if made.get("preset"):
                 head.append(made["preset"])
             said = life.words(self.cfg, {"state": r["life"], "at": r["life_at"] or r["created_at"]}

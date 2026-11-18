@@ -123,6 +123,7 @@ class BatchItem(Answer):
     title: str | None = None
     instrumental: bool | None = None
     duration: float | None = None
+    lasts: float | None = Field(default=None, description="a made track's seconds")
     # video
     length: int | None = Field(default=None, description="a clip's frames")
     fps: float | None = None
