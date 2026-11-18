@@ -46,7 +46,9 @@ itself. The lines after it each say where they come from:
 Captions: a stretch carries the source's own captions under their name: the uploader's
 captions, YouTube's automatic captions (a machine's, with its mistakes) or the film's
 subtitles. When a song has the uploader's captions, they are its words and Whisper is not
-asked.
+asked. When YouTube refuses a video's captions, the watch or listen goes on without them and
+a stretch says "No captions: YouTube did not give them (...)"; the next watch or listen of
+that video asks again.
 
 YouTube sometimes stops the helper with its bot check. The helper then tries once more by
 itself, with the YouTube cookies of your own browser (only YouTube's, for that one download).

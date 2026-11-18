@@ -31,6 +31,7 @@ class Helper:
         self.files: list[dict] = []                # what was sent to PUT /files/<sha256>
         self.pictures: list[str] = []              # what a listen's first stretch names (listen.py PICTURES)
         self.live_to: float | None = None          # a watch still going: where its log ends now
+        self.missing: str | None = None            # YouTube's words when it refused the captions
 
     def job(self, state="queued"):
         return {"id": "abc123def456", "kind": "listen" if self.mode == "listen" else "watch",
@@ -72,6 +73,8 @@ class Helper:
             if self.mode == "omni":
                 out["lines"] = [f"[{int(at) // 60}:00] A bird lands on a branch; soft strings play."] \
                     if self.live_to is None or at < self.live_to else []
+                if self.missing:
+                    out["captions_missing"] = self.missing
             elif self.mode == "listen":
                 out.update(end=278, next=None, duration=278, lines=[
                     "[0:06] (the sound gets louder: -48 to -14 dBFS)",
@@ -164,6 +167,18 @@ async def test_a_stretch_cut_at_the_live_edge_goes_on_where_the_watch_is(store, 
     h.live_to = None
     done = await v.read(_ctx(store, cfg), "abc123def456", at="3:00")
     assert done.content.endswith('at="6:00")'), "a finished watch reads on a whole stretch"
+
+
+async def test_captions_youtube_refused_are_named_in_the_stretch(store, cfg):
+    """Bug 99: a watch whose captions YouTube refused goes on without them, and its stretch says why."""
+    h = Helper()
+    h.missing = "Unable to download video subtitles for 'en-orig': HTTP Error 429: Too Many Requests"
+    out = (await _video(cfg, h).read(_ctx(store, cfg), "abc123def456")).content.splitlines()
+    assert out[1:4] == [
+        "What the watching model saw and heard:",
+        "[0:00] A bird lands on a branch; soft strings play.",
+        "No captions: YouTube did not give them (Unable to download video subtitles for 'en-orig': HTTP Error 429: "
+        "Too Many Requests)."]
 
 
 async def test_a_watch_that_stopped_early_goes_on_under_its_id_from_where_its_log_ends(store, cfg):

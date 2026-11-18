@@ -423,6 +423,8 @@ class Video:
         cap = s.get("captions")
         said = [f"{CAPTIONS.get(cap['kind'], 'Captions')}:", *(cap["lines"] or ["(none in this stretch)"])] \
             if cap else []
+        if not cap and s.get("captions_missing"):
+            said = [f"No captions: YouTube did not give them ({s['captions_missing']})."]
         if s["mode"] == "omni":
             lines.append("What the watching model saw and heard:")
             lines += s["lines"] or [self._nothing(s)]
