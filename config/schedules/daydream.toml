@@ -10,7 +10,7 @@ on = true
 on_fail = "skip"
 idle_only = true
 daytime = true
-wall_minutes = 25
+wall_minutes = 60
 prompt = """
 Nobody is waiting for you. This is your own time.
 
