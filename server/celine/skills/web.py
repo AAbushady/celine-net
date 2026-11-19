@@ -680,9 +680,11 @@ class Web:
             return await self._save(ctx, raw)
 
         key = _canon(raw)
-        now = time.monotonic()
+        now = _now()
         hit = _pages.get(key)
-        if hit and now - hit[0] < _PAGE_TTL:
+        # a later part reads the copy the first one came from: a page fetched again can
+        # have changed, and its parts with it
+        if hit and (now - hit[0] < _PAGE_TTL or int(part or 1) > 1):
             _, doc, final = hit
         else:
             page = await self._get(raw, int(self.cfg.r("web.page_max_mb")) * 1024 * 1024,

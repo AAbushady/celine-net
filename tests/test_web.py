@@ -293,3 +293,57 @@ async def test_a_long_page_reads_in_parts_that_join_to_the_page(monkeypatch):
     first = await read(1)
     assert first.startswith("[web:1] Refit log\nhttps://boats.example.com/log\n"
                             "Its date could not be read.\npart 1 of ")
+
+
+def _html(r: httpx.Request) -> httpx.Response:
+    return httpx.Response(200, text="<html></html>", headers={"content-type": "text/html"})
+
+
+async def test_the_parts_of_a_page_stay_where_they_were_cut_while_the_estimate_moves(
+        monkeypatch):
+    """The estimate a part is cut by moves with every answer counted; a later part still
+    starts where the part before it ended, so the parts join to the page."""
+    from dataclasses import replace
+    from celine.backends import tokens
+    text = "\n\n".join(f"Mooring {i}: chain checked, shackle moused." for i in range(400))
+    monkeypatch.setattr(web, "extract", lambda page: {
+        "title": "Moorings", "text": text, "date": None, "author": None, "kind": "html"})
+    w = Web(load(), transport=httpx.MockTransport(_html), check_addresses=False)
+    ctx = replace(_ctx(), max_output_tokens=ROOM)
+    counted = iter([120, 80] * 20)
+
+    async def read(k):
+        if k > 1:       # an answer counted between two reads
+            tokens.counter().observe(100, next(counted))
+        return (await w.read_page(ctx, "https://boats.example.com/moorings", part=k)).content
+    whole, n = await joined(read, 'web__read_page(url="web:1"')
+    assert n > 2 and whole == text
+
+
+async def test_a_later_part_reads_the_copy_the_first_part_came_from(monkeypatch):
+    """Past the page cache's time part 1 fetches the page again, but part 2 and on read
+    the copy part 1 came from: a page that changed meanwhile does not move its parts."""
+    from dataclasses import replace
+    clock = [500.0]
+    monkeypatch.setattr(web, "_now", lambda: clock[0])
+    served = []
+
+    def page(r):
+        served.append(r)
+        return _html(r)
+    monkeypatch.setattr(web, "extract", lambda p: {
+        "title": "Buoys", "date": None, "author": None, "kind": "html",
+        "text": "\n\n".join(f"Buoy {i}: lit" + ", checked" * (len(served) - 1)
+                            for i in range(1000))})
+    w = Web(load(), transport=httpx.MockTransport(page), check_addresses=False)
+    ctx = replace(_ctx(), max_output_tokens=ROOM)
+
+    async def read(k):
+        if k == 2:      # the rest is read after the cache's time
+            clock[0] += web._PAGE_TTL + 1
+        return (await w.read_page(ctx, "https://boats.example.com/buoys", part=k)).content
+    whole, n = await joined(read, 'web__read_page(url="web:1"')
+    assert n > 2 and len(served) == 1
+    assert whole == "\n\n".join(f"Buoy {i}: lit" for i in range(1000))
+    assert "Buoy 0: lit, checked" in await read(1) and len(served) == 2, \
+        "part 1 past the cache's time fetches the page again"

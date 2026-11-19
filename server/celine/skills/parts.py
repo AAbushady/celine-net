@@ -7,9 +7,11 @@ max_output_tokens) is smaller, counted as a tool result is: the result backstop
 with it, so every part passes the backstop whole. The room is ROOM, or what the lines
 take when they take more: a head that changes a little from one read to the next (a
 mail's "(was unread)") leaves the parts where they were. The parts joined are the text.
-The parts are cut by the calibrated estimate (backends/tokens.py), which moves as the
-model's answers are counted, so a read after such a move may cut a few lines earlier or
-later than the read before it. A text of more than one part reads:
+The parts are cut by the calibrated estimate (backends/tokens.py), which moves with every
+answer counted and with the model that answered last, so a text is cut once for its cap
+and its turn's output room, and a later read gets those parts (KEPT texts): parts cut
+anew would leave out or repeat what lies between an old cut and a new one. A text of
+more than one part reads:
 
     <head lines>
     part k of n
@@ -23,11 +25,18 @@ A text of one part is its head lines, a blank line, the text and its after lines
 """
 from __future__ import annotations
 
+import hashlib
+from collections import OrderedDict
+from itertools import accumulate
 from typing import Sequence
 
 PART_TOKENS = 6000      # one part of a long text a tool reads
 ROOM = 300              # tokens kept for the lines printed with a part, at least
 MIN_PART = 200          # the least a part holds, however long its head lines are
+KEPT = 64               # texts whose cuts are kept
+
+# (the text's sha256, cap, output room) -> where each part ends
+_cuts: OrderedDict[tuple[str, int, int | None], list[int]] = OrderedDict()
 
 
 def split(text: str, part_tokens: int) -> list[str]:
@@ -63,15 +72,31 @@ def tail(k: int, n: int, call: str) -> str:
 def fit(text: str, ctx, *, head: Sequence[str] = (), call: str, after: Sequence[str] = (),
         cap: int = PART_TOKENS) -> list[str]:
     """`text` in parts that each fit one result with the lines `show` prints around
-    them."""
-    budget = cap
-    if ctx is not None and getattr(ctx, "max_output_tokens", None):
-        from ..backends import tokens
-        around = "\n".join([*head, "part 99998 of 99999", "", "", tail(99998, 99999, call),
-                            *after])
-        room = max(ROOM, tokens.estimate(around, "tool"))
-        budget = max(MIN_PART, min(cap, int(ctx.max_output_tokens) - room))
-    return split(text, budget) if text else [""]
+    them, the parts its first read cut."""
+    if not text:
+        return [""]
+    out = getattr(ctx, "max_output_tokens", None) if ctx is not None else None
+    key = (hashlib.sha256(text.encode("utf-8", "surrogatepass")).hexdigest(), cap,
+           int(out) if out else None)
+    ends = _cuts.get(key)
+    if ends is None:
+        budget = cap
+        if out:
+            from ..backends import tokens
+            around = "\n".join([*head, "part 99998 of 99999", "", "",
+                                tail(99998, 99999, call), *after])
+            room = max(ROOM, tokens.estimate(around, "tool"))
+            budget = max(MIN_PART, min(cap, int(out) - room))
+        ends = _cuts[key] = list(accumulate(len(p) for p in split(text, budget)))
+        while len(_cuts) > KEPT:
+            _cuts.popitem(last=False)
+    _cuts.move_to_end(key)
+    return [text[a:b] for a, b in zip([0, *ends], ends)]
+
+
+def forget() -> None:
+    """Drop the kept cuts (tests)."""
+    _cuts.clear()
 
 
 def show(chunks: list[str], k: int, *, head: Sequence[str] = (), call: str,

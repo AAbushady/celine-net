@@ -166,6 +166,7 @@ def _offline_router(monkeypatch):
     from celine.backends import router as router_mod
     from celine.kb import embed as embed_mod
     from celine.backends import tokens
+    from celine.skills import parts
 
     def client(cls):
         def make(*a, transport=None, **kw):
@@ -185,10 +186,12 @@ def _offline_router(monkeypatch):
     router_mod._standalone.clear()
     embed_mod.forget_fingerprints()
     tokens.reset()
+    parts.forget()
     yield
     router_mod._standalone.clear()
     embed_mod.forget_fingerprints()
     tokens.reset()
+    parts.forget()
 
 
 @pytest.fixture(autouse=True)
