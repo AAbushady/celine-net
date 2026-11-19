@@ -130,11 +130,13 @@ async def test_the_block_shows_the_agents_status_and_when_it_set_it(store):
 
 async def test_a_feeling_or_status_from_another_conversation_says_where(store):
     """Its mood and status are one across its conversations; from another one they say
-    where, so the block never passes them off as this conversation's."""
+    which, so the block never passes them off as this conversation's, and a feeling's why
+    says whose words it is (bug 104: a reason it gave in one chat, read later as a record
+    of another moment)."""
     cfg = load()
     _, reg = await _agent(store, cfg)
     here, other = await conversations.create(store), await conversations.create(store)
-    mission = await conversations.create(store, kind="mission")
+    mission = await conversations.create(store, "Harbour plans", kind="mission")
     there, _, _ = await user_says(store, mission, "go")
     await mind.feel(store, "annoyed", 0.9, "the build broke", "agent", there)
     await mind.store_mood(store, "\U0001f527", other)
@@ -143,8 +145,14 @@ async def test_a_feeling_or_status_from_another_conversation_says_where(store):
     await message_context.ensure(store, cfg, reg, here, tid, message_context.unsent(chain))
     built = await context.build(store, cfg, FakeBackend(), here, system="S", tools=[])
     user = [m["content"] for m in built.messages if m["role"] == "user"][0]
-    assert " in a mission: the build broke" in user
-    assert "\nyour status: \U0001f527, set " in user and " in another chat\n" in user + "\n"
+    assert " in a mission (Harbour plans), as you put it: the build broke" in user
+    assert "\nyour status: \U0001f527, set " in user and " in another chat\n" in user + "\n", \
+        "an untitled chat has no name to give"
+    await mind.feel(store, "guilty", 0.9, "she let the build break", "appraisal", there)
+    rows = await store.read(mind._mood_rows)
+    line = mind.describe_mood(rows, timezone.utc, datetime.now(timezone.utc), here=here)
+    assert " in a mission (Harbour plans), as the appraisal read it: she let the build break" \
+        in line
     mine, _, _ = await user_says(store, here, "still there?")
     await mind.feel(store, "proud", 0.9, "fixed it", "agent", mine)
     rows = await store.read(mind._mood_rows)

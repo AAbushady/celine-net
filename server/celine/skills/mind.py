@@ -171,11 +171,13 @@ def _knobs() -> tuple[tuple[float, ...], float]:
 
 
 def _mood_rows(c: sqlite3.Connection) -> list[dict]:
-    """The newest 50 feelings, oldest first, each with the conversation it was felt in and
-    that one's kind (None for a feeling with no message)."""
+    """The newest 50 feelings, oldest first, each with who named it, the conversation it
+    was felt in, that one's kind and its name (a sub-agent's, else its title; None for a
+    feeling with no message)."""
     return [dict(r) for r in c.execute(
-        "SELECT * FROM (SELECT f.id, f.at, f.emotion, f.strength, f.why, f.words, "
-        "m.conversation_id AS cid, cv.kind AS kind FROM moods f "
+        "SELECT * FROM (SELECT f.id, f.at, f.emotion, f.strength, f.why, f.words, f.by, "
+        "m.conversation_id AS cid, cv.kind AS kind, "
+        "coalesce(cv.agent_name, cv.title) AS called FROM moods f "
         "LEFT JOIN messages m ON m.id = f.message_id "
         "LEFT JOIN conversations cv ON cv.id = m.conversation_id "
         "ORDER BY f.at DESC, f.id DESC LIMIT 50) ORDER BY at, id")]
@@ -187,25 +189,36 @@ ELSEWHERE = {"chat": "in another chat", "mission": "in a mission",
              "agent": "in one of your agents", "background": "in a background run"}
 
 
-def elsewhere(cid: str | None, kind: str | None, here: str | None) -> str:
-    """" in another chat" for something from a conversation other than `here`, "" for one
-    from `here` or from none."""
-    return f" {ELSEWHERE[kind]}" if cid and cid != here and kind in ELSEWHERE else ""
+def elsewhere(cid: str | None, kind: str | None, here: str | None,
+              called: str | None = None) -> str:
+    """" in another chat" for something from a conversation other than `here`, with its name
+    when it has one (" in another chat (Harbour plans)"), "" for one from `here` or from
+    none."""
+    if not (cid and cid != here and kind in ELSEWHERE):
+        return ""
+    name = " ".join((called or "").split())
+    return f" {ELSEWHERE[kind]}" + (f" ({name})" if name else "")
+
+
+# whose words a feeling's why is, by who named the feeling (moods.by): its own reason, or
+# what the appraiser read into its turn, never told as a record of what happened (bug 104)
+WHY_BY = {"agent": "as you put it", "appraisal": "as the appraisal read it"}
 
 
 def _set_in(c: sqlite3.Connection, shown: dict, here: str | None) -> str:
     """Where its status was set, when that is another conversation than `here`."""
     cid = shown.get("conversation")
-    row = c.execute("SELECT kind FROM conversations WHERE id=?", (cid,)).fetchone() \
-        if cid else None
-    return elsewhere(cid, row[0] if row else None, here)
+    row = c.execute("SELECT kind, coalesce(agent_name, title) FROM conversations WHERE id=?",
+                    (cid,)).fetchone() if cid else None
+    return elsewhere(cid, row[0] if row else None, here, row[1] if row else None)
 
 
 def describe_mood(rows, tz, now_: datetime, base: tuple[float, ...] | None = None,
                   here: str | None = None) -> str:
-    """"mood: irritable, clear. annoyed since 21:10: why", "" without any row; a feeling from
-    another conversation than `here` says where ("annoyed since 21:10 in a mission: why").
-    `base`: the resting point its needs pull it to (_of), else agent.toml's."""
+    """"mood: irritable, clear. annoyed since 21:10, as you put it: why", "" without any row;
+    the why says whose words it is (WHY_BY), and a feeling from another conversation than
+    `here` says which ("annoyed since 21:10 in a mission (Prices), as the appraisal read it:
+    why"). `base`: the resting point its needs pull it to (_of), else agent.toml's."""
     if not rows:
         return ""
     shipped, half = _knobs()
@@ -217,8 +230,10 @@ def describe_mood(rows, tz, now_: datetime, base: tuple[float, ...] | None = Non
         if float(r["strength"]) > 0.3 and (now_ - at).total_seconds() < 4 * half * 3600:
             why = " ".join(str(r["why"] or "").split())
             name = f'"{r["words"]}"' if r.get("words") else r["emotion"]
+            whose = WHY_BY.get(r.get("by") or "")
             out += (f" {name} since {clock(at, tz, now_)}"
-                    + elsewhere(r.get("cid"), r.get("kind"), here) + (f": {why}" if why else ""))
+                    + elsewhere(r.get("cid"), r.get("kind"), here, r.get("called"))
+                    + ((f", {whose}: {why}" if whose else f": {why}") if why else ""))
             break
     return out
 
