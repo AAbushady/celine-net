@@ -74,10 +74,12 @@ async def model_for_sub_agent(store, parent_cid: str) -> dict:
 
 
 # a brief that asks for a note to be written: a verb of writing, then in the same sentence
-# "to", "into", "in", "as" or "at" and a note's path (review/night.md)
+# "to", "into", "in", "as" or "at", what names the place ("notebook", "the note at", "a new
+# note called") and a note's path (review/night.md)
 WRITE_NOTE = re.compile(
     r"(?<![\w'’])(?:writ(?:e|es|ing|ten)|sav(?:e|es|ing)|append\w*|stor(?:e|es|ing)|record\w*|"
-    r"put|add)\b(?:[^.;!?\n]|\.(?=\S)){0,80}?\b(?:to|into|in|as|at)\s+(?:the\s+note\s+)?"
+    r"put|add)\b(?:[^.;!?\n]|\.(?=\S)){0,80}?\b(?:to|into|in|as|at)\s+"
+    r"(?:(?:the|your|my|a|new)\s+){0,2}(?:(?:note|notebook|file)\s+)?(?:(?:at|called|named)\s+)?"
     r"[`\"'*]*(?P<path>[\w-][\w.-]*(?:/[\w.-]+)*\.md)\b", re.I)
 NOT = re.compile(r"\b(?:not|never|no|don't|don’t)\s*$", re.I)
 
@@ -91,12 +93,19 @@ def note_to_write(brief: str) -> str | None:
     return None
 
 
-def _no_writing(path: str, reading: bool) -> str:
+def _no_writing(path: str, reading: bool, asked_read: bool) -> str:
+    """The refusal of a read start whose brief asks for a note: `reading`, its parent reads
+    only; `asked_read`, read was asked for (the argument, or its template's), so a folder
+    alone leaves it reading."""
     if reading:
         return (f"Not started: the brief asks it to write {path}, and your sub-agents have "
                 f"read access, so it writes no note. Ask for what it finds in its report.")
     where = Path(path).parent.as_posix()
-    give = f'folder="{where}" or access="work"' if where != "." else 'access="work"'
+    if asked_read:
+        give = (f'access="work" (and folder="{where}" to keep it there)' if where != "."
+                else 'access="work"')
+    else:
+        give = f'folder="{where}" or access="work"' if where != "." else 'access="work"'
     return (f"Not started: the brief asks it to write {path}, and with read access it writes "
             f"no note. Give it {give}, or ask for what it finds in its report.")
 
@@ -392,6 +401,7 @@ class SubAgents:
             return None, "The brief is empty. Say what it must do.", False, None
         # capabilities pass down: a read parent starts read children only
         reading = await reads_only(store, parent)
+        asked_read = access == "read"         # the argument's or its template's
         access = access or ("work" if asked_folder is not None and not reading else "read")
         if access not in ("read", "work"):
             return None, "access is read or work.", False, None
@@ -426,7 +436,7 @@ class SubAgents:
         if (k.get("access") or access) == "read" and not (cli or device or k.get("cli")
                                                           or k.get("device")) \
                 and (path := note_to_write(brief)):
-            return None, _no_writing(path, reading), False, None
+            return None, _no_writing(path, reading, asked_read), False, None
         # the user's answer may take minutes: asked outside the lock, checked again in it
         model = await self._model(store, parent, model, known)
         if asker is not None and (no := await agent_models.ask_cloud(

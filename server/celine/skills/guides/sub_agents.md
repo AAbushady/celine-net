@@ -76,7 +76,8 @@ finished or the wait ran out. Or end your turn: its report starts your next one.
 Longer results go into files (work access writes them): its notebook folder or the
 shellbox home. Ask it to write them there and to say in the report where they are. A
 start with read access whose brief asks it to write a note is refused, since it could
-not: give it that note's folder or work access, or ask for the findings in its report.
+not: give it work access (a folder alone does when you did not ask for read, here or in
+its template), or ask for the findings in its report.
 
 It reports for the work you (or {{username}}) gave it: the brief and every message from
 you after that. A message from one of its own sub-agents alone gets no report to you.

@@ -447,6 +447,11 @@ def test_a_brief_that_asks_for_a_note_names_it():
             ("Save it as seen/harbor.md and say where it is in the report.", "seen/harbor.md"),
             ("Summarise seen/a.md and write the summary into review/b.md.", "review/b.md"),
             ("put the list in notes.md", "notes.md"),
+            ("OUTPUT: write your findings into notebook `review/night.md` as you go.",
+             "review/night.md"),
+            ("Save it to the notebook at seen/harbor.md.", "seen/harbor.md"),
+            ("Write the list into a new note called notes/boats.md.", "notes/boats.md"),
+            ("Write a summary into your report, then read seen/a.md again.", None),
             ("Which of my notes mention the beach trip? Only the paths, one per line.", None),
             ("Read review/x.md and write a summary in your report.", None),
             ("Do not write to review/x.md, only read it.", None),
@@ -469,6 +474,13 @@ async def test_a_read_sub_agent_asked_to_write_a_note_is_not_started(store, cfg)
         'writes no note. Give it folder="review" or access="work", or ask for what it finds in '
         'its report.')
     assert await _subs_of(store, parent) == []
+    _, refusal, _, _ = await agents.begin(
+        store, parent, "Check the tide tables. OUTPUT: write your findings into notebook "
+        "`review/tides.md` as you go.", "tide auditor", access="read")
+    assert refusal == (
+        'Not started: the brief asks it to write review/tides.md, and with read access it '
+        'writes no note. Give it access="work" (and folder="review" to keep it there), or ask '
+        'for what it finds in its report.'), "read asked for: a folder alone does not let it write"
     _, refusal, _, _ = await agents.begin(store, parent, brief, "harbor reader", folder="review")
     assert refusal is None, "a folder makes it write there"
     _, refusal, _, _ = await agents.begin(store, parent, "Which notes name the harbor? Paths only.",
