@@ -16,7 +16,9 @@ there:
     idle_only = false             # true: starts only when nobody used the app for 30 min,
                                   # else that run is skipped (never caught up)
     wall_minutes = 10             # left out: the Routine time limit (Settings, Advanced)
-    on_fail = "retry"             # when a run fails: "retry" runs it again up to three
+    tool_rounds = 300             # the most steps of one turn of its run; left out: Tool
+                                  # rounds per turn (Settings, Advanced)
+    on_fail = "retry"          # when a run fails: "retry" runs it again up to three
                                   # times for the same night, "skip" ends it skipped with no notice
     daytime = false               # true: its dates are the calendar date of its slot
     prompt = '''What happened in the world on {{day_before}}? ...'''
@@ -40,7 +42,7 @@ from pathlib import Path
 NAME = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 REVIEWER = re.compile(r"^[a-z][a-z0-9_-]{0,40}\.md$")   # room for <name>-reviewer.md
 KEYS = {"label", "summary", "cron", "prompt", "after", "reviewer", "turns", "note", "role",
-        "on", "idle_only", "wall_minutes", "daytime", "on_fail"}
+        "on", "idle_only", "wall_minutes", "tool_rounds", "daytime", "on_fail"}
 ON_FAIL = ("retry", "skip")   # When a run fails (schedules/runs.py _fail)
 RESULT = re.compile(r"\{\{result:([a-z][a-z0-9_-]{0,31})\}\}")
 DAILY = re.compile(r"^(\d{1,2}) (\d{1,2}) \* \* \*$")
@@ -68,6 +70,7 @@ class Schedule:
     daytime: bool = False
     summary: str = ""
     on_fail: str = "retry"
+    tool_rounds: int | None = None
     title: str = ""            # the label with its name and the user's filled in (load)
 
     @property
@@ -86,6 +89,7 @@ class Schedule:
                 "daytime": self.daytime,
                 "on_fail": self.on_fail,
                 **({"wall_minutes": self.wall_minutes} if self.wall_minutes else {}),
+                **({"tool_rounds": self.tool_rounds} if self.tool_rounds else {}),
                 "prompt": self.prompt}
 
 
@@ -231,6 +235,10 @@ def parse(name: str, raw: dict, reviewer_prompt: str | None) -> Schedule:
                              or wall < 1):
         raise _invalid("wall_minutes", "The time it may run is a whole number of minutes, "
                                        "or none.")
+    rounds = raw.get("tool_rounds")
+    if rounds is not None and (not isinstance(rounds, int) or isinstance(rounds, bool)
+                               or rounds < 1):
+        raise _invalid("tool_rounds", "The tool rounds are a whole number from 1, or none.")
     on_fail = raw.get("on_fail", "retry")
     if on_fail not in ON_FAIL:
         raise _invalid("on_fail", "When a run fails is retry or skip.")
@@ -238,7 +246,7 @@ def parse(name: str, raw: dict, reviewer_prompt: str | None) -> Schedule:
                     tuple(dict.fromkeys(after)), reviewer,
                     (reviewer_prompt or "").strip() if reviewer else "", turns,
                     note.strip(), role, flags["on"], flags["idle_only"], wall,
-                    flags["daytime"], summary.strip(), on_fail)
+                    flags["daytime"], summary.strip(), on_fail, rounds)
 
 
 def check_after(schedules: dict[str, Schedule], one: Schedule) -> None:

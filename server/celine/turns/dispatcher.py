@@ -447,7 +447,8 @@ class Dispatcher:
                 backend = await self._cli_backend(cid, clock) or \
                     self._backend_for(turn, token, clock, label, run)
                 await run_turn(turn, self.store, self.cfg, backend, self.bus,
-                               token, self.registry, self.jobs, clock)
+                               token, self.registry, self.jobs, clock,
+                               rounds=run.get("tool_rounds") if run is not None else None)
             if clock.cancelled_caught:
                 token.cancel()
                 await turns.fail_if_active(

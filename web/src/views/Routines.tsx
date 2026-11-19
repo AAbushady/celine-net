@@ -81,20 +81,21 @@ const LIVE: State[] = ['waiting', 'running']
 type Draft = {
   key: string; label: string; summary: string; when: 'daily' | 'cron'; time: string; cron: string; after: string[]; role: string
   prompt: string; has_reviewer: boolean; reviewer: string; reviewer_prompt: string; turns: string; note: string; on: boolean
-  idle_only: boolean; wall: string; daytime: boolean; on_fail: OnFail
+  idle_only: boolean; wall: string; rounds: string; daytime: boolean; on_fail: OnFail
 }
 const draftOf = (s: Schedule | null): Draft => ({
   key: s?.name ?? '', label: s?.label ?? '', summary: s?.summary ?? '', when: s && !s.time ? 'cron' : 'daily', time: s?.time ?? '02:00', cron: s?.cron ?? '0 2 * * *',
   after: s?.after ?? [], role: s?.role ?? 'chat', prompt: s?.prompt ?? '', has_reviewer: !!s?.reviewer,
   reviewer: s?.reviewer ?? '', reviewer_prompt: s?.reviewer_prompt ?? '', turns: String(s?.turns ?? 8), note: s?.note ?? '',
   on: s?.on ?? true, idle_only: s?.idle_only ?? false, wall: s?.wall_minutes != null ? String(s.wall_minutes) : '', daytime: s?.daytime ?? false,
-  on_fail: s?.on_fail ?? 'retry',
+  rounds: s?.tool_rounds != null ? String(s.tool_rounds) : '', on_fail: s?.on_fail ?? 'retry',
 })
 const bodyOf = (d: Draft): ScheduleBody => ({
   label: d.label.trim(), summary: d.summary, ...(d.when === 'daily' ? { time: d.time } : { cron: d.cron.trim() }), prompt: d.prompt, after: d.after,
   role: d.role, reviewer: d.has_reviewer ? d.reviewer : '', reviewer_prompt: d.has_reviewer ? d.reviewer_prompt : '',
   turns: Number(d.turns) || 0, note: d.note.trim(), on: d.on, idle_only: d.idle_only,
-  daytime: d.daytime, wall_minutes: d.wall.trim() ? Number(d.wall) || null : null, on_fail: d.on_fail,
+  daytime: d.daytime, wall_minutes: d.wall.trim() ? Number(d.wall) || null : null,
+  tool_rounds: d.rounds.trim() ? Number(d.rounds) || null : null, on_fail: d.on_fail,
 })
 /** the long texts of a schedule, by the editor's key */
 const TEXTS = { prompt: { field: 'prompt', label: 'Prompt' }, reviewer: { field: 'reviewer_prompt', label: 'Reviewer prompt' } } as const
@@ -789,6 +790,8 @@ function SchedulePage({ name, s, all, roles, words, day, draft, onDraft, save: s
             <Switch checked={d.idle_only} onChange={idle_only => put({ idle_only })} label="Only when the app is idle" help={words?.help.idle_only} />
             <NumberField label="Time limit" unit="min" value={d.wall} min={1} max={1440} onChange={wall => put({ wall })} invalid={field === 'wall_minutes'}
                          help={words?.help.wall_minutes} />
+            <NumberField label="Tool rounds" value={d.rounds} min={1} max={100000} onChange={rounds => put({ rounds })} invalid={field === 'tool_rounds'}
+                         help={words?.help.tool_rounds} />
           </Section>
           {!fresh && (
             <Section id="s-runs" title="Runs" count={theirs.length}>

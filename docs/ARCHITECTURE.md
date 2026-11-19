@@ -1324,7 +1324,7 @@ next step, and its words beside them are no end of the turn; a `plan__step` that
 checkpoint and a mission's wait end the turn at once.
 
 `routines` (`schedules/skill.py`): `list(day, runs)`, `read(name)`, `write(name,
-label, prompt, time|cron, role, on, note, after, wall_minutes)` and `run(name)`. `list`
+label, prompt, time|cron, role, on, note, after, wall_minutes, tool_rounds)` and `run(name)`. `list`
 gives the routines and the triggers (`triggers.declared`, its on or off, `triggers.fired`,
 its `trigger:<name>` conversation); with `day` (a calendar day, as the Routines page lists it) or `runs` it gives runs instead, every
 routine's: `run:<id>`, time, state, error or reason and the result's last line, as
@@ -1775,7 +1775,9 @@ zone), `prompt`, `after` (Runs after: the schedules whose runs of the same night
 `reviewer` (the Reviewer: a prompt file it talks with first) and `turns` (Turns: the
 reviewer's lines at most), `note` (a notebook path the
 answer is written to), `role` (chat, tasks or small, default chat), `on`, `idle_only`,
-`wall_minutes`, `daytime`, `on_fail` (When a run fails: `retry`, the default, or `skip`;
+`wall_minutes`, `tool_rounds` (the steps one turn of the run's own conversation may take,
+in place of `max_tool_iterations`: `runs.binding` hands it to the dispatcher, and its
+sub-agents keep theirs), `daytime`, `on_fail` (When a run fails: `retry`, the default, or `skip`;
 Daydream, Followed sites and Watch videos ship `skip`).
 
 **Variables.** The prompt, the reviewer prompt and the note are filled from the run's

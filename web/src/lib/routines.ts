@@ -1,45 +1,14 @@
 /* Routines: the schedules (jobs as data, GET/PUT/DELETE /schedules, POST run, POST
    preview) and their runs (GET /runs, GET /runs/{id}, POST stop, POST retry; `run.state`
    on the feed). Every state, reason and time is the server's; the page says them as they are.
-   docs/ARCHITECTURE.md, Schedules. */
+   The schedule list and a saved schedule are the server's models (api.gen.ts, from
+   server/celine/schedules/api.py). docs/ARCHITECTURE.md, Schedules. */
 import { LOCALE } from './format'
 import { del, json, post, request, type Display } from './api'
+import type { SavedSchedule, Schedule, ScheduleList } from './api.gen'
 
-export type Schedule = {
-  name: string
-  /** as written, {{username}} and {{name}} kept: what the editor edits and PUTs back */
-  label: string
-  /** one sentence under its name in the onboarding, '' for none */
-  summary: string
-  /** the label filled, what the page shows */
-  title: string
-  cron: string
-  /** "02:00" for a daily one, else null */
-  time: string | null
-  /** when it runs, in words (the server's): "Daily at 02:00", "Sundays at 07:00", "Every 2 hours from 10:00 to 22:00"; else the cron line */
-  every: string
-  prompt: string
-  /** the schedules whose runs of the same day it runs after */
-  after: string[]
-  /** the reviewer prompt's file, '' for none */
-  reviewer: string
-  reviewer_prompt: string
-  turns: number
-  /** a notebook path with variables, '' for none */
-  note: string
-  role: string
-  /** it starts only while nobody is talking with it */
-  idle_only: boolean
-  /** the most minutes a run may take, null for no limit */
-  wall_minutes: number | null
-  /** its dates are the calendar date of its slot, not the night's */
-  daytime: boolean
-  on: boolean
-  /** When a run fails: retry runs a failed run again up to three times for the same day, skip ends it skipped and quiet */
-  on_fail: OnFail
-}
-
-export type OnFail = 'retry' | 'skip'
+export type { Schedule } from './api.gen'
+export type OnFail = Schedule['on_fail']
 
 export type ScheduleBody = {
   label: string
@@ -55,6 +24,7 @@ export type ScheduleBody = {
   role: string
   idle_only: boolean
   wall_minutes: number | null
+  tool_rounds: number | null
   daytime: boolean
   on: boolean
   /** left out, the stored one stays */
@@ -104,7 +74,7 @@ export type Planned = { schedule: string; label: string; slot: string; at: strin
 export type Runs = { runs: Run[]; planned: Planned[]; filters: { value: string; label: string; count: number }[]; days: Day[]; today: string }
 
 /** GET /schedules: a field's choices and its "?" text, the server's */
-export type ScheduleWords = { choices: { on_fail: { value: OnFail; label: string }[] }; help: Record<'on_fail' | 'idle_only' | 'wall_minutes', string> }
+export type ScheduleWords = Pick<ScheduleList, 'choices' | 'help'>
 
 type RunDetail = { run: Run; prompt: string | null; reviewer_prompt: string | null; note: string | null }
 
@@ -114,9 +84,9 @@ const enc = encodeURIComponent
 
 export const routinesApi = {
   schedules: (signal?: AbortSignal) =>
-    request<{ schedules: Schedule[]; roles: { name: string; label: string }[]; variables: string[]; today: string } & ScheduleWords>('/schedules', { signal }),
+    request<ScheduleList>('/schedules', { signal }),
   put: (name: string, body: ScheduleBody) =>
-    request<Schedule & { applied: boolean }>(`/schedules/${enc(name)}`, json('PUT', body)),
+    request<SavedSchedule>(`/schedules/${enc(name)}`, json('PUT', body)),
   remove: (name: string) => del<{ deleted: string }>(`/schedules/${enc(name)}`),
   runNow: (name: string) => post<{ run: Run }>(`/schedules/${enc(name)}/run`),
   /** `text` filled as a run with the dates of `night` gets it (the page passes the day it shows) */

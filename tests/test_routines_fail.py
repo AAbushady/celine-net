@@ -258,7 +258,7 @@ async def test_the_schedule_list_gives_its_choices_and_help_and_a_write_keeps_on
         got = (await api.get("/api/schedules")).json()
         assert got["choices"]["on_fail"] == [{"value": "retry", "label": "Retry"},
                                              {"value": "skip", "label": "Skip"}]
-        assert set(got["help"]) == {"on_fail", "idle_only", "wall_minutes"}
+        assert set(got["help"]) == {"on_fail", "idle_only", "wall_minutes", "tool_rounds"}
         for text in got["help"].values():
             assert text.endswith(".") and len(text) <= 220 and "{{" not in text
         body = {"label": "Morning", "time": "07:30", "prompt": "Go.", "after": [],
@@ -270,6 +270,11 @@ async def test_the_schedule_list_gives_its_choices_and_help_and_a_write_keeps_on
             "skip", "a write that leaves it out keeps it"
         r = await api.put("/api/schedules/morning", json={**body, "on_fail": "never"})
         assert r.status_code == 400 and r.json()["error"]["detail"]["field"] == "on_fail"
+        saved = (await api.put("/api/schedules/morning",
+                               json={**body, "tool_rounds": 1000})).json()
+        assert (saved["tool_rounds"], cfg.schedules["morning"].tool_rounds) == (1000, 1000)
+        assert (await api.put("/api/schedules/morning", json={**body, "tool_rounds": None})
+                ).json()["tool_rounds"] is None, "null: Tool rounds per turn again"
 
 
 # ---- the run page in words --------------------------------------------------------------

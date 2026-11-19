@@ -534,9 +534,9 @@ function RoutinesForm({ value, onChange, saveRef }: FormProps<Rows>) {
   const list = res.data
   const rows = value ?? (list ? rowsOf(list) : null)
   const put = (s: Schedule, r: Rows[string]) => {
-    const { label, summary, prompt, after, reviewer, reviewer_prompt, turns, note, role, idle_only, wall_minutes, daytime, on_fail } = s
+    const { label, summary, prompt, after, reviewer, reviewer_prompt, turns, note, role, idle_only, wall_minutes, tool_rounds, daytime, on_fail } = s
     return routinesApi.put(s.name, { label, summary, prompt, after, reviewer, reviewer_prompt, turns, note, role, idle_only,
-                                     wall_minutes, daytime, on_fail, cron: cronOf(s.cron, r.time), on: r.on })
+                                     wall_minutes, tool_rounds, daytime, on_fail, cron: cronOf(s.cron, r.time), on: r.on })
   }
   /** every changed row (or `only` that one, as `row` says it now) is PUT; throws on a refusal */
   const saveAll = async (only?: string, row?: Rows[string]) => {

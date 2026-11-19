@@ -84,6 +84,7 @@ or press New schedule on the Routines page.
 | `on` | `false`: it runs only when you start it with Run now |
 | `idle_only` | `true`: runs only if nobody used the app in the last 5 minutes (no message from you, and no reply of the agent's to you running or ended), else that run is skipped |
 | `wall_minutes` | most minutes a run may work, 1 or more; waiting for a model does not count. The Routine time limit in Settings, Advanced (default 180) caps it and applies when it is left out |
+| `tool_rounds` | most tool rounds one turn of a run may take, 1 or more, in place of Tool rounds per turn (Settings, Advanced, default 100), which applies when it is left out; the run's sub-agents keep theirs. Daydream ships 1000, so its time limit is what ends it |
 | `daytime` | `true`: `{{date}}` is the date the routine runs on (otherwise it is the day the run belongs to on the Routines page, the day before for a run after midnight) |
 | `on_fail` | When a run fails: `"retry"` (default) runs a run that failed on an error again, up to three times the same day, 15 minutes, 1 hour and 4 hours after the one before, never past its next run; `"skip"` ends it Skipped with no notice |
 

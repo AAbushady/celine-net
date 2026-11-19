@@ -13,7 +13,7 @@ from ..core.event_types import SETTINGS_CHANGED
 
 CLOCK = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 FIELDS = ("label", "summary", "cron", "time", "prompt", "after", "reviewer", "reviewer_prompt",
-          "turns", "note", "role", "on", "idle_only", "wall_minutes",
+          "turns", "note", "role", "on", "idle_only", "wall_minutes", "tool_rounds",
           "daytime", "on_fail")
 KEPT = ("daytime", "on_fail")   # left out of a write, the stored values stay
 
@@ -52,8 +52,9 @@ async def save(app, name: str, body: dict, by: str):
         if not m:
             raise Invalid("time", "The time is HH:MM, such as 02:00.")
         body["cron"] = f"{int(m[2])} {int(m[1])} * * *"
-    if body.get("wall_minutes") is None:
-        body.pop("wall_minutes", None)
+    for k in ("wall_minutes", "tool_rounds"):
+        if body.get(k) is None:
+            body.pop(k, None)
     text = body.pop("reviewer_prompt", "") or ""
     if not isinstance(text, str):
         raise Invalid("reviewer_prompt", "The reviewer prompt is text.")

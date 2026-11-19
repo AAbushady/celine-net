@@ -173,6 +173,8 @@ class Routines:
         after: Annotated[list[str] | None, "Names of the routines of the same night it "
                                            "runs after."] = None,
         wall_minutes: Annotated[int | None, "The minutes it may run; the Routine time limit in Settings caps it."] = None,
+        tool_rounds: Annotated[int | None, "The steps one turn of its run may take, in place of "
+                                           "Tool rounds per turn in Settings."] = None,
         daytime: Annotated[bool | None, "true: {{date}} is the calendar date of its slot. "
                                         "false: the date of its night, which from 12:00 on "
                                         "is the next date."] = None,
@@ -198,6 +200,7 @@ class Routines:
         body.update({k: v for k, v in (("label", label), ("prompt", prompt), ("role", role),
                                        ("on", on), ("note", note), ("after", after),
                                        ("wall_minutes", wall_minutes),
+                                       ("tool_rounds", tool_rounds),
                                        ("daytime", daytime)) if v is not None})
         if time or cron:                     # the new when replaces the old one
             body.pop("cron", None)

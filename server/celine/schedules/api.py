@@ -1,11 +1,16 @@
 """Schedules and their runs. A schedule write is
-schedules/edit.py's, the same as its own (schedules/skill.py)."""
+schedules/edit.py's, the same as its own (schedules/skill.py). The schedule list and a
+saved schedule answer as models here (core/dto.py), and the page's types are written from
+them."""
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from typing import Literal
 
 from fastapi import APIRouter, Request
+from pydantic import Field
 
+from ..core.dto import Answer
 from ..core.ids import iso
 from ..core.statuses import SCHEDULED, WAITING_FOR_YOU, RunState
 from ..errors import CelineError, NotFound
@@ -33,8 +38,81 @@ HELP = {
                  "skipped for this.",
     "wall_minutes": "The most minutes one run may work; waiting for a model does not count. "
                     "Empty uses the Routine time limit in Settings, Advanced.",
+    "tool_rounds": "The most tool rounds one turn of a run may take; its sub-agents keep "
+                   "theirs. Empty uses Tool rounds per turn in Settings, Advanced.",
 }
-CHOICES = {"on_fail": [{"value": "retry", "label": "Retry"}, {"value": "skip", "label": "Skip"}]}
+OnFail = Literal["retry", "skip"]
+
+
+class Schedule(Answer):
+    """One schedule as the Routines page shows and edits it."""
+    name: str
+    label: str = Field(description="as written, {{username}} and {{name}} kept: what the "
+                                   "editor edits and PUTs back")
+    title: str = Field(description="the label filled, what the page shows")
+    summary: str = Field(description="one sentence under its name in the onboarding, '' for none")
+    cron: str
+    time: str | None = Field(description='"02:00" for a daily one, else null')
+    every: str = Field(description='when it runs, in words ("Daily at 02:00", "Sundays at '
+                                   '07:00"), else the cron line')
+    prompt: str
+    after: list[str] = Field(description="the schedules whose runs of the same day it runs after")
+    reviewer: str = Field(description="the reviewer prompt's file, '' for none")
+    reviewer_prompt: str
+    turns: int
+    note: str = Field(description="a notebook path with variables, '' for none")
+    role: str
+    on: bool
+    idle_only: bool = Field(description="it starts only while nobody uses the app")
+    daytime: bool = Field(description="its dates are the calendar date of its slot, not the night's")
+    wall_minutes: int | None = Field(description="the most minutes a run may work, null for "
+                                                 "the Routine time limit")
+    tool_rounds: int | None = Field(description="the most tool rounds of one turn of a run, "
+                                                "null for Tool rounds per turn")
+    on_fail: OnFail = Field(description="When a run fails: retry runs a failed run again up "
+                                        "to three times for the same day, skip ends it skipped")
+
+
+class SavedSchedule(Schedule):
+    """A schedule as saved, and whether the running app loaded it."""
+    applied: bool
+
+
+class OnFailChoice(Answer):
+    value: OnFail
+    label: str
+
+
+class ScheduleChoices(Answer):
+    """A field's choices, the server's words."""
+    on_fail: list[OnFailChoice]
+
+
+class ScheduleHelp(Answer):
+    """A field's "?" text."""
+    on_fail: str
+    idle_only: str
+    wall_minutes: str
+    tool_rounds: str
+
+
+class RoleOption(Answer):
+    name: str
+    label: str
+
+
+class ScheduleList(Answer):
+    """GET /schedules."""
+    schedules: list[Schedule] = Field(description="by time of day")
+    roles: list[RoleOption] = Field(description="the chat roles a schedule can run on")
+    variables: list[str] = Field(description="the words a prompt can hold")
+    today: str = Field(description="the day the page opens on")
+    choices: ScheduleChoices
+    help: ScheduleHelp
+
+
+CHOICES = ScheduleChoices(on_fail=[OnFailChoice(value="retry", label="Retry"),
+                                   OnFailChoice(value="skip", label="Skip")])
 
 
 def _folder(cfg):
@@ -46,17 +124,16 @@ def _today(cfg) -> date:
     return datetime.now(zone(cfg)).date()
 
 
-def _view(s, cfg) -> dict:
+def _view(s) -> dict:
     """`label` as written (its {{username}} and {{name}} kept, so a save keeps them),
     `title` the label filled; `every` its cron in words ("Daily at 02:00", schedules.words)."""
-    return {"name": s.name, "label": s.label, "title": shown(s), "summary": s.summary, "cron": s.cron, "time": s.time,
-            "every": words(s.cron),
+    return {"name": s.name, "label": s.label, "title": shown(s), "summary": s.summary,
+            "cron": s.cron, "time": s.time, "every": words(s.cron),
             "prompt": s.prompt, "after": list(s.after),
             "reviewer": s.reviewer, "reviewer_prompt": s.reviewer_prompt, "turns": s.turns,
-            "note": s.note, "role": s.role,
-            "on": s.on, "idle_only": s.idle_only,
-            "daytime": s.daytime,
-            "wall_minutes": s.wall_minutes, "on_fail": s.on_fail}
+            "note": s.note, "role": s.role, "on": s.on, "idle_only": s.idle_only,
+            "daytime": s.daytime, "wall_minutes": s.wall_minutes,
+            "tool_rounds": s.tool_rounds, "on_fail": s.on_fail}
 
 
 def _planned(cfg, taken: set[tuple[str, str]], now_: datetime) -> list[dict]:
@@ -90,29 +167,24 @@ def _scheduler(services):
 
 
 @router.get("/schedules")
-async def list_schedules(cfg: TheConfig) -> dict:
-    """{schedules: [{name, label, title, summary, cron, time, every, prompt, after, reviewer,
-    reviewer_prompt, turns, note, role, on, idle_only, wall_minutes, on_fail}],
-    roles, variables, today, choices, help}: by time of day; `time` "02:00" for a daily one (else
-    null), `every` in words ("Daily at 02:00", "Sundays at 07:00"),
-    `roles` the chat roles a schedule can run on,
-    `variables` the words a prompt can hold, `today` the day the page opens on,
-    `choices` a field's choices ({on_fail: [{value, label}]}), `help` a field's "?" text
-    (on_fail, idle_only, wall_minutes)."""
+async def list_schedules(cfg: TheConfig) -> ScheduleList:
+    """Every schedule by time of day, with what its editor needs (ScheduleList)."""
     rows = sorted(cfg.schedules.values(), key=lambda s: (s.time or "99", s.name))
-    return {"schedules": [_view(s, cfg) for s in rows],
-            "roles": [{"name": r, "label": ROLES[r]["label"]} for r in run_roles()],
-            "variables": [*VARIABLES, *(f"result:{s.name}" for s in rows)],
-            "today": _today(cfg).isoformat(), "choices": CHOICES,
-            "help": {k: cfg.substitute(v) for k, v in HELP.items()}}
+    return ScheduleList(
+        schedules=[Schedule(**_view(s)) for s in rows],
+        roles=[RoleOption(name=r, label=ROLES[r]["label"]) for r in run_roles()],
+        variables=[*VARIABLES, *(f"result:{s.name}" for s in rows)],
+        today=_today(cfg).isoformat(), choices=CHOICES,
+        help=ScheduleHelp(**{k: cfg.substitute(v) for k, v in HELP.items()}))
 
 
 @router.put("/schedules/{name}")
-async def put_schedule(request: Request, cfg: TheConfig, services: TheServices, name: str) -> dict:
+async def put_schedule(request: Request, services: TheServices, name: str) -> SavedSchedule:
     """{label, summary, cron or time ("02:00": every day then), prompt, after, reviewer,
     reviewer_prompt, turns, note, role, on, idle_only
     (start only when nobody used the app for IDLE_MINUTES, else skip that run),
     wall_minutes (minutes it may run, null: the Routine time limit),
+    tool_rounds (steps one turn of a run may take, null: Tool rounds per turn),
     daytime (true: its dates are the calendar date of its slot, not the night's),
     on_fail (retry or skip; daytime and on_fail left out, the stored ones stay)}: the
     whole schedule, made or replaced.
@@ -123,7 +195,7 @@ async def put_schedule(request: Request, cfg: TheConfig, services: TheServices, 
     from .edit import FIELDS, save
     body = await json_body(request, allow=FIELDS)
     s, applied = await save(services, name, body, "user")
-    return {**_view(s, cfg), "applied": applied}
+    return SavedSchedule(**_view(s), applied=applied)
 
 
 @router.delete("/schedules/{name}")

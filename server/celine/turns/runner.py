@@ -30,10 +30,12 @@ WAIT = "missions__wait"     # ran ok: the turn ends with its step, whatever else
 
 
 async def run_turn(turn: dict, store: Store, cfg, backend, bus,
-                   token=None, registry=None, jobs=None, clock=None) -> None:
+                   token=None, registry=None, jobs=None, clock=None,
+                   rounds: int | None = None) -> None:
     """`clock.deadline` (anyio time) is when the turn ends for good. The room of
     `last_step_seconds` before it is the step under way's. Once the work time is up,
-    `max_tool_iterations` steps ran, or the request stays over 85 % of the model's context
+    `max_tool_iterations` steps ran (`rounds` instead when given: a routine's own
+    `tool_rounds`, schedules/runs.binding), or the request stays over 85 % of the model's context
     after everything older was shortened (`context_full`), one more step says where the
     work stands (no call runs in it): its words end the turn `done`, with the limit as its
     reason_code; without words it ends `capped`."""
@@ -53,7 +55,7 @@ async def run_turn(turn: dict, store: Store, cfg, backend, bus,
     waits = waiting.TURN.set(waiting.Turn(
         interactive=(turn.get("origin") or "user") == "user", clock=clock, token=token))
     try:
-        await _run_turn(turn, store, cfg, backend, bus, token, registry, jobs, clock)
+        await _run_turn(turn, store, cfg, backend, bus, token, registry, jobs, clock, rounds)
     except SummaryFailed as e:
         # the older messages had to become a summary and did not: the turn fails with
         # why, nothing is left out of its request instead (turns/context.py)
@@ -64,7 +66,7 @@ async def run_turn(turn: dict, store: Store, cfg, backend, bus,
 
 
 async def _run_turn(turn: dict, store: Store, cfg, backend, bus,
-                    token, registry, jobs, clock) -> None:
+                    token, registry, jobs, clock, rounds: int | None) -> None:
     tid, cid = turn["id"], turn["conversation_id"]
     kbs = prompt.kbs(registry)
     last_step = float(cfg.r("last_step_seconds"))
@@ -184,7 +186,7 @@ async def _run_turn(turn: dict, store: Store, cfg, backend, bus,
         await _too_small(store, tid, cid, cfg, backend, fixed, win, instructions=True)
         return
 
-    cap = int(cfg.r("max_tool_iterations"))
+    cap = rounds or int(cfg.r("max_tool_iterations"))
     # a quiet turn shows only its tool calls: its text is never streamed
     quiet = bool(turn.get("quiet"))
     grown = False                  # tool results appended since the last build

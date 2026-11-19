@@ -246,6 +246,21 @@ async def test_at_the_step_limit_her_last_step_says_where_the_work_stands(store,
     assert [s for _, s, _ in await _results(store)] == ["ok", "ok"]
 
 
+async def test_a_routines_own_tool_rounds_take_the_place_of_the_setting(store, cfg):
+    """A run's turn gets its schedule's `tool_rounds` (schedules/runs.binding): more steps
+    than Tool rounds per turn allows, and its limit line names them."""
+    cfg.settings.general.update({"max_tool_iterations": 1})
+    reg = _registry(cfg, Notebook())
+    cid = await conversations.create(store)
+    write = _calls(("notebook__write", {"path": "a.md", "text": "x"}))
+    b = Replies([write, write, write, [TextDelta("Three writes."), Done(reason="stop")]])
+    await user_says(store, cid, "hello there")
+    turn = await turns.claim(store, "w")
+    await run_turn(turn, store, cfg, b, EventBus(), Token(turn["id"]), reg, rounds=3)
+    assert len(b.calls) == 4 and "reached its limit of 3 steps" in b.calls[-1][-1]["content"]
+    assert [s for _, s, _ in await _results(store)] == ["ok", "ok", "ok"]
+
+
 async def test_a_turn_that_fills_the_context_takes_its_last_step(store, cfg):
     """A routine's run of 87 steps grew to 147,000 tokens on a window of 120,000: nothing
     of one turn can be summarised while it goes on. Past 85 % of the window after the

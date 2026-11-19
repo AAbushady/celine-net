@@ -67,13 +67,15 @@ def test_every_shipped_schedule_loads_through_the_parser():
     from celine.errors import CelineError
     with pytest.raises(CelineError):
         parse("x", {"label": "X", "cron": "0 2 * * *", "prompt": "p", "wall_minutes": 0}, None)
+    with pytest.raises(CelineError):
+        parse("x", {"label": "X", "cron": "0 2 * * *", "prompt": "p", "tool_rounds": 0}, None)
 
 
 async def test_the_reviewer_binds_behind_the_user_with_the_schedules_label(store, cfg):
     bound = {}
     llm = SimpleNamespace(bind=lambda backend, **kw: bound.update(kw) or "b")
     sched = Scheduler(_app(store, cfg, llm))
-    s = Schedule("reflection", "Reflection", "0 5 * * *", "p")
+    s = Schedule("reflection", "Reflection", "0 5 * * *", "p", tool_rounds=1000)
     assert sched._reviewer_backend("cid", s) == "b"
     assert (bound["priority"], bound["label"], bound["fallback"]) == \
         (Priority.BACKGROUND, "Reflection", False), "on the role's own model only"
@@ -84,9 +86,11 @@ async def test_the_reviewer_binds_behind_the_user_with_the_schedules_label(store
     deep = await conversations.create(store, "digger", agent_of=sub, agent_name="digger")
     await store.write(lambda c: add_run(c, "r", "reflection", night="2026-10-16", state="running",
                                         conversation_id=run_cid))
-    for cid in (run_cid, sub, deep):            # every depth binds as the run
+    # every depth binds as the run; only the run's own turns take its tool rounds
+    for cid, rounds in ((run_cid, 1000), (sub, None), (deep, None)):
         assert await store.read(lambda c: binding(c, cid, cfg)) == {
-            "priority": Priority.BACKGROUND, "label": "Reflection", "run": "r"}
+            "priority": Priority.BACKGROUND, "label": "Reflection", "run": "r",
+            "tool_rounds": rounds}
     chat = await conversations.create(store, "talk")
     assert await store.read(lambda c: binding(c, chat, cfg)) is None
 

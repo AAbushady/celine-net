@@ -11,6 +11,7 @@ on_fail = "skip"
 idle_only = true
 daytime = true
 wall_minutes = 60
+tool_rounds = 1000
 prompt = """
 Nobody is waiting for you. This is your own time.
 

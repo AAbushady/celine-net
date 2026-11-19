@@ -220,6 +220,7 @@ async def test_the_agents_routine_change_keeps_what_it_left_out_and_names_a_bad_
 
     for args, field in (({"cron": "every night"}, "cron"), ({"prompt": " "}, "prompt"),
                         ({"wall_minutes": 0}, "wall_minutes"),
+                        ({"tool_rounds": 0}, "tool_rounds"),
                         ({"time": "07:00", "cron": "0 7 * * *"}, "time")):
         bad = await skill.write(ctx, name="evening", **args)
         assert bad.is_error and bad.content.startswith(f"Not saved ({field}): "), bad.content

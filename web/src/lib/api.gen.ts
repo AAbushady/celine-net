@@ -533,6 +533,11 @@ export type On = {
   on: boolean
 }
 
+export type OnFailChoice = {
+  value: "retry" | "skip"
+  label: string
+}
+
 export type Override = {
   enabled: boolean
   client_seq?: number
@@ -588,8 +593,115 @@ export type Report = {
   text: string
 }
 
+export type RoleOption = {
+  name: string
+  label: string
+}
+
 export type RunBody = {
   text?: string
+}
+
+/** A schedule as saved, and whether the running app loaded it. */
+export type SavedSchedule = {
+  name: string
+  /** as written, {{username}} and {{name}} kept: what the editor edits and PUTs back */
+  label: string
+  /** the label filled, what the page shows */
+  title: string
+  /** one sentence under its name in the onboarding, '' for none */
+  summary: string
+  cron: string
+  /** "02:00" for a daily one, else null */
+  time: string | null
+  /** when it runs, in words ("Daily at 02:00", "Sundays at 07:00"), else the cron line */
+  every: string
+  prompt: string
+  /** the schedules whose runs of the same day it runs after */
+  after: string[]
+  /** the reviewer prompt's file, '' for none */
+  reviewer: string
+  reviewer_prompt: string
+  turns: number
+  /** a notebook path with variables, '' for none */
+  note: string
+  role: string
+  on: boolean
+  /** it starts only while nobody uses the app */
+  idle_only: boolean
+  /** its dates are the calendar date of its slot, not the night's */
+  daytime: boolean
+  /** the most minutes a run may work, null for the Routine time limit */
+  wall_minutes: number | null
+  /** the most tool rounds of one turn of a run, null for Tool rounds per turn */
+  tool_rounds: number | null
+  /** When a run fails: retry runs a failed run again up to three times for the same day, skip ends it skipped */
+  on_fail: "retry" | "skip"
+  applied: boolean
+}
+
+/** One schedule as the Routines page shows and edits it. */
+export type Schedule = {
+  name: string
+  /** as written, {{username}} and {{name}} kept: what the editor edits and PUTs back */
+  label: string
+  /** the label filled, what the page shows */
+  title: string
+  /** one sentence under its name in the onboarding, '' for none */
+  summary: string
+  cron: string
+  /** "02:00" for a daily one, else null */
+  time: string | null
+  /** when it runs, in words ("Daily at 02:00", "Sundays at 07:00"), else the cron line */
+  every: string
+  prompt: string
+  /** the schedules whose runs of the same day it runs after */
+  after: string[]
+  /** the reviewer prompt's file, '' for none */
+  reviewer: string
+  reviewer_prompt: string
+  turns: number
+  /** a notebook path with variables, '' for none */
+  note: string
+  role: string
+  on: boolean
+  /** it starts only while nobody uses the app */
+  idle_only: boolean
+  /** its dates are the calendar date of its slot, not the night's */
+  daytime: boolean
+  /** the most minutes a run may work, null for the Routine time limit */
+  wall_minutes: number | null
+  /** the most tool rounds of one turn of a run, null for Tool rounds per turn */
+  tool_rounds: number | null
+  /** When a run fails: retry runs a failed run again up to three times for the same day, skip ends it skipped */
+  on_fail: "retry" | "skip"
+}
+
+/** A field's choices, the server's words. */
+export type ScheduleChoices = {
+  on_fail: OnFailChoice[]
+}
+
+/** A field's "?" text. */
+export type ScheduleHelp = {
+  on_fail: string
+  idle_only: string
+  wall_minutes: string
+  tool_rounds: string
+}
+
+/** GET /schedules. */
+export type ScheduleList = {
+  /** by time of day */
+  schedules: Schedule[]
+  /** the chat roles a schedule can run on */
+  roles: RoleOption[]
+  /** the words a prompt can hold */
+  variables: string[]
+  /** the day the page opens on */
+  today: string
+  choices: ScheduleChoices
+  help: ScheduleHelp
 }
 
 export type Segment = {

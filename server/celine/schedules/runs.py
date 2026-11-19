@@ -476,9 +476,10 @@ def open_runs(c: sqlite3.Connection) -> dict[tuple[str, str], dict]:
 def binding(c: sqlite3.Connection, cid: str, cfg) -> dict | None:
     """How a turn of conversation `cid` binds its model when it is a run's, at any depth
     (its root, homes.root, is the run's conversation): {priority: BACKGROUND, label: the
-    schedule's, run: the run's id}, on the role's own model only; None for any other
-    conversation. turns/dispatcher.py binds with it (`run_binding`, set at start, which
-    adds the running run's clock)."""
+    schedule's, run: the run's id, tool_rounds: the schedule's own step limit for a turn
+    of the run's conversation itself, else None (its sub-agents keep theirs)}, on the
+    role's own model only; None for any other conversation. turns/dispatcher.py binds with
+    it (`run_binding`, set at start, which adds the running run's clock)."""
     from ..backends.queue import Priority
     top = homes.root(c, cid)
     run = top and c.execute("SELECT id, schedule, label FROM runs WHERE conversation_id = ?",
@@ -487,7 +488,8 @@ def binding(c: sqlite3.Connection, cid: str, cfg) -> dict | None:
         return None
     s = (getattr(cfg, "schedules", None) or {}).get(run["schedule"])
     return {"priority": Priority.BACKGROUND, "label": shown(s) if s else run["label"],
-            "run": run["id"]}
+            "run": run["id"],
+            "tool_rounds": s.tool_rounds if s is not None and top["id"] == cid else None}
 
 
 def _woken_work(c: sqlite3.Connection, rid: str) -> tuple[str | None, bool]:
