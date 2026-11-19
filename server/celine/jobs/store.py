@@ -95,20 +95,26 @@ def _view(r: sqlite3.Row) -> dict:
     return d
 
 
-def running(c: sqlite3.Connection, cid: str, tz) -> str | None:
-    """This conversation's own jobs still running, for its tail (turns/prompt.py): each
-    one's tool, what it was asked, its terminal and since when; None when none runs."""
-    rows = [_view(r) for r in c.execute(
-        f"{_SELECT} WHERE j.conversation_id=? AND j.state='running' ORDER BY j.created_at",
-        (cid,))]
-    if not rows:
-        return None
+def running_parts(c: sqlite3.Connection, cid: str, tz) -> list[str]:
+    """This conversation's own jobs still running, oldest first, each as its tool, what it
+    was asked, its terminal and since when."""
     parts = []
-    for j in rows:
+    for j in (_view(r) for r in c.execute(
+            f"{_SELECT} WHERE j.conversation_id=? AND j.state='running' ORDER BY j.created_at",
+            (cid,))):
         what = j["tool_name"] + (f" `{j['prompt'][:PROMPT_SHOWN]}`" if j["prompt"] else "")
         what += f" in terminal {j['terminal']}" if j["terminal"] else ""
         parts.append(f"job {j['id'][:8]}, {what}, since "
                      f"[{when(j['started_at'] or j['created_at'], tz)}]")
+    return parts
+
+
+def running(c: sqlite3.Connection, cid: str, tz) -> str | None:
+    """This conversation's own jobs still running, for its tail (turns/prompt.py)
+    (running_parts); None when none runs."""
+    parts = running_parts(c, cid, tz)
+    if not parts:
+        return None
     return ("[your jobs running now] " + "; ".join(parts)
             + ". Each one's result comes here as a message when it ends.")
 

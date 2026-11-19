@@ -581,6 +581,31 @@ async def test_a_run_whose_limit_ends_while_a_request_waits_names_the_request(st
         "The time limit ran out before your answer. Tink asks to open the vault."
 
 
+async def test_a_run_stopped_at_its_limit_names_the_sub_agents_it_cut_off(store, cfg):
+    """Its answer can come while a sub-agent still works; the run waits for the report,
+    and when the limit stops it first, the reason names what the stop ended (bug 102)."""
+    from celine.backends.llm import HeldClock
+    cfg.schedules = {"world": _s("world")}
+    clock = Clock(datetime(2026, 10, 10, 2, tzinfo=UTC))
+    sched = Scheduler(_app(store, cfg, FakeBackend(echo=True)), clock)
+    cid = await conversations.for_trigger(store, "run:r1", "World news")
+    await store.write(lambda c: add_run(c, "r1", "world", label="World news", slot=iso(clock.at),
+                                        night="2026-10-09", state="running", conversation_id=cid))
+    for name, state in (("harbour notes", "done"), ("tide reader", "streaming")):
+        sub = await conversations.create(store, agent_of=cid, agent_name=name, kind="agent")
+        await store.write(lambda c, sub=sub, name=name, state=state: c.execute(
+            "INSERT INTO turns(id, conversation_id, state, created_at) VALUES(?, ?, ?, ?)",
+            (f"t-{name}", sub, state, iso(clock.at))))
+    sched.current = "r1"
+    sched._clock = HeldClock(timedelta(minutes=30), clock)
+    sched._over = "Stopped at its time limit of 30 minutes."
+    clock.at += timedelta(minutes=31)
+    await sched._watch()
+    [row] = await _runs(store)
+    assert row["state"] == "failed" and row["error"] == (
+        "Stopped at its time limit of 30 minutes, with 1 sub-agent still working: tide reader.")
+
+
 def test_two_overlapping_waits_move_a_run_clock_by_their_union():
     from celine.backends.llm import HeldClock, paused
     now = [0.0]

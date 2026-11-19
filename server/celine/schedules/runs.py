@@ -894,14 +894,28 @@ class Scheduler:
         run's work: while a call of its conversation or of a sub-agent under it waits for
         a model, its clock stands still (backends/llm.HeldClock). A request of the agent's that
         waits for the user runs on the clock; when the limit ends the run meanwhile, the
-        reason names it (approvals.lapsed)."""
+        reason names it (approvals.lapsed). Else the reason names the sub-agents it cut off
+        (activity.busy_agents)."""
         left = self._clock.left() if self._clock is not None else None
         if left is not None and left < timedelta(0):
             rid, approvals = self.current, getattr(self.app, "approvals", None)
             row = await self.app.store.read(lambda c: c.execute(
                 "SELECT conversation_id FROM runs WHERE id = ?", (rid,)).fetchone())
-            why = approvals.lapsed(row[0]) if approvals is not None and row and row[0] else None
-            await self.end(rid, "failed", why or self._over, ("running",))
+            cid = row[0] if row else None
+            why = approvals.lapsed(cid) if approvals is not None and cid else None
+            await self.end(rid, "failed", why or await self._cut_off(cid), ("running",))
+
+    async def _cut_off(self, cid: str | None) -> str:
+        """The reason of a run stopped at its limit: the limit, and the sub-agents still
+        working that the stop ends."""
+        from ..activity import busy_agents
+        names = [a["name"] for a in await self.app.store.read(
+            lambda c: busy_agents(c, cid))] if cid else []
+        if not names or not self._over:
+            return self._over
+        n = len(names)
+        return (f"{self._over.removesuffix('.')}, with {n} sub-agent{'' if n == 1 else 's'} "
+                f"still working: {', '.join(names)}.")
 
     async def _watch_woken(self) -> None:
         """The work woken in an ended run's conversation (module docstring): past its

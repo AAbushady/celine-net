@@ -40,6 +40,8 @@ APP: dict[str, tuple[str, str]] = {
     "turns.limit": ("A turn's limit", "Asks for where the work stands in the last step "
                                       "of a turn that reached its limit."),
     "turns.pronouns": ("Pronouns", "Gives {{name}} the pronouns set in Settings."),
+    "turns.working": ("Still working", "Names the sub-agents and jobs still working, last "
+                                       "in each step of a turn while any does."),
     "kb.describe": ("Document cards", "Describes a document in a few sentences, so Search "
                                       "finds it."),
     "kb.describe_part": ("Document parts", "Describes one part of a long document."),

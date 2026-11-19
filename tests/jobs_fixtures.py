@@ -9,7 +9,7 @@ import pytest
 
 from chat_fixtures import until
 
-from celine.backends.base import Done, TextDelta, ToolCallDelta
+from celine.backends.base import ORIGIN, Done, TextDelta, ToolCallDelta
 from fake_backend import FakeBackend
 from celine.boot import load
 from celine.jobs import store as job_rows
@@ -64,7 +64,9 @@ def two_shot(tool_name: str, arguments: str = "{}"):
     class B(FakeBackend):
         async def stream(self, messages, tools):
             self.calls.append(messages)
-            last_user = max((i for i, m in enumerate(messages) if m.get("role") == "user"),
+            # the app's line of what still works (turns/runner.py) is no word of the user's
+            last_user = max((i for i, m in enumerate(messages) if m.get("role") == "user" and
+                             not any(o.get("note") == "working" for o in m.get(ORIGIN) or ())),
                             default=-1)
             if not any(m.get("role") == "tool" for m in messages[last_user + 1:]):
                 yield ToolCallDelta(index=0, id="p1", name=tool_name, arguments=arguments)

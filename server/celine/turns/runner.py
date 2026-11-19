@@ -239,6 +239,9 @@ async def _run_turn(turn: dict, store: Store, cfg, backend, bus,
         grown = False
 
         step_tools, step = wire_tools, messages + reopen_tail
+        # a message of its own, last: every message before it is the next request's too
+        if not reopen_tail and (live := await _working_line(store, cfg, cid, tid)):
+            step = step + [live]
         if wrap:
             step = step + [_limit_line(cfg, cid, tid, wrap[1])]
         if why := context.malformed(step, cid):
@@ -382,6 +385,29 @@ def _limit_line(cfg, cid: str, tid: str, limit: str) -> dict:
     It goes in that request only: the reply it gets is stored, the line is not."""
     return {"role": "user", "content": prompts.fill(cfg, __file__, "limit.md", limit=limit),
             ORIGIN: context.origin(cid, turn=tid, note="limit")}
+
+
+async def _working_line(store, cfg, cid: str, tid: str) -> dict | None:
+    """The app's line last in a step's request while a sub-agent of this conversation or
+    a job of its own still works, each named with since when (working.md); None while
+    nothing does. The turn's tail is from its start, and what a long turn started since
+    can leave its view (bug 102). In that request only, like the limit's line."""
+    from .. import activity
+    from ..clock import zone
+    from ..core.ids import when
+    from ..jobs import store as job_rows
+    tz = zone(cfg)
+
+    def fn(c) -> list[str]:
+        return [*(f"sub-agent {a['name']}, since [{when(a['since'], tz)}]"
+                  for a in activity.busy_agents(c, cid)),
+                *job_rows.running_parts(c, cid, tz)]
+    working = await store.read(fn)
+    if not working:
+        return None
+    return {"role": "user",
+            "content": prompts.fill(cfg, __file__, "working.md", working="; ".join(working)),
+            ORIGIN: context.origin(cid, turn=tid, note="working")}
 
 
 async def _all_ok(store, ids: list[str]) -> bool:

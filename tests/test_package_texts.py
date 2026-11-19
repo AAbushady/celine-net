@@ -13,6 +13,7 @@ PACKAGE = Path(prompts.__file__).parent
 FILLS = {
     "turns/compact.md": {"words": 100},
     "turns/limit.md": {"limit": "100 steps"},
+    "turns/working.md": {"working": "sub-agent digger, since [Sat 10 Oct 10:00]"},
     "skills/mind_appraisal.md": {"emotions": "pleasure, arousal"},
     "skills/mind_shadow.md": {"emotions": "pleasure, arousal"},
     "sub_agents/fragment.md": {"agent_name": "a", "parent": "b", "cap": "1,966",

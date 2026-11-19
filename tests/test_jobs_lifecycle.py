@@ -10,6 +10,7 @@ from chat_fixtures import until, user_says
 import anyio
 import pytest
 
+from celine.backends.base import ORIGIN
 from celine.conversations import store as conversations, tree, view
 from fake_backend import FakeBackend
 from celine.core.bus import EventBus
@@ -245,11 +246,13 @@ async def test_a_detached_result_is_in_the_next_request_once_and_the_prefix_hold
     await run_turn(turn, store, cfg, seen, EventBus(), Token(turn["id"]), reg)
 
     def body(msgs):
-        # the tail (the time now, built per turn) is never part of the prefix
+        # the tail (the time now, built per turn) is never part of the prefix, nor the
+        # app's line of what still works (turns/runner.py), last in one request only
         def text(c):
             return "\n".join(b["text"] for b in c if not b.get("tail")) \
                 if isinstance(c, list) else c
-        return [(m["role"], text(m.get("content"))) for m in msgs if m["role"] != "system"]
+        return [(m["role"], text(m.get("content"))) for m in msgs if m["role"] != "system"
+                and not any(o.get("note") == "working" for o in m.get(ORIGIN) or ())]
     earlier, now = body(first.calls[-1]), body(seen.calls[0])
     assert now[:len(earlier)] == earlier, "the earlier request prefix is unchanged"
     assert sum("Made one image." in (t or "") for _, t in now) == 1, "the result once"

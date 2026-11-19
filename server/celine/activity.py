@@ -88,6 +88,16 @@ def busy(c: sqlite3.Connection, cid: str, but: int | None = None,
     return False
 
 
+def busy_agents(c: sqlite3.Connection, cid: str) -> list[dict]:
+    """The sub-agents of `cid` that something will still come of (queued, or busy), oldest
+    first, each {name, since}: what a step of its turn names (turns/runner.py) and what a
+    run stopped at its limit cut off (schedules/runs.py)."""
+    return [{"name": r["agent_name"] or "a sub-agent", "since": r["created_at"]}
+            for r in c.execute("SELECT id, agent_name, created_at FROM conversations "
+                               "WHERE agent_of=? ORDER BY created_at", (cid,)).fetchall()
+            if queued(c, r["id"]) is not None or busy(c, r["id"])]
+
+
 def queued(c: sqlite3.Connection, sub: str) -> tuple[int, str] | None:
     """Sub-agent `sub`'s queued brief: (its intercom id, its message id), or None."""
     r = c.execute("SELECT i.id, d.message_id FROM intercom i JOIN intercom_deliveries d "

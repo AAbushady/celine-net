@@ -12,7 +12,7 @@ import anyio
 import pytest
 
 from celine.conversations import store as conversations, view
-from celine.backends.base import Done, TextDelta, ToolCallDelta
+from celine.backends.base import ORIGIN, Done, TextDelta, ToolCallDelta
 from fake_backend import FakeBackend
 from celine.boot import load
 from celine.core.bus import EventBus
@@ -69,7 +69,9 @@ class Script(FakeBackend):
     async def stream(self, messages, tools):
         system = messages[0]["content"] if messages[0]["role"] == "system" else ""
         who = re.search(r"You are ([^,\n]+), a sub-agent \w+ started", system)
-        last = max(i for i, m in enumerate(messages) if m.get("role") == "user")
+        # the app's line of what still works (turns/runner.py) is no task
+        last = max(i for i, m in enumerate(messages) if m.get("role") == "user" and
+                   not any(o.get("note") == "working" for o in m.get(ORIGIN) or ()))
         content = messages[last]["content"]
         text = content[0]["text"] if isinstance(content, list) else content   # before the tail
         task = text.split("\n", 1)[1]        # after the time line

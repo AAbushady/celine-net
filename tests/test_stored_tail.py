@@ -75,7 +75,8 @@ class Tools(FakeBackend):
 async def test_live_state_between_two_turns_leaves_the_prefix_as_it_was(store):
     """An announcement lands, a sub-agent starts working and the mission's status moves
     between two turns of a mission: the system prompt and the tools are the same bytes,
-    and the second turn's tail says what changed."""
+    the second turn's tail says what changed, and its request ends with the app's line
+    naming the sub-agent at work (turns/runner.py)."""
     from datetime import datetime, timedelta, timezone
 
     from celine.core.ids import iso
@@ -114,7 +115,9 @@ async def test_live_state_between_two_turns_leaves_the_prefix_as_it_was(store):
     one, two = backend.calls
     assert json.dumps(two[0]) == json.dumps(one[0]), "the system prompt"
     assert backend.tools[0] and json.dumps(backend.tools[1]) == json.dumps(backend.tools[0])
-    before, now_ = one[-1]["content"], two[-1]["content"]
+    before, now_ = one[-1]["content"], two[-2]["content"]
+    assert two[-1]["content"].startswith(
+        "[From the app] Still working for you now: sub-agent scout, since [")
     assert "scout (done)" in before and "scout (working)" in now_
     assert "the server restarts soon." in now_ and "the server restarts soon." not in before
     assert "Status: " in before and "Status: " in now_

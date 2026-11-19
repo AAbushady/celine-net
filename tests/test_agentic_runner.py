@@ -313,6 +313,45 @@ async def test_when_her_time_is_up_her_last_step_says_where_the_work_stands(stor
     assert final["content"] == "The search hung; the dates are left."
 
 
+class Team:
+    """`hire` gives the conversation a sub-agent at work, `release` lets it finish."""
+    name = "t"
+    description = "test"
+
+    @tool()
+    async def hire(self, ctx) -> ToolResult:
+        """hire"""
+        sub = await conversations.create(ctx.store, agent_of=ctx.conversation_id,
+                                         agent_name="tide reader", kind="agent")
+        await ctx.store.write(lambda c: c.execute(
+            "INSERT INTO turns(id, conversation_id, state, created_at) "
+            "VALUES('sub-turn', ?, 'streaming', '2026-10-10T10:00:00.000+00:00')", (sub,)))
+        return ToolResult(content="hired")
+
+    @tool()
+    async def release(self, ctx) -> ToolResult:
+        """release"""
+        await ctx.store.write(lambda c: c.execute(
+            "UPDATE turns SET state='done' WHERE id='sub-turn'"))
+        return ToolResult(content="released")
+
+
+async def test_each_step_names_the_sub_agents_still_working_in_its_request_only(store, cfg):
+    """A long turn's tail is from its start (bug 102): while a sub-agent it started works,
+    every step's request ends with the app's line naming it, and the line is never
+    stored."""
+    b = Script([_call(0, "t__hire", {}), _call(1, "t__release", {}),
+                [TextDelta("The tides are read."), Done(reason="stop")]])
+    snap, _, final = await _turn(store, cfg, _reg(Team()), b)
+    assert final["content"] == "The tides are read."
+    first, during, after = (calls[-1] for calls in b.calls)
+    assert first["role"] == "user" and "Still working" not in first["content"]
+    assert during["role"] == "user" and during["content"].startswith(
+        "[From the app] Still working for you now: sub-agent tide reader, since [")
+    assert after["role"] == "tool", "nothing works any more: no line"
+    assert not any("Still working" in (m["content"] or "") for m in snap["messages"])
+
+
 class U:
     """A skill whose feature is switched on mid-turn."""
     name = "u"
