@@ -725,9 +725,10 @@ class Shell:
         self,
         ctx: ToolContext,
         file: Annotated[str | list[str], "A short id like f5ef648c (an image, track or clip "
-                                         "you made, a file on your own message, or one "
-                                         "{{username}} attached here) or a track's title; or "
-                                         "a list of up to 5."],
+                                         "you made, a file on your own message or saved by "
+                                         "one of your calls, or one {{username}} attached "
+                                         "here), such a file's name in this conversation, or "
+                                         "a track's title; or a list of up to 5."],
     ) -> ToolResult:
         """Copy your own files from the app into your shellbox, to work on them there (look
         at a track's spectrogram with ffmpeg, cut a clip): each lands at
@@ -739,8 +740,8 @@ class Shell:
         from ..comfyui import life
         refs = [str(f).strip() for f in (file if isinstance(file, list) else [file]) if str(f or "").strip()]
         if not refs:
-            return ToolResult(content="file is a short id like f5ef648c, or a track's title.",
-                              is_error=True)
+            return ToolResult(content="file is a short id like f5ef648c, a file's name in this "
+                                      "conversation, or a track's title.", is_error=True)
         if len(refs) > SEND_MAX:
             return ToolResult(content=f"That is {len(refs)} files; get at most {SEND_MAX} at once.",
                               is_error=True)

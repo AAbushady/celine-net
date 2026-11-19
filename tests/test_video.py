@@ -350,7 +350,8 @@ async def test_her_tracks_list_with_their_ids_and_a_listen_finds_one_by_its_titl
     assert out.is_error and out.content.startswith("Several tracks are called 'tower': ")
     assert one["id"][:8] in out.content and two["id"][:8] in out.content
     out = await v.listen(_ctx(store, cfg), "Lighthouse")
-    assert out.is_error and out.content.startswith("There is no track called 'Lighthouse':")
+    assert out.is_error and out.content.startswith(
+        "There is no file called 'Lighthouse' in this conversation and no track by that title:")
     sent = len(h.files)
     out = await v.watch(_ctx(store, cfg), "youtu.be/x")
     assert not out.is_error and len(h.files) == sent, "a link without https:// is no title"

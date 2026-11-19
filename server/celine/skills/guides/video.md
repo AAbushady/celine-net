@@ -27,7 +27,8 @@ How:
 
 Listening: `video__listen(source, background=true)` hears a track, a video's sound or a film's,
 at most 20 minutes at a time. The source is the short id of one of your tracks or clips,
-a track's title (`music_generator__list_tracks` lists them), a sound file on a message, a
+a track's title (`music_generator__list_tracks` lists them), a sound file on a message or
+one a call of yours saved (its short id, or its name in this conversation), a
 YouTube link or a `plex:` id. It needs the GPU, so it waits while
 the GPU is in use (20 minutes at most). Then `video__read` gives it a stretch at a time, as a
 watch. The first stretch starts with what was measured: whether it is music with a steady

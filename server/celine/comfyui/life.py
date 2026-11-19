@@ -403,16 +403,24 @@ async def by_title(store, name: str) -> dict | str:
 
 async def own(cfg, store, ref: str, conversation_id: str | None) -> dict | str:
     """A file the agent may use by `ref`: the short id of what a batch made (an image, a
-    track, a clip), of a file on its own message, or of one the user attached to
-    `conversation_id` (attachments.agent_file); anything else is a track's title
-    (`by_title`). -> its row (attachments.get) with `origin`: "" for its own, the upload's
-    tag for the user's (box_files.put); or the sentence why not."""
-    from ..attachments import agent_file, cleared_line, get
+    track, a clip), or a file attachments.agent_file gives by its short id or by its name
+    in `conversation_id` (on its own message, saved by one of its calls, or one the user
+    attached there); a name no file there has is a track's title (`by_title`). -> its row
+    (attachments.get) with `origin`: "" for its own, the upload's tag for the user's
+    (box_files.put); or the sentence why not."""
+    from ..attachments import agent_file, cleared_line, get, no_file_named
     ref = (ref or "").strip()
     if not re.fullmatch(r"[0-9a-fA-F]{4,32}", ref):
+        sent = await agent_file(store, ref, conversation_id or "", cfg)
+        if isinstance(sent, dict):
+            return await _with_origin(store, sent, ref)
+        if sent != no_file_named(ref):
+            return sent
         got = await by_title(store, ref)
         if isinstance(got, str):
-            return got
+            return got if got.startswith("Several") else (
+                f"There is no file called {ref!r} in this conversation and no track by that "
+                f"title: music_generator__list_tracks lists your tracks with their short ids.")
         row = await get(store, got["id"])
         return {**row, "origin": ""} if row else f"The track {ref!r} is gone."
     ref = ref.lower()
@@ -430,8 +438,14 @@ async def own(cfg, store, ref: str, conversation_id: str | None) -> dict | str:
     sent = await agent_file(store, ref, conversation_id or "", cfg)
     if isinstance(sent, str):
         return (f"There is no file {ref} of yours: a short id is one of your images, tracks "
-                f"or clips, a file on your own message, or one {cfg.user} attached to this "
-                f"conversation.")
+                f"or clips, a file on your own message or saved by one of your calls, or one "
+                f"{cfg.user} attached to this conversation.")
+    return await _with_origin(store, sent, ref)
+
+
+async def _with_origin(store, sent: dict, ref: str) -> dict | str:
+    """A file agent_file gave, as `own` answers it: its row with its origin."""
+    from ..attachments import get
     row = await get(store, sent["id"])
     if row is None:
         return f"The file {ref} is gone."

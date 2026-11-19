@@ -62,8 +62,9 @@ Not for their chats (the Messages archive tools) or your own notes.
   (`zip -r ~/out/files.zip <folder>`) and send the zip.
 - **shell__look(path, question)** shows you up to 4 images from your home.
 - **shell__get_file(file)** copies your own files into ~/uploads/: an image, track or
-  clip you made (its short id, or a track's title) or a file on a message, up to 5 at
-  once. To see a track: `ffmpeg -i <track> -lavfi showspectrumpic=s=1200x500:legend=1
+  clip you made (its short id, or a track's title), a file on a message or one a call of
+  yours saved (a page web__read_page saved: its short id, or its name in this
+  conversation), up to 5 at once. To see a track: `ffmpeg -i <track> -lavfi showspectrumpic=s=1200x500:legend=1
   ~/out/spectrum.png`, then shell__look.
 - **shell__stop(terminal)** presses Ctrl-C. The program in front stops, or the run
   ends (usually exit 130). A program that reads Ctrl-C as a key (python3, nano) outlives

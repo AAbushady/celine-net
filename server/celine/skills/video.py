@@ -157,7 +157,7 @@ class Video:
                 lines.append(f"{label} {said}")
 
     async def _her_file(self, ctx: ToolContext, ref: str, kinds: tuple[str, ...]) -> dict | str:
-        """One of her files (life.own: a short id, or a track's title) whose kind is one of `kinds` (audio,
+        """One of her files (life.own: a short id, a file's name here, or a track's title) whose kind is one of `kinds` (audio,
         video). -> its attachment row, or the sentence why not."""
         row = await life.own(self.cfg, ctx.store, ref, ctx.conversation_id)
         if isinstance(row, str):
@@ -203,7 +203,7 @@ class Video:
                       "conversation": ctx.conversation_id}
         try:
             src = body["source"]
-            # a short id, or a track's title (no "/", which every link has); a link or a plex: id goes as it is
+            # a short id, a file's name or a track's title (no "/", which every link has); a link or a plex: id goes as it is
             if SHORT_ID.fullmatch(src.lower()) or ("/" not in src and not src.lower().startswith("plex:")):
                 row = await self._her_file(ctx, src, kinds)
                 if isinstance(row, str):
@@ -285,7 +285,8 @@ class Video:
         self,
         ctx: ToolContext,
         source: Annotated[str, "The short id of one of your tracks or clips (like f5ef648c) or of a sound or video "
-                               "file on a message, the title of one of your tracks (music_generator__list_tracks "
+                               "file on a message or saved by one of your calls, such a file's name in this "
+                               "conversation, the title of one of your tracks (music_generator__list_tracks "
                                "lists them), a YouTube link, or a plex:... id from video__search_plex."],
         start: Annotated[str | None, 'Where to begin, like "1:30". The beginning when left out.'] = None,
         minutes: Annotated[float | None, f"How many minutes to listen to, at most {LISTEN_MINUTES}. To the end "

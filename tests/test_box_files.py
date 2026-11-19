@@ -10,6 +10,7 @@ import importlib.util
 import json
 import os
 import threading
+from dataclasses import replace
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
@@ -199,7 +200,36 @@ async def test_get_file_copies_its_own_track_into_its_home_by_id_or_title(home, 
     assert out.content.splitlines()[1].startswith("There is no file 0123abcd of yours:")
 
 
-PNG = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+async def test_get_file_copies_a_page_its_call_saved_by_its_name_or_id(home, cfg, store):
+    """A file one of its calls saved (web__read_page with save) is its own: by its name in
+    this conversation or by its short id it lands in the box; a name nothing here has
+    says there is no such file and no such track."""
+    cid = await conversations.create(store)
+    _, tid, _ = await user_says(store, cid, "keep the tide page")
+    mid = await tree.start_assistant_message(store, cid, None, tid)
+    await turns.record_tool_calls(store, cid, mid, [{"id": "c1", "name": "web__read_page",
+                                                     "arguments": "{}"}])
+    data = b"<html>" + os.urandom(4096) + b"</html>"
+    row = await attachments.save_generated(cfg, store, data, "Tide_Tables.html", "text/html",
+                                           "c1", in_message=False)
+    ctx = ToolContext(conversation_id=cid, turn_id=tid, tool_call_id="c2", store=store,
+                      config=cfg, emit=None)
+    where = f"~/uploads/{hashlib.sha256(data).hexdigest()[:12]}/Tide_Tables.html"
+    for ref in ("Tide_Tables.html", "tide_tables.HTML", row["id"][:8]):
+        out = await Shell(cfg).get_file(ctx, file=ref)
+        assert not out.is_error and out.content.endswith(f"is in your box at {where}."), ref
+    assert (home / where[2:]).read_bytes() == data
+    out = await Shell(cfg).get_file(ctx, file="Harbour_Chart.html")
+    assert out.is_error and out.content.startswith(
+        "There is no file called 'Harbour_Chart.html' in this conversation and no track by "
+        "that title:")
+    elsewhere = await conversations.create(store)
+    out = await Shell(cfg).get_file(replace(ctx, conversation_id=elsewhere),
+                                    file="Tide_Tables.html")
+    assert out.is_error, "a name is looked up in its own conversation only"
+
+
+PNG =bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
                     "0000000d4944415478da63f8ffff3f0005fe02fea7d6a4b50000000049454e44ae426082")
 
 

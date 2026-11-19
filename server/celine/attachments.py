@@ -775,27 +775,47 @@ def cleared_line(cfg, kind: str, aid: str, at: str, what: str) -> str:
             f"again with {tool}__generate from {again}.")
 
 
+# a file with the message that holds it: on the message, or saved by one of its calls alone
+HELD = ("FROM attachments a LEFT JOIN tool_calls t ON t.id = a.tool_call_id "
+        "JOIN messages m ON m.id = coalesce(a.message_id, t.message_id)")
+
+
+def no_file_named(name: str) -> str:
+    """agent_file's sentence for a name no file of the conversation has."""
+    return (f"There is no file called {name!r} in this conversation: a file goes by its "
+            f"short id, like f5ef648c, or by its name here.")
+
+
 async def agent_file(store, ref: str, cid: str, cfg) -> dict | str:
-    """A file it may send on by its short id (or a longer start of its id): one on its
-    own message (in any conversation: a voice note, a file it sent) or one the user
-    attached to conversation `cid`, and not cleared. -> its attachment row, or the
-    sentence that says why not."""
-    if not re.fullmatch(r"[0-9a-f]{4,32}", ref):
-        return f"{ref} is not a file's short id: use the {SHORT} characters, like f5ef648c."
+    """A file it may send on, and not cleared. By its short id (or a longer start of its
+    id): one on its own message or saved by one of its calls (in any conversation: a voice
+    note, a file it sent, a page it saved) or one the user attached to conversation `cid`.
+    By its file name (any case): such a file of `cid`, the newest when several have it.
+    -> its attachment row, or the sentence that says why not."""
+    ref = ref.strip()
+    by_id = re.fullmatch(r"[0-9a-fA-F]{4,32}", ref) is not None
+    ref = ref.lower() if by_id else ref
+    cols = f"SELECT a.id, a.filename, a.kind, a.life, a.life_at, m.role, m.conversation_id {HELD}"
 
     def fn(c: sqlite3.Connection) -> list[dict]:
+        if by_id:
+            return [dict(r) for r in c.execute(f"{cols} WHERE substr(a.id, 1, ?)=?",
+                                               (len(ref), ref))]
         return [dict(r) for r in c.execute(
-            "SELECT a.id, a.filename, a.kind, a.life, a.life_at, m.role, m.conversation_id "
-            "FROM attachments a JOIN messages m ON m.id = a.message_id "
-            "WHERE substr(a.id, 1, ?)=?", (len(ref), ref))]
+            f"{cols} WHERE m.conversation_id = ? AND m.role IN ('assistant', 'user') AND "
+            "a.filename = ? COLLATE NOCASE ORDER BY a.created_at DESC, a.rowid DESC LIMIT 1",
+            (cid, ref))]
     rows = await store.read(fn)
+    if not by_id and not rows:
+        return no_file_named(ref)
     if len(rows) > 1:
         return f"Several files start with {ref}: use all {SHORT} characters of its short id."
     row = next((r for r in rows if r["role"] == "assistant" or (
         r["role"] == "user" and r["conversation_id"] == cid)), None)
     if row is None:
         return (f"There is no file {ref} that you may send: only a file on your own "
-                f"message, or one {cfg.user} attached to this conversation.")
+                f"message or saved by one of your calls, or one {cfg.user} attached to this "
+                f"conversation.")
     if row["life"] == "cleared":
         kind = "images" if row["kind"] == "image" else "music"
         return cleared_line(cfg, kind, row["id"], row["life_at"], " and cannot be sent")
