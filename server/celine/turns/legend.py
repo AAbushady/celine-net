@@ -33,7 +33,8 @@ LINES = (
     "status and when you set it, how long since you talked, a new model, what is down, a "
     "freeze lifted. Your mood and status are one across your conversations: a feeling or "
     "status from another one says which it came from. A feeling's why says whose words it "
-    "is: as you put it (mind__feel), or as the appraisal read it.",
+    "is: as you put it (mind__feel), or as the appraisal read it, ending with the words it "
+    "read and who said them.",
     "- [your memory] at the end of a message: sections of your notes whose keys came up, "
     "the best match first, each with its path, heading, similarity and date. A note you "
     "changed in this chat says so and when: what it says about this chat is your own "

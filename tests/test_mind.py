@@ -234,16 +234,16 @@ async def test_a_thought_goes_into_todays_thoughts_with_the_time(store):
     assert (cfg.agent.notebook / ".versions" / rel).is_dir()
 
 
-async def _chat_turn(store, cid, *, feel=False):
+async def _chat_turn(store, cid, *, feel=False, said="the build broke again tonight",
+                     reply="oh. fun."):
     def fn(c):
         c.execute("INSERT INTO messages(id, conversation_id, role, content, created_at) "
-                  "VALUES('u1', ?, 'user', 'the build broke again tonight', ?)",
-                  (cid, T0.isoformat()))
+                  "VALUES('u1', ?, 'user', ?, ?)", (cid, said, T0.isoformat()))
         c.execute("INSERT INTO turns(id, conversation_id, root_message_id, state, "
                   "created_at) VALUES('t1', ?, 'u1', 'done', ?)", (cid, T0.isoformat()))
         c.execute("INSERT INTO messages(id, conversation_id, parent_id, role, content, "
-                  "turn_id, created_at) VALUES('a1', ?, 'u1', 'assistant', 'oh. fun.', "
-                  "'t1', ?)", (cid, T0.isoformat()))
+                  "turn_id, created_at) VALUES('a1', ?, 'u1', 'assistant', ?, "
+                  "'t1', ?)", (cid, reply, T0.isoformat()))
         if feel:
             c.execute("INSERT INTO tool_calls(id, message_id, name, arguments, state) "
                       "VALUES('tc', 'a1', 'mind__feel', '{}', 'ok')")
@@ -255,26 +255,68 @@ async def test_the_appraisal_after_a_chat_turn_sets_its_mood(store):
     cfg = load()
     cid = await conversations.create(store)
     await _chat_turn(store, cid)
-    answer = FakeBackend([TextDelta('{"emotion": "annoyed", "strength": 0.6, '
-                                    '"why": "the build again"}'), Done(reason="stop")])
+    answer = FakeBackend([TextDelta(json.dumps({
+        "emotion": "annoyed", "strength": 0.6, "why": "the build again",
+        "quote": "the build broke again", "by": cfg.user})), Done(reason="stop")])
     app = SimpleNamespace(store=store, cfg=cfg, llm=LLM(cfg))
     got = await mind.appraise(app, cid, "t1", backend=answer)
-    assert got == {"emotion": "annoyed", "strength": 0.6, "why": "the build again", "needs": []}
+    why = f'the build again ({cfg.user}: "the build broke again")'
+    assert got == {"emotion": "annoyed", "strength": 0.6, "why": why,
+                   "quote": "the build broke again", "by": cfg.user, "needs": []}
     row = await store.read(lambda c: dict(c.execute(
         "SELECT emotion, strength, why, by, message_id FROM moods").fetchone()))
-    assert row == {"emotion": "annoyed", "strength": 0.6, "why": "the build again",
+    assert row == {"emotion": "annoyed", "strength": 0.6, "why": why,
                    "by": "appraisal", "message_id": "a1"}
     system = answer.calls[0][0]["content"]
     assert "jealous" in system and "—" not in system
     assert "Most exchanges change nothing" in system
     assert "mood" not in answer.calls[0][1]["content"], "the exchange alone, no mood before"
     assert mind.parse_appraisal('ok {"emotion": "sad", "strength": 2, "why": "x"}') == \
-        {"emotion": "sad", "strength": 1.0, "why": "x", "needs": []}
+        {"emotion": "sad", "strength": 1.0, "why": "x", "quote": "", "by": "", "needs": []}
     long = "because " * 100
     assert mind.parse_appraisal(json.dumps({"emotion": "sad", "strength": 0.5,
                                             "why": long}))["why"] == long, "taken whole"
     for bad in ('{"emotion": null}', '{"emotion": "meh", "strength": 0.5}', "no json"):
         assert mind.parse_appraisal(bad) is None, bad
+
+
+async def test_an_appraisal_is_kept_only_on_words_its_speaker_said(store):
+    """The appraisal says whose words its reading rests on and copies them: thanks the
+    agent gives is never kept as the user's praise of it, and a reading on words nobody
+    said (what someone left undone) moves nothing."""
+    from celine.backends.llm import LLM
+    cfg = load()
+    agent = cfg.substitute("{{name}}")
+    cid = await conversations.create(store)
+    long = "the left bracket was a quarter inch low the whole time " * 3
+    await _chat_turn(store, cid, said="the shelves are up! thanks for talking me through it",
+                     reply=f"they look level. you kept at it without a single complaint, "
+                           f"that was you. {long}")
+    app = SimpleNamespace(store=store, cfg=cfg, llm=LLM(cfg))
+
+    async def reads(**reading):
+        answer = FakeBackend([TextDelta(json.dumps({"emotion": "proud", "strength": 0.6,
+                                                    "why": "praised", **reading})),
+                              Done(reason="stop")])
+        return await mind.appraise(app, cid, "t1", backend=answer)
+
+    async def moods():
+        return await store.read(lambda c: [r[0] for r in c.execute(
+            "SELECT why FROM moods ORDER BY id")])
+
+    assert await reads(quote="without a single complaint", by=cfg.user) is None, \
+        "the agent's words"
+    assert await reads(by=cfg.user) is None, "no words to rest on"
+    assert await reads(quote="they look level", by="someone") is None, \
+        "no speaker of the exchange"
+    assert await moods() == []
+    got = await reads(quote="thanks for talking me through it", by=cfg.user.upper())
+    assert got["why"] == f'praised ({cfg.user}: "thanks for talking me through it")'
+    got = await reads(emotion="affectionate", quote="without a  single complaint", by=agent)
+    assert got["why"] == f'praised ({agent}: "without a single complaint")'
+    got = await reads(quote=long.strip(), by=agent)
+    assert got["why"].endswith('…")') and len(got["why"]) < len(long), "a long quote is cut"
+    assert len(await moods()) == 3
 
 
 async def test_the_agents_own_feeling_wins_over_the_appraisal(store):

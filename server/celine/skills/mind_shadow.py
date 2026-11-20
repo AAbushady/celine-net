@@ -22,6 +22,7 @@ import logging
 import re
 import sqlite3
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from .. import prompts
 from ..core.ids import iso, now
@@ -148,7 +149,7 @@ async def appraise(app, cid: str, tid: str, backend=None) -> dict | None:
     in `shadow_feelings`, also when it named nothing. -> the row, None when nothing was
     kept (no small model, no answer or one that is no JSON). A model error is raised, as
     for mind.appraise."""
-    from .mind import APPRAISE_SECONDS, parse_appraisal, small_model
+    from .mind import APPRAISE_SECONDS, anchored, parse_appraisal, small_model
     from ..turns.compact import complete
     f = await app.store.read(lambda c: facts(c, cid, tid))
     small = small_model(app, cid, backend) if f is not None else None
@@ -167,7 +168,10 @@ async def appraise(app, cid: str, tid: str, backend=None) -> dict | None:
         log.info("shadow appraisal not kept", extra={
             "event": "mind.shadow_unreadable", "conversation": cid, "turn": tid})
         return None
-    got = parse_appraisal(text) or {"emotion": None, "strength": 0.0, "why": "", "needs": []}
+    nothing: dict[str, Any] = {"emotion": None, "strength": 0.0, "why": "", "needs": []}
+    got = parse_appraisal(text) or nothing
+    if f["kind"] == "chat" and got is not nothing:      # kept as the live appraisal keeps it
+        got = anchored(app.cfg, got, f["said"], f["replies"][-1]) or nothing
     row = {"at": now(), "conversation_id": cid, "turn_id": tid, "kind": f["kind"],
            "emotion": got["emotion"], "strength": got["strength"] if got["emotion"] else None,
            "why": got["why"] if got["emotion"] or got["needs"] else "",

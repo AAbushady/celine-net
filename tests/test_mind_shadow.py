@@ -120,10 +120,17 @@ async def test_a_chat_turn_is_read_only_when_it_named_its_feeling_and_a_sub_agen
     await store.write(lambda c: c.execute(
         "INSERT INTO tool_calls(id, message_id, name, arguments, state) VALUES('tc2', 'a1', "
         "'mind__feel', ?, 'ok')", (json.dumps({"emotion": "proud", "strength": 0.6}),)))
-    answer = _says('{"emotion": "annoyed", "strength": 0.3, "why": "the build"}')
+    agent = cfg.substitute("{{name}}")
+    answer = _says(json.dumps({"emotion": "annoyed", "strength": 0.3, "why": "the build",
+                               "quote": "it finally built", "by": agent}))
     row = await mind_shadow.appraise(_app(store, cfg), chat, "t1", backend=answer)
     assert row is not None and row["kind"] == "chat" and row["named"] == "proud 0.6"
+    assert row["emotion"] == "annoyed" and row["why"] == f'the build ({agent}: "it finally built")'
     assert "jealous" in answer.calls[0][0]["content"], "the live appraisal's own prompt"
+    unsaid = _says('{"emotion": "annoyed", "strength": 0.3, "why": "the build"}')
+    row = await mind_shadow.appraise(_app(store, cfg), chat, "t1", backend=unsaid)
+    assert row is not None and row["emotion"] is None and row["why"] == "", \
+        "kept as the live appraisal keeps it: no words of its speaker, nothing named"
     sub = await conversations.create(store, agent_of=chat, kind="agent")
     assert await store.read(lambda c: mind_shadow.facts(c, sub, "t1")) is None
 

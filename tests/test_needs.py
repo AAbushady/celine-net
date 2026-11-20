@@ -174,7 +174,8 @@ async def test_the_appraisal_names_needs_and_they_are_stored(store):
     cid = await conversations.create(store)
     await _chat_turn(store, cid)
     answer = FakeBackend([TextDelta(
-        '{"emotion": "tender", "strength": 0.5, "why": "a quiet evening", "needs": ['
+        '{"emotion": "tender", "strength": 0.5, "why": "a quiet evening", '
+        f'"quote": "oh. fun.", "by": "{cfg.substitute("{{name}}")}", "needs": ['
         '{"need": "connection", "change": "met", "strength": 0.7}, '
         '{"need": "intimacy", "change": "stirred", "strength": 0.4, '
         '"quote": "the build broke again"}, '
@@ -184,15 +185,16 @@ async def test_the_appraisal_names_needs_and_they_are_stored(store):
     assert got["emotion"] == "tender" and len(got["needs"]) == 3
     rows = await store.read(lambda c: [tuple(r) for r in c.execute(
         "SELECT need, change, strength, why, by, message_id FROM needs ORDER BY id")])
-    assert rows == [("connection", "met", 0.7, "a quiet evening", "appraisal", "a1"),
-                    ("intimacy", "stirred", 0.4, "a quiet evening", "appraisal", "a1")], \
+    why = f'a quiet evening ({cfg.substitute("{{name}}")}: "oh. fun.")'
+    assert rows == [("connection", "met", 0.7, why, "appraisal", "a1"),
+                    ("intimacy", "stirred", 0.4, why, "appraisal", "a1")], \
         "closeness with no quote of the exchange is left out"
     system = answer.calls[0][0]["content"]
     assert "intimacy: closeness between them" in system and "longing" in system
     assert '"quote": the exact words of the exchange' in system
     only_needs = mind.parse_appraisal('{"emotion": null, "needs": [{"need": "novelty", '
                                       '"change": "met", "strength": 0.3}]}')
-    assert only_needs == {"emotion": None, "strength": 0.0, "why": "",
+    assert only_needs == {"emotion": None, "strength": 0.0, "why": "", "quote": "", "by": "",
                           "needs": [{"need": "novelty", "change": "met", "strength": 0.3}]}
 
 

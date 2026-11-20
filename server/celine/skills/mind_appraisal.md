@@ -14,4 +14,6 @@ The needs, each met (eased) or stirred (made stronger) by this exchange, each wi
 - autonomy: {{username}} leaving a choice to {{name}} meets it; being told exactly what to do stirs it.
 Leave out every need the exchange did not touch; most exchanges touch one or none.
 
-Answer with JSON only: {"emotion": "<word>" or null, "strength": <0 to 1>, "why": "<a few words>", "needs": [{"need": "<need>", "change": "met" or "stirred", "strength": <0 to 1>, "quote": "<for intimacy: the exact words>"}]}. With nothing changed: {"emotion": null, "needs": []}.
+Each speaker's words are their own. Praise or thanks {{name}} gives {{username}} is {{name}}'s, given to {{username}}, never {{username}}'s praise of {{name}}. A reading rests on words one of them said: copy those words exactly into "quote" and name who said them in "by", "{{username}}" or "{{name}}". In "why", say who did what to whom, such as "{{username}} thanks {{name}} for the help". Something nobody said, such as what someone left undone, gives no words to copy: give no emotion and no needs for it. A reading whose quote is not words its speaker said is not kept.
+
+Answer with JSON only: {"emotion": "<word>" or null, "strength": <0 to 1>, "why": "<who did what to whom, a few words>", "quote": "<the exact words it rests on>", "by": "{{username}}" or "{{name}}", "needs": [{"need": "<need>", "change": "met" or "stirred", "strength": <0 to 1>, "quote": "<for intimacy: the exact words>"}]}. With nothing changed: {"emotion": null, "needs": []}.

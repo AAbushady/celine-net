@@ -53,6 +53,7 @@ log = logging.getLogger("celine.skills.mind")
 APPRAISE_SECONDS = 30.0
 APPRAISE_FRESH = 300.0     # an appraisal that waited longer (an outage) is dropped
 FEELING_MAX = 80           # characters of a feeling in its own words (mind__feel)
+QUOTE_SHOWN = 120          # characters of the words an appraisal rests on, kept in its why
 HALF_LIFE_H = 6.0
 BASELINE = (0.2, 0.2, 0.3)
 MOVE = 1 / 3        # of a feeling's strength: how far it moves the mood toward its point
@@ -678,9 +679,11 @@ def appraisal_prompt(cfg, said: str, reply: str) -> tuple[str, str]:
 
 
 def parse_appraisal(text: str | None) -> dict | None:
-    """{"emotion", "strength", "why", "needs"} from the answer: `emotion` None when it named
-    no feeling (or no strength for it), `needs` the list as the model wrote it
-    (needs.appraised checks each); None when it named neither, or is unreadable."""
+    """{"emotion", "strength", "why", "quote", "by", "needs"} from the answer: `emotion`
+    None when it named no feeling (or no strength for it), `quote` and `by` the words the
+    reading rests on and who said them, as written (anchored checks them), `needs` the
+    list as the model wrote it (needs.appraised checks each); None when it named neither,
+    or is unreadable."""
     m = re.search(r"\{.*\}", text or "", re.S)
     if not m:
         return None
@@ -698,7 +701,26 @@ def parse_appraisal(text: str | None) -> dict | None:
         return None
     return {"emotion": got["emotion"] if named else None,
             "strength": min(1.0, max(0.0, float(s))) if named else 0.0,
-            "why": str(got.get("why") or ""), "needs": listed}
+            "why": str(got.get("why") or ""), "quote": str(got.get("quote") or ""),
+            "by": str(got.get("by") or ""), "needs": listed}
+
+
+def anchored(cfg, got: dict, said: str, reply: str) -> dict | None:
+    """`got` (parse_appraisal) with its why ending in the words it rests on and their
+    speaker, `thanks for the help (Sam: "thanks for talking me through it")`, when its
+    quote is words of the speaker `by` names (needs.quoted): the user's in `said`, the
+    agent's in `reply`. None when it names no speaker of the exchange or the words are not
+    that speaker's: who said what is never guessed."""
+    speakers = {cfg.substitute(k): text for k, text in (("{{username}}", said),
+                                                        ("{{name}}", reply))}
+    by = " ".join(got.get("by", "").split()).casefold()
+    who = next((n for n in speakers if n.casefold() == by), None)
+    quote = " ".join(got.get("quote", "").split())
+    if who is None or not needs.quoted(quote, speakers[who]):
+        return None
+    if len(quote) > QUOTE_SHOWN:
+        quote = quote[:QUOTE_SHOWN - 1].rstrip() + "…"
+    return {**got, "why": f'{got["why"]} ({who}: "{quote}")'.strip()}
 
 
 def small_model(app, cid: str, backend=None):
@@ -718,7 +740,8 @@ def small_model(app, cid: str, backend=None):
 
 async def appraise(app, cid: str, tid: str, backend=None) -> dict | None:
     """One call on the `small` role (background, thinking off, 30 s) after a finished
-    chat turn of its own, as a work item (work.py, `appraisal`); the mood row it gives.
+    chat turn of its own, as a work item (work.py, `appraisal`); the mood row it gives,
+    None when a reading's words are not its speaker's (anchored), which keeps nothing.
     A model error is raised: no host up defers the item, another is a try.
     `backend`: a fixed one (tests)."""
     from ..turns.compact import complete
@@ -740,11 +763,19 @@ async def appraise(app, cid: str, tid: str, backend=None) -> dict | None:
                                            "conversation": cid, "turn": tid,
                                            "why": "the small model wrote nothing"})
         return None
-    got = parse_appraisal(text)
-    if got is not None and got["emotion"]:
+    parsed = parse_appraisal(text)
+    if parsed is None:
+        return None
+    got = anchored(cfg, parsed, f["said"], f["reply"])
+    if got is None:
+        log.info("feeling not kept", extra={"event": "mind.appraisal_unanchored",
+                                            "conversation": cid, "turn": tid,
+                                            "why": "its quote is not words of its speaker"})
+        return None
+    if got["emotion"]:
         await feel(store, got["emotion"], got["strength"], got["why"], "appraisal",
                    f["reply_id"])
-    if got is not None and got["needs"]:
+    if got["needs"]:
         now_ = datetime.now(timezone.utc)
         read = await store.read(_read)
         _mood, point, _felt = _of(cfg, read, now_, "chat")
